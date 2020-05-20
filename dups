@@ -1,0 +1,215 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+@rem = '
+@echo off
+c:\perl5\bin\perl %0 %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto endofperl
+@rem ' if @rem;
+
+#
+$recursive = 0;
+if ($ARGV[0] eq "-r") {
+    shift @ARGV;
+    $recursive = 1;
+}
+@todo = @ARGV;
+@todo = (".") unless @todo;
+
+# Experiment 1: Read all of both files, but keep checksums.  Two files need
+# comparison only if one has never been read, or their checksums are equal.
+# This should be a win if large numbers of files are the same size.
+# Anecdotally, save 31% of compares on one large run.
+# Averaged 2.15 compares per file on that same run.
+$compares = $saved = 0;
+%sum = ();
+
+#
+# Experiment 2, part 1 of 2: Keep checksums between runs.  Two files need
+# be read only if one has never been read.
+if (open(INPUT, "dups.db")) {
+    print STDERR "Reading sum database...";
+    while (<INPUT>) {
+	($f, $s) = /(.*) (.*)/;
+# TODO: normalize $f here.
+$f =~ y?/A-Z?\\a-z?;
+	$sum{$f} = $s;
+    }
+    print STDERR "done\n";
+}
+
+#
+#   Compare two files known to be the same size.
+sub cmp {
+    local($f1, $f2) = @_;
+    local($s, $sum1, $sum2, $result);
+
+    # Experiment:  Two identical files is OK if they 
+    # have the same basename.
+    $basename = $f1; $basename =~ s/.*[\\\/]//;
+    return 1 if $f2 =~ /[\\\/]$basename$/;
+    $compares += 1;
+    if (defined($sum{$f1}) && defined($sum{$f2})) {
+	$saved += 1 unless $sum{$f1} == $sum{$f2};
+	return 1 unless $sum{$f1} == $sum{$f2};
+    }
+    $result = $sum1 = $sum2 = 0;
+    open(F1, $f1) || die "$f1: $!";
+    binmode(F1);
+    open(F2, $f2) || die "$f2: $!";
+    binmode(F2);
+    while (<F1>) {
+	$sum1 += unpack("%32C*", $_);
+	if (($s = <F2>)) {
+	    $sum2 += unpack("%32C*", $s);
+	    next if $s eq $_;
+	}
+	$result = 1;
+	if (defined($sum{$f1})) {
+	    # No need to read the rest of $f1.
+	    $sum1 = $sum{$f1};
+	    last;
+	}
+    }
+    # Finish off $f2 if it has more data.
+    while (($s = <F2>)) {
+	$result = 1;
+	$sum2 += unpack("%32C*", $s);
+    }
+    close(F1);
+    close(F2);
+    $sum{$f1} = $sum1;
+    $sum{$f2} = $sum2;
+    return $result;
+}
+  
+
+open(STDOUT, ">vv.bat") || die "vv.bat: $!";
+
+while (@todo) {
+    $dir = shift @todo;
+    opendir(DIR, $dir) || die "$dir: $!";
+    print STDERR "Reading '$dir' ...";
+    foreach (readdir(DIR)) {
+    	$f = "$dir/$_";
+# TODO: normalize $f here!
+$f =~ y?/A-Z?\\a-z?;
+	next if $_ eq ".";
+	next if $_ eq "..";
+	next if $_ eq ".svn";
+	next if $_ eq "backup";
+	next if $_ eq "Camera";
+	next if $_ eq "Casio";
+	next if $_ eq "Tax";
+	next if /\/TaxCut/;
+	next if /\.csv$/;
+	next if /\.htm$/;
+	next if /\.html$/;
+	next if /\.ini$/;
+	next if /\.lnk$/;
+	next if /\.rdp$/;
+	next if /TaxCut[0-9]/;
+	if (/([ '])/) {
+	    print "Skipping $f (imbedded '$1') ...\n";
+	    print STDERR "\nSkipping $f (imbedded '$1') ...";
+	    next;
+	}
+	if (-d $f) {
+	    push(@todo, $f) if $recursive;
+	    next;
+	}
+	$s = -s _;
+	if (defined $files{$s}) {
+	    $files{$s} .= " $f";
+	} else {
+	    $files{$s} = $f;
+	}
+    }
+    print STDERR "\n";
+    closedir(DIR);
+}
+
+print STDERR "Writing vv.bat...\n";
+$done = 0;
+$opercent = -1;
+sub byname { $a cmp $b }
+foreach (keys %files) {
+    # Get a list of all files of this size
+    @files = sort byname split(/ /, $files{$_});
+    %done = (); # reduce memory usage
+    $done++;
+    $npercent = int((100*$done) / (0+keys %files));
+    if ($npercent != $opercent) {
+	# Printing every time slows down the checking.
+	printf STDERR "%3d%%\r", $npercent;
+	$opercent = $npercent;
+    }
+#   %sum = (); # reduce memory usage
+    for $i (@files) {
+	for $j (@files) {
+	    next if $i eq $j;
+	    # Two different files
+	    if ($i lt $j) {
+		next if $done{$i,$j};
+		$done{$i,$j} = 1;
+	    } else {
+		next if $done{$j,$i};
+		$done{$j,$i} = 1;
+	    }
+	    # Two files never compared before
+	    next if &cmp($i, $j);
+	    # Two identical files
+	    next if $done{$i} && $done{$j};
+	    $done{$i} = 1;
+	    $done{$j} = 1;
+	    $out = "$i $j\n";
+	    $out =~ y:/:\\:;
+	    print $out;
+	}
+    }
+}
+print STDERR "\n";
+printf STDERR "Saved %d of %d compares on %d files\n",
+		$saved, $compares, (%files/2);
+
+#
+# Experiment 2, part 2 of 2: Keep checksums between runs.  Two files need
+# be read only if one has never been read.
+if (open(OUTPUT, ">dups.db")) {
+    print STDERR "Writing sum database...";
+    foreach $f (sort byname keys %sum) {
+# Save just the stuff in subdirectories
+next unless $f =~ m:[/\\].*[/\\]:;
+	print OUTPUT "$f $sum{$f}\n"
+	    unless $f =~ ?[/\\]windows[/\\]desktop[/\\]?;
+    }
+    print STDERR "done\n";
+}
+
+__END__
+:endofperl

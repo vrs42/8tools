@@ -1,0 +1,112 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Convert packed "cos" to disk images.
+
+# The bytes are packed.  Each sector is 128 (RX01) 
+# or 256 (RX02) bytes.  There are 77 tracks and 
+# 26 sectors/track.
+
+# This gives a size of 128*77*26 = 256256 bytes 
+# for RX01, and 512512 bytes for RX02.
+
+# The RX8E (in 8 bit mode) just reads the 128
+# byte sectors.  This means a 256 word block 
+# requires 3 sectors.
+
+# COS floppies are encoded with each of the 
+# 3 sectors containing a byte of the 3 byte 
+# encoding of a double word.  We have to 
+# Read all three sectors, then swizzle the 
+# bits to reassemble the 256 words of a 
+# block, which we can then output.
+
+# Track 0 is not used, so 76*26/3 gives a
+# capacity of 658 blocks.
+# Known data points:
+# Block 0 is sectors 1, 4, and 7.
+# Block 1 is sectors 10, 13, and 16.
+
+sub readsector {
+  local($lsect) = @_;
+  local($track, $sector, $spos);
+  local($count);
+
+  $track = 1 + int($lsect/26); # 26 sectors/track
+  # Interleave 3 within the track.
+  $sector = ($lsect*3) % 26;
+  # Now find and read it.
+  $spos = (($track*26)+$sector) * $size;
+#printf "$lsect->$track $sector %lo\n", $spos;
+  seek(INPUT, $spos, 0) || die "seek($flp): $!";
+  $count = read(INPUT, $buf, $size);
+  die "read($flp): $!" if $count < 0;
+  last unless $count;
+  die "read($flp): wrong count $!" if $count != $size;
+  return unpack("C*", $buf);
+}
+
+foreach $flp (@ARGV) {
+  open(INPUT, $flp) || die "$flp: $!";
+  binmode(INPUT);
+  $f = $flp; $f =~ s/[.]cos$//;
+  $f .= ".dsk";
+  ($_, $_, $_, $_, $_, $_, $_, $size) = stat(INPUT);
+  die "$flp: volume is not a floppy image" if $size % (77*16);
+  $size /= 77 * 26; # Calculate sector size
+  die "$flp: volume is not an RX01 image"
+    unless ($size == 128);
+  $ds = $size * 3 / 4;
+
+# die "$f: exists" if -f $f;
+  open(OUTPUT, ">$f") || die "$f: $!";
+  binmode(OUTPUT);
+
+  # RX01: 26*76 = 1976 sectors.  1976 sectors == 658 blocks.
+  # RX02: Packed RX02 format doesn't seem reasonable, as each OS/8 
+  # block would be 1.5 sectors!
+  # The last couple of sectors are not accessible, as
+  # they are not part of a triplet.
+  for ($block = 0; $block < 658; $block++) {
+    $lsect = 3*$block;
+    @bufh = &readsector($lsect);
+    $lsect++;
+    @buf = &readsector($lsect);
+    $lsect++;
+    push(@buf, &readsector($lsect));
+#printf "output: %lo\n", tell(OUTPUT);
+    for ($i = 0; $i < 128; $i++) {
+      # The missing bits of @buf are packed into 
+      # bufh:
+      $buf[2*$i]   += (($bufh[$i] >> 4)<<8);
+      $buf[2*$i+1] += (($bufh[$i] & 017)<<8);
+    }
+    print OUTPUT pack("S*", @buf);
+  }
+}
+exit 0;

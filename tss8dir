@@ -1,0 +1,230 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# MFD: <acct>  <pass1> <pass2> <next> <0.012> <cputime> <devtime> <frib>
+# UFD: <name1> <name2> <name3> <next> <ext.prot> <size> <date>    <frib>
+# <next> and <frib> are offsets within this block.
+# <size> is in blocks.  There's no smaller resolution.
+
+# TSS/8 <ext.prot>:
+# ext.prot&7700	EXTENSION
+# 0000		[NONE]
+# 0200		.ASC
+# 0400		.SAV
+# 0600		.BIN
+# 1000		.BAS
+# 1200		.BAC
+# 1400		.FCL
+# 1600		.TMP
+# 2000		[NONE]
+# 2200		.DAT
+# 2400		.LST
+# 2600		.PAL
+@ext = ("", ".ASC", ".SAV", ".BIN", ".BAS", ".BAC", ".FCL", ".TMP", "", ".DAT", ".LST", ".PAL");
+$binary{".SAV"} = 1;
+$binary{".BIN"} = 1;
+$binary{".BAC"} = 1;
+$binary{".TMP"} = 1;
+$binary{".DAT"} = 1;
+sub ext {
+  return $ext[($_[0]&07700)/2];
+}
+# ext.prot & 077: <NC uw gw gr ow or> where a set bit prohibits the action.
+# There seems to be no way to prevent one from reading his own files.
+# The default permission is 012; "group write" and "all write" are prohibited.
+# Permissions where u<g, u<o, or g<o are probably silly, but are allowed.
+@prot = (0666, 0662, 0664, 0660, 0626, 0622, 0624, 0620,
+         0646, 0642, 0644, 0640, 0606, 0602, 0604, 0600,
+         0446, 0442, 0444, 0440, 0406, 0402, 0404, 0400);
+
+#
+# This flavor of sixbit encodes "A" as 041 (not 001)..
+sub sixbit {
+  return ord($_[0])-040;
+}
+sub asc {
+  return chr($_[0]+040);
+}
+
+#
+# The date is not optional in TSS directories.
+# DATE FORMAT: <mmmm><ddddd><yyy>  Year is yyy+74.
+$epoch = 1974; # Or should it be 1964, per the User's Guide?
+@month = ("0",  "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
+	 "AUG", "SEP", "OCT", "NOV", "DEC", "13",  "14",  "15");
+
+open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
+binmode(INPUT);
+
+#
+# An OS/8 directory starts in block 1, but the TSS MFD 
+# location depends on the number of users.  There are 
+# 4K each for SIP, FIP, INIT, then 8K for the RM.
+# That's 20K of fixed overhead, followed by the swap
+# area, 4K per user.
+$mfbase = 0;
+for ($users = 20; $users < 32; $users++) {
+    $link = (20 + 4*$users) * 4; # 1K == 4 blocks
+    #
+    # Attempt to find the MFD at the next proposed spot.
+    # The block should start with 8 dummy words, a 0010 
+    # being in the fourth word.  This should be followed
+    # by the MFD: 0001 <pw1> <pw2> 0012 <cpu> <dev> <frb>
+    # and then the FRB: 0000 0001 <s2> <s3> <s4> <s5> <s6> <s7>
+    # Example: The MFD has been found at offset 0620020,
+    # following a dummy block at 0620000.  Each 4K is 
+    # 20000, so that corresponds to 031 or 25 core images.
+    # Five core images are not part of swap, so the system
+    # Has a maxximum of 20 users.
+    seek(INPUT, $link*01000, 0) || die "directory seek: $!";
+    read(INPUT, $mfd, 01000) || die "directory read: $!";
+    @mfd = unpack("S*", $mfd);
+    #
+    # @mfd starts with an MFD.
+    next unless $mfd[003] == 0010;
+#   next unless $mfd[014] == 0012;
+    next if $mfd[014] & 07700;
+    next unless $mfd[017] == 0020;
+    next unless $mfd[020] == 0000;
+    warn "users = $users\n";
+    $mfbase = $link*01000;
+    $mfbase -= 512; # Work around first "block is block 1".
+    last;
+}
+exit 1 unless $mfbase;
+#warn "mfbase is $mfbase\n";
+
+#
+# OK, $mfbase establishes the base for block access, 
+# and @ufd is the relevant directory.  That's sufficient
+# to read the file, given an offset to it's first 
+# frib.  @ufd is the relevant directory context, and
+# $frib # is an offset into @ufd..
+sub readfile {
+    local(*ufd, $frib, $offset, $bytes) = @_;
+    local($count, $buf, $cblk);
+    $buf = "";
+    while ($bytes > 0) {
+      # Calculate a block number
+      $block = int($offset / 256); # 256 words / block
+      $count = 256 - $offset%256;
+      $count = $bytes if $count > $bytes; # Last block.
+      # Locate the block.
+      $cblk = $block;
+      $fribo = $frib;
+      while ($cblk > 6) {
+	# Did we fall off the end?
+        die "Walked off end of frib!\n" if $fribo == 0;
+#print STDERR "Got here for $block: $fribo -> $ufd[$fribo]\n";
+        $fribo = $ufd[$fribo]; # Follow link
+        $cblk -= 7; # Just skipped forward 7 blocks
+      }
+      # This is the right FRIB segment.
+      $cblk++; # Skip over the frib's link
+      $cblk = $ufd[$fribo+$cblk]; # Get absolute block number, not relative.
+      # Stop reading if no more blocks.
+      return $buf if $cblk == 0;
+      # Found the next block.  Read it.
+      seek(INPUT, $mfbase+$cblk*512, 0) || die "data seek: $!";
+      read(INPUT, $cb, 2*$count) || die "data read: $! ($cblk)";
+      $buf .= $cb;
+      $offset += $count;
+      $bytes -= $count;
+    }
+    return $buf;
+}
+
+# Since the MFD is allowed just the one RIB, we have 
+# enough context now to read in the rest of the MFD.
+$mfd = &readfile(*mfd, 020, 0, 4096);
+@mfd = unpack("S*", $mfd);
+
+#
+# Walk the MFD, processing each UFD.
+for ($link = 010; $link; $link = $next) {
+    #
+    # Process a user's UFD.
+    $uid  = $mfd[$link+0];
+    $pw1  = $mfd[$link+1];
+    $pw2  = $mfd[$link+2];
+    $next = $mfd[$link+3];
+    $prot = $mfd[$link+4];
+    $cput = $mfd[$link+5];
+    $devt = $mfd[$link+6];
+    $frib = $mfd[$link+7];
+    # Read the directory.
+    $ufd = &readfile(*mfd, $frib, 0, 4096);
+    @ufd = unpack("S*", $ufd);
+    # Make a pretty name for the directory.
+    $dir = sprintf("[%o,%o]%s%s%s%s", $uid>>6, $uid&077, &asc($pw1>>6), &asc($pw1&077), &asc($pw2>>6), &asc($pw2&077));
+    $dir =~ s/ *$//;
+    print "$dir:\n";
+#   next if $uid == 1;
+    # Walk the directory, listing the files.
+    for ($fl = $ufd[3]; $fl; $fl = $lnxt) {
+        $nam1 = $ufd[$fl+0];
+        $nam2 = $ufd[$fl+1];
+        $nam3 = $ufd[$fl+2];
+#warn "fn: $nam1 $nam2 $nam3\n";
+        $lnxt = $ufd[$fl+3];
+        $prot = $ufd[$fl+4];
+        $size = $ufd[$fl+5];
+        $date = $ufd[$fl+6];
+        $day = $date % 31;
+        $month = ($date / 31) % 12;
+        $year = int($date / 372); # 12*31=372
+        $frib = $ufd[$fl+7];
+        $fn = sprintf("%s%s%s%s%s%s", &asc($nam1>>6), &asc($nam1&077), &asc($nam2>>6), &asc($nam2&077), &asc($nam3>>6), &asc($nam3&077));
+        $ext = $ext[$prot>>7];
+        printf "  %s%s\t%4d\t%02o\t%2d-%3s-%4d\n", $fn, $ext[$prot>>7], $size, $prot&017, $day+1, $month[$month+1], $year+$epoch;
+        $file = &readfile(*ufd, $frib, 0, 4096*256);
+        #
+        # At this point the data is in "S*" format.
+# BUGBUG: For consistency, we should repack binary 
+# data too, but in "natural" format.
+        # TSS uses an "unnatural" text file byte order:
+        # aaaaaaaabbbb bbbbcccccccc
+        # Here we unmangle this.  At the same time, 
+        # we strip bit 8, making our output legible
+        # on modern systems.
+        if (!$binary{$ext}) {
+            @file = unpack("S*", $file);
+            $file = "";
+            while (@file) {
+                $dword = ((shift @file)<<12) + (shift @file);
+                $c1 = chr(($dword >> 16) & 0177);
+                $c2 = chr(($dword >> 8) & 0177);
+                $c3 = chr($dword & 0177);
+                $file .= $c1 . $c2 . $c3;
+            }
+            #print "$file\n";
+        }
+        # BUGBUG: Create the output file here.
+    }
+}
+exit 0;

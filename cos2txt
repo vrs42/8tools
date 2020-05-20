@@ -1,0 +1,81 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Unpack COS text files.
+
+@cosch = ("",  " ", "!", '"', "#", '$', '%', "&", "'", "(", ")", "*", "+", ",",  "-", ".",
+          "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<",  "=", ">",
+          "?", '@', "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",  "M", "N",
+          "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\t", "]", "^");
+foreach $f (@ARGV) {
+  next unless $f =~ /[.](as|db)/;
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+  $of = "$f.txt";
+  open(OUTPUT, ">$of") || die "$of: $!";
+  # First, unpack every 3 bytes into two words.
+  @buf = ();
+  while (read(INPUT, $buf, 3) == 3) {
+    ($b1, $b2, $b3) = unpack("CCC", $buf);
+#   $b1 &= 0177;
+#   $b2 &= 0177;
+#   $b3 &= 0177;
+    $b1 += ($b3 << 4) & 07400;
+    $b2 += ($b3 << 8) & 07400;
+    #print pack("SS", $b1, $b2);
+    push(@buf, $b1, $b2);
+  }
+  # Now the file is consecutive words in @buf.
+  # Output it according to COS conventions.
+  while (($len = shift @buf)) {
+    $len -= 4096;
+last if $len < -2047;
+#warn "len == $len\n";
+    if ($f =~ /[.]as$/) {
+      $linno = shift @buf;
+#warn "linno == $linno\n";
+      printf OUTPUT "%-4d ", $linno;
+      $len++;
+    }
+    # Output characters using the COS 6-bit
+    # convention.
+    while ($len++) {
+      $b3 = shift @buf;
+      if ($f =~ /[.]as$/) {
+        $b1 = $b3 >> 6;
+        $b2 = $b3 & 077;
+        $b1 = $cosch[$b1];
+        $b2 = $cosch[$b2];
+        print OUTPUT $b1, $b2;
+      } else {
+        printf OUTPUT "%04o ", $b3;
+      }
+    }
+    print OUTPUT "\n";
+  }
+}

@@ -1,0 +1,130 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Convert a .SV file to an octal dump of a BIN format tape.
+
+foreach $f (@ARGV) {
+  #
+  # First, "load" the file.
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+  # Read the header
+  $ncs = &getword(); $ncs = 4096 - $ncs;
+  $sacif = &getword();
+  $sa = &getword();
+  $jsw = &getword();
+  # Read the segment table.
+  @origins = @pages = @fields = ();
+  for ($i = 0; $i < $ncs; $i++) {
+    push(@origins, &getword());
+    $w = &getword();
+    push(@pages, ($w >> 6) & 037);
+    push(@fields,($w >> 3) & 007);
+  }
+  # "Load" the segments.
+  $blk = 1;
+  @core = ();
+  for ($i = 0; $i < $ncs; $i++) {
+    seek(INPUT, $blk*256*3/2, 0) || die "$f: $!";
+    $org = $fields[$i]*010000 + $origins[$i];
+    $pages = $pages[$i];
+    $words = $pages * 128;
+    for ($w = 0; $w < $words; $w++) {
+      $core[$org++] = &getword();
+    }
+    $blk += int(($pages+1)/2);
+  }
+  # At this point we have "loaded" the file.
+  # Now to dump it back out in the correct format.
+  # The checksum is simply the 12-bit sum of all bytes 
+  # except field settings and leader-trailer.
+  $of = $f; $of =~ y/A-Z/a-z/;
+  $of =~ s/[-.](dg|sv)$/-pb.od/;
+  if (-f $of) {
+    warn "Skipping $of: exists\n";
+    next;
+  }
+  open(OUTPUT, ">$of") || die "$of: $!";
+  print "Writing $of\n";
+  # Leader
+  for ($i = 0; $i < 64; $i++) {
+    print OUTPUT "0200\n";
+  }
+  $oaddr = -2;
+  $cksum = 0;
+  for ($addr = 0; $addr <= 077777; $addr++) {
+    if (defined $core[$addr]) {
+      # Change fields of $oadder is different field from $addr
+      if (($oaddr & 070000) != ($addr & 070000)) {
+        printf OUTPUT "%04o\n", 0300 + (($addr >> 9) & 070);
+      }
+      # Output an origin if needed.
+      if ($addr != $oaddr + 1) {
+        $c1 = 0100 + (($addr >> 6) & 077);
+        $c2 = $addr & 077;
+        printf OUTPUT "%04o\n%04o\n", $c1, $c2;
+        $cksum += $c1 + $c2;
+      }
+      # Output the data.
+      $c1 = ($core[$addr] >> 6) & 077;
+      $c2 = $core[$addr] & 077;
+      printf OUTPUT "%04o\n%04o\n", $c1, $c2;
+      $cksum += $c1 + $c2;
+      # Remember the address.
+      $oaddr = $addr;
+    }
+  }
+  # Output the 12 bit checksum.
+  $c1 = ($cksum >> 6) & 077;
+  $c2 = $cksum & 077;
+  printf OUTPUT "%04o\n%04o\n", $c1, $c2;
+  # Trailer
+  for ($i = 0; $i < 64; $i++) {
+    print OUTPUT "0200\n";
+  }
+  close(OUTPUT) || die "$of: $!";
+}
+
+#
+# Get the next word.  
+$gwplace = $gwstate = 0; 
+sub getword {
+  $gwstate = 0 unless tell(INPUT) == $gwplace;
+  if ($gwstate == 0) {
+    read(INPUT, $buf, 3) || die "$f: $!";
+    $gwplace = tell(INPUT);
+    ($b1, $b2, $b3) = unpack("CCC", $buf);
+    $w1 = (($b3 & 0360) << 4) + $b1;
+    $w2 = (($b3 & 0017) << 8) + $b2;
+    $gwstate = 1;
+    return $w1;
+  } else {
+    $gwstate = 0;
+    return $w2;
+  }
+}

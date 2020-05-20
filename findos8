@@ -1,0 +1,114 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# OK, time for a bigger hammer.
+# DUMPRX01 has generated a bytewise dump of the media, 
+# in hardware sector/track order. Problem is, there 
+# are several schemes, involving 8 or 12 bit mode, 
+# for encoding the interesting 12 bit words on the 
+# media.  Here, we look at every single sector, with 
+# known encodings, trying to find things that look 
+# like they might be the OS/8 directory segment 
+# headers.
+# This does assume that every OS/8 block starts on 
+# a sector boundary, which ought to be the case.
+
+# Check if this might be a directory segment, report if so.
+sub isdirseg {
+  local($fmt, $nseg, $sblk, $link, $flag, $aiw) = @_;
+  # Number of entrees this segment should be negative.
+  $nseg -=  010000; # Form two's complement
+  return unless $nseg > -35; # ...but not more than 35 files/segment.
+  $aiw -=  010000; # Form two's complement
+  return unless $aiw <= 0; # Expect a negative or zero aiw.
+  return unless $aiw > -2; # Expect 0 or -1.
+  printf "$f: track $trk, sector $sec is plausible ($nseg, %04o, $aiw, $fmt)\n", $sblk;
+}
+
+# Try various coding schemes on the sector data.
+sub decode {
+  local(@buf) = @_;
+  local($fmt, $nseg, $sblk, $link, $flag, $aiw);
+  # The usual format is 0000aaaa aaaaaaaa 0000bbbb bbbbbbbb
+  $fmt = "rx01";
+  $nseg = ($buf[0]<<8) + $buf[1];
+  $sblk = ($buf[2]<<8) + $buf[3];
+  $link = ($buf[4]<<8) + $buf[5];
+  $flag = ($buf[6]<<8) + $buf[7];
+  $aiw  = ($buf[8]<<8) + $buf[9];
+  &isdirseg($fmt, $nseg, $sblk, $link, $flag, $aiw);
+  # "3P" format is aaaabbbb aaaaaaaa bbbbbbbb
+  $fmt = "3p";
+  $nseg = (($buf[0]<<4)&0xF00) + $buf[1];
+  $sblk = (($buf[0]<<8)&0xF00) + $buf[2];
+  $link = (($buf[3]<<4)&0xF00) + $buf[4];
+  $flag = (($buf[3]<<8)&0xF00) + $buf[5];
+  $aiw  = (($buf[6]<<4)&0xF00) + $buf[7];
+  &isdirseg($fmt, $nseg, $sblk, $link, $flag, $aiw);
+  # "rx8e" format is aaaaaaaa aaaabbbb bbbbbbbb
+  $fmt = "rx8e";
+  $nseg = ($buf[0]<<4) + ($buf[1]>>4);
+  $sblk = (($buf[1]<<8)&0xF00) + $buf[2];
+  $link = ($buf[3]<<4) + ($buf[4]>>4);
+  $flag = (($buf[4]<<8)&0xF00) + $buf[5];
+  $aiw  = ($buf[6]<<4) + ($buf[7]>>4);
+  &isdirseg($fmt, $nseg, $sblk, $link, $flag, $aiw);
+  # "os8" format is aaaaaaaa bbbbbbbb aaaabbbb
+  $fmt = "os8p";
+  $nseg = (($buf[2]<<4)&0xF00) + $buf[0];
+  $sblk = (($buf[2]<<8)&0xF00) + $buf[1];
+  $link = (($buf[5]<<4)&0xF00) + $buf[3];
+  $flag = (($buf[5]<<8)&0xF00) + $buf[4];
+  $aiw  = (($buf[8]<<4)&0xF00) + $buf[6];
+  &isdirseg($fmt, $nseg, $sblk, $link, $flag, $aiw);
+}
+
+# The main loop just feeds sectors to the subroutines.
+foreach $f (@ARGV) {
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+  ($_, $_, $_, $_, $_, $_, $_, $size) = stat(INPUT);
+  die "$f: volume is not a floppy image" if $size % (77*16);
+  $size /= 77 * 26; # Calculate sector size
+  die "$f: volume is not a floppy image"
+    unless ($size == 128) || ($size == 256);
+  #
+  for ($trk = 0; $trk < 77; $trk++) {
+    for ($sec = 0; $sec < 26; $sec++) {
+      $spos = ($trk*26 + $sec) * 0200;
+      seek(INPUT, $spos, 0) || die "seek($f): $!";
+      $count = read(INPUT, $buf, $size);
+      die "read($f): $!" if $count < 0;
+      @buf = unpack("C*", $buf);
+      &decode(@buf);
+    }
+  }
+}
+
+exit 0;
