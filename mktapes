@@ -1,0 +1,104 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+@rem = '
+@echo off
+c:\perl5\bin\perl %0 %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto endofperl
+@rem ' if @rem;
+
+#
+@todo = @ARGV;
+@todo = (".") unless @todo;
+
+# open(STDOUT, ">vv.bat") || die "vv.bat: $!";
+# print STDERR "Writing vv.bat...\n";
+
+#
+# Wander around finding directories named "Ok".
+@Ok = (".");
+while (@todo) {
+last; # Just do "."
+    $dir = shift @todo;
+    opendir(DIR, $dir) || die "$dir: $!";
+#   print STDERR "Reading '$dir' ...";
+    foreach (readdir(DIR)) {
+    	$f = "$dir/$_";
+	next if $_ eq ".";
+	next if $_ eq "..";
+	next if $_ eq "done";
+	next unless -d $f;
+	if (/^[Oo][Kk]/) {
+    print STDERR "pushing '$f' ...";
+	    push(@Ok, $f);
+	    next;
+	}
+	push(@todo, $f);
+	next;
+    }
+#   print STDERR "\n";
+    closedir(DIR);
+}
+
+#
+# Process each file.
+sub process {
+    local($f) = @_;
+    open(INPUT, $f) || die "$f: $!";
+    $o = $f;
+    $o =~ s/\.od$//;
+    open(OUTPUT, ">$o") || die "$o: $!";
+    binmode(OUTPUT);
+    while (<INPUT>) {
+        $byte = oct($_);
+        $ch = pack("C", $byte);
+	print OUTPUT $ch;
+    }
+    close(INPUT);
+    close(OUTPUT) || die "$o: $!";
+}
+
+#
+# For each directory named "Ok", process all the *.od files.
+while (@Ok) {
+    $dir = shift @Ok;
+    opendir(DIR, $dir) || die "$dir: $!";
+    print STDERR "Reading '$dir' ...";
+    foreach (readdir(DIR)) {
+    	$f = "$dir/$_";
+	next unless -f $f;
+	next unless /\.od$/;
+	&process($f);
+    }
+    print STDERR "\n";
+    closedir(DIR);
+}
+
+
+__END__
+:endofperl

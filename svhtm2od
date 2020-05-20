@@ -1,0 +1,149 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Convert a text version of a .SV file into a -pb.od file
+
+# First, get the header information.
+
+# JSW bits:
+#    0-No 00000-01777
+#    1-No 10000-11777
+#    2-Reload
+#    3-Less 8k
+#   10-No pre CD
+#   11-No pre USR
+
+@todo = @ARGV;
+foreach $f (@todo) {
+  open(INPUT, $f) || die "$f: $!";
+  $cs = $sf = $sa = $jsw = undef;
+  @co = @pc = @fld = ();
+  while (<INPUT>) {
+    last if /^Block/;
+    $cs = oct($1) if /^Number of core segments: (\d+)/;
+    $sf = oct($1) if /^Starting field\s+:\s+(\d+)/;
+    $sa = oct($1) if /^Starting address:\s+(\d+)/;
+    $jsw = oct($1) if /^Job status word\s+:\s+(\d+)/;
+    push(@co, oct($1)) if /^Core origin\s+:\s+(\d+)/;
+    push(@pc, oct($1)) if /^Pages to load\s+:\s+(\d+)/;
+    push(@fld, oct($1)) if /Field to load:\s+(\d+)/;
+  }
+  $cs--;
+  die "origin count $#co != $cs\n" unless $#co == $cs;
+  die "page count $#pc != $cs\n" unless $#pc == $cs;
+  die "field count $#fld != $cs\n" unless $#fld == $cs;
+  # At this point, we have parsed a seemingly valid header.
+  # We have also read the first "Block" line.
+  die "$f: no Block line" unless /^Block:\s+(\d+)/;
+  $blk = oct($1);
+  #
+  # First, enumerate where each page is to load.
+  $p = 0;
+  for ($i = 0; $i <= $cs; $i++) {
+    $base = $fld[$i]*010000 + $co[$i];
+    for ($j = 0; $j < $pc[$i]; $j++) {
+      $pagebase[$p++] = $base + $j*0200;
+    }
+    $p++ if $pc[$i] & 0001;
+  }
+  undef @core;
+  while (<INPUT>) {
+    # The lines we care about have an octal offset, colon, then 16 values.
+    if (s/^(\d+): //) {
+      $offset = oct($1);
+      die "Wrong block: $1 $offset($blk)" unless int($offset / 0400) == $blk;
+      # From the offset in the file, determine where the data will load.
+      $p = int($offset / 0200); # 128 word page in .SV file.
+      # Some stuff in a .SV file in the last half a block is never loaded.
+      next unless defined $pagebase[$p];
+      $addr = $pagebase[$p] + ($offset % 0200);
+      # Now store 16/020 values.
+      for ($i = 0; $i < 020; $i++) {
+        if (s/^(\d+) +//) {
+          $core[$addr++] = oct($1);
+        } else {
+          die "Invalid octal data ($offset): $_";
+        }
+      }
+    }
+    # Also keep an eye out for "Block:" lines.
+    $blk = oct($1) if /^Block:\s+(\d+)/;
+  }
+  # At this point we have "loaded" the file.
+  # Now to dump it back out in the correct format.
+  # The checksum is simply the 12-bit sum of all bytes 
+  # except field settings and leader-trailer.
+  $of = $f; $of =~ y/A-Z/a-z/;
+  $of =~ s/\.htm$//;
+  $of =~ s/-(dg|sv)$/-pb.od/;
+  if (-f $of) {
+    warn "Skipping $of: exists\n";
+    next;
+  }
+  open(OUTPUT, ">$of") || die "$of: $!";
+  print "Writing $of\n";
+  # Leader
+  for ($i = 0; $i < 64; $i++) {
+    print OUTPUT "0200\n";
+  }
+  $oaddr = -2;
+  $cksum = 0;
+  for ($addr = 0; $addr <= 077777; $addr++) {
+    if (defined $core[$addr]) {
+      # Change fields of $oadder is different field from $addr
+      if (($oaddr & 070000) != ($addr & 070000)) {
+        printf OUTPUT "%04o\n", 0300 + (($addr >> 9) & 070);
+      }
+      # Output an origin if needed.
+      if ($addr != $oaddr + 1) {
+        $c1 = 0100 + (($addr >> 6) & 077);
+        $c2 = $addr & 077;
+        printf OUTPUT "%04o\n%04o\n", $c1, $c2;
+        $cksum += $c1 + $c2;
+      }
+      # Output the data.
+      $c1 = ($core[$addr] >> 6) & 077;
+      $c2 = $core[$addr] & 077;
+      printf OUTPUT "%04o\n%04o\n", $c1, $c2;
+      $cksum += $c1 + $c2;
+      # Remember the address.
+      $oaddr = $addr;
+    }
+  }
+  # Output the 12 bit checksum.
+  $c1 = ($cksum >> 6) & 077;
+  $c2 = $cksum & 077;
+  printf OUTPUT "%04o\n%04o\n", $c1, $c2;
+  # Trailer
+  for ($i = 0; $i < 64; $i++) {
+    print OUTPUT "0200\n";
+  }
+  close(OUTPUT) || die "$of: $!";
+}
+exit 0;

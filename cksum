@@ -1,0 +1,172 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+@rem = '
+@echo off
+c:\perl5\bin\perl %0 %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto endofperl
+@rem ' if @rem;
+
+#
+@todo = @ARGV;
+@todo = (".") unless @todo;
+
+#
+# Returns TRUE if file should be in BIN format.
+sub isBIN {
+    return $_[0] =~ /-pb.*od$/ || $_[0] =~ /-ba.*od$/;
+}
+
+#
+# Wander around finding directories named "Ok".
+@Ok = (".");
+while (@todo) {
+    $dir = shift @todo;
+    opendir(DIR, $dir) || die "$dir: $!";
+#   print STDERR "Reading '$dir' ...";
+    foreach (readdir(DIR)) {
+    	$f = "$dir/$_";
+	next if $_ eq ".";
+	next if $_ eq "..";
+	next if $_ eq "done";
+	next unless -d $f;
+	if (/^[Oo][Kk]/) {
+	    push(@Ok, $f);
+	    next;
+	}
+	push(@todo, $f);
+	next;
+    }
+#   print STDERR "\n";
+    closedir(DIR);
+}
+
+#
+#
+while (@todo) {
+    $dir = shift @todo;
+    # Don't check known RIM tapes, as they look
+    # just like BIN tapes with a bad checksum.
+    next if $dir =~ /-pm.od$/;
+    &process($dir);
+}
+
+#
+# Process each file.
+sub process {
+    local($f) = @_;
+    #
+    # Don't check known RIM tapes, as they look
+    # just like BIN tapes with a bad checksum.
+    return if $f =~ /-pm.od$/;
+    #
+    # Open the file and process it.
+    open(INPUT, $f) || die "$f: $!";
+    $sum = $c1 = $c2 = 0;
+    return unless <INPUT> =~ /200/;
+    while (<INPUT>) {
+        $byte = oct($_);
+	# Ignore Leader-Trailer
+	# Uncomment to force single-segment tapes.
+	#next if $byte == 0200;
+	# If 377, ignore the comment.
+        if ($byte == 0377) {
+            while (<INPUT>) {
+                $byte = oct($_);
+#printf "Got Here %3o\n", $byte;
+                last if $byte == 0377;
+            }
+            next;
+        }
+	if ($byte == 0200) {
+	    # Leader trailer.  Must have check checksum.
+	    # Remove the checksum bytes from the checksum
+	    $sum -= $c1;
+	    $sum -= $c2;
+	    # Form the checksum from the tape image.
+	    $c1 = ($c1<<6) + $c2;
+	    # Checksum calcs are 12 bits.
+	    $sum %= 010000;
+	    #
+	    # Bail if the sum is wrong.
+	    if ($sum != $c1) {
+	        printf STDERR "$f: Checksum is %04o not %04o\n", $sum, $c1;
+	    } else {
+		if ($sum) {
+		    printf STDERR "Valid binary segment found in $f\n" 
+			unless isBIN($f);
+		}
+	    }
+	    $sum = $c1 = $c2 = 0;
+	    next;
+	}
+	# If high bit on, better be a valid field setting.
+        if ($byte&0200) {
+            next if ($byte&0307) == 0300;
+            printf STDERR "$f: not BIN format\n" if isBIN($f);
+            return;
+        }
+	# High bit off, just add it to the checksum.
+        $sum += $byte;
+	# Remember the last two (checksum) bytes for later fixup.
+	$c1 = $c2;
+	$c2 = $byte;
+    }
+    warn "$f: odd byte count: ", tell(INPUT) if tell(INPUT) % 1;
+    close(INPUT);
+    # Remove the checksum bytes from the checksum
+    $sum -= $c1;
+    $sum -= $c2;
+    # Form the checksum from the tape image.
+    $c1 = ($c1<<6) + $c2;
+    # Checksum calcs are 12 bits.
+    $sum %= 010000;
+    #
+    # Bail if the sum is wrong.
+    printf STDERR "$f: Checksum is %04o not %04o\n", $sum, $c1 if $sum != $c1;
+}
+
+#
+# For "." and each directory named "Ok", process all the *.od files.
+while (@Ok) {
+    $dir = shift @Ok;
+    opendir(DIR, $dir) || die "$dir: $!";
+#   print STDERR "Reading '$dir' ...";
+    foreach (readdir(DIR)) {
+    	$f = "$dir/$_";
+	next unless -f $f;
+	next unless /\.od$/;
+	&process($f);
+    }
+#   print STDERR "\n";
+    closedir(DIR);
+}
+
+
+__END__
+:endofperl

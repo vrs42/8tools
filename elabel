@@ -1,0 +1,90 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Look for files that start with something like:
+#    digital
+#    MAINDEC-08-DHRKA-B-PB  4/19/73
+#    RK8E DISKLESS CONTROL TEST
+#    ^Z
+# followed by a valid BIN format image.
+
+@todo = @ARGV;
+for $f (@todo) {
+  if (!open(INPUT, $f)) {
+    warn "$f: $!\n";
+    next;
+  }
+  binmode(INPUT);
+  undef $/; # Read the whole file.
+  $_ = <INPUT>;
+  # Look for the Control-Z.
+  if (/^([^\200\032]+)\032(.+)$/s) {
+    # Found it
+    $lbl = $1;
+    $bn = $2;
+#   warn "Got here: $f\n";
+    if ($lbl =~ /maindec-(..)-([\w-]+)-pb/i) {
+      ($type, $name) = ($1, $2);
+      $name =~ y/A-Z/a-z/;
+      warn "$name: type $type\n";
+      if ($bn !~ /^\200+[^\200]+\200+$/s) {
+        warn "$name: not a BIN tape!\n";
+        next;
+      }
+      if (-f "$name-pb.lbl") {
+        warn "Skipping $name in $f: $name-pb.lbl exists!\n";
+        next;
+      }
+      if (-f "$name-pb") {
+        warn "Skipping $name in $f: $name-pb exists!\n";
+        next;
+      }
+      if (-f "$name-pb.od") {
+        warn "Skipping $name in $f: $name-pb.od exists!\n";
+        next;
+      }
+      # Write the label info
+      open(OUTPUT, ">$name-pb.lbl") || die "$name-pb.lbl: $!";
+      print OUTPUT $lbl;
+      close(OUTPUT) || die die "$name-pb.lbl: $!";
+      # Write the -pb file
+      open(OUTPUT, ">$name-pb") || die "$name-pb: $!";
+      binmode(OUTPUT);
+      print OUTPUT $bn;
+      close(OUTPUT) || die die "$name-pb: $!";
+      # Write the label info
+      open(OUTPUT, ">$name-pb.od") || die "$name-pb.od: $!";
+      for $b (unpack("C*", $bn)) {
+        printf OUTPUT "%04o\n", $b;
+      }
+      close(OUTPUT) || die die "$name-pb.od: $!";
+    } else {
+      warn "$f: Unparsed label:\n$lbl\n";
+    }
+  }
+}
