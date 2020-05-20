@@ -1,0 +1,159 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Convert a .SV file into a .BN file
+
+# First, get the header information.
+
+# JSW bits:
+#    0-No 00000-01777
+#    1-No 10000-11777
+#    2-Reload
+#    3-Less 8k
+#   10-No pre CD
+#   11-No pre USR
+
+$half = 0;
+sub getword {
+  if ($half == 0) {
+    read(INPUT, $ccc, 3) || die "read: $!"; # 3 bytes is two words.
+    ($w1, $w2, $c3) = unpack("CCC", $ccc);
+    $w1 += ($c3 & 0xF0) << 4;
+    $w2 += ($c3 & 0x0F) << 8;
+    $half = 1;
+    return $w1;
+  }
+  $half = 0;
+  return $w2;
+}
+
+@todo = @ARGV;
+foreach $f (@todo) {
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+  @co = @pc = @fld = ();
+  # The first four words
+  $cs = 010000-&getword; # Core Segment Count (stored negative)
+  $sf = &getword; # Starting Field (062N3)
+  $sa = &getword; # Starting Address
+  $jsw = &getword; # JSW
+  # Now, save each core segment doubleword.
+  for ($i = 0; $i < $cs; $i++) {
+    push(@co, &getword); # Core Origin
+    $pc = &getword;
+    push(@pc, $pc >> 6); # Page Count
+    push(@fld, ($pc >> 3) & 07); # Field to load
+  }
+  $cs--;
+  die "origin count $#co != $cs\n" unless $#co == $cs;
+  die "page count $#pc != $cs\n" unless $#pc == $cs;
+  die "field count $#fld != $cs\n" unless $#fld == $cs;
+#warn "cs == $cs";
+  # At this point, we have parsed a seemingly valid header.
+  #
+  # Now iterate over the various blocks and "load" them.
+  seek(INPUT, 3*256/2, 0) || die "seek: $!";
+  undef @core;
+  for ($i = 0; $i <= $cs; $i++) {
+    $base = $fld[$i]*010000 + $co[$i];
+    # Load each page
+    for ($j = 0; $j < $pc[$i]; $j++) {
+#warn "got here $base";
+      for ($k = 0; $k < 0200; $k++) {
+        $core[$base++] = &getword;
+      }
+    }
+    # If an odd number of pages, skip unused storage
+    if ($pc[$i] & 0001) {
+      for ($k = 0; $k < 0200; $k++) {
+        &getword;
+      }
+    }
+  }
+  # At this point we have "loaded" the file.
+  # Now to dump it back out in the correct format.
+  # The checksum is simply the 12-bit sum of all bytes 
+  # except field settings and leader-trailer.
+# $oaddr = -2;
+# for ($addr = 0; $addr <= 077777; $addr++) {
+#   $oaddr = -2 if ($addr & 007) == 0;
+#   if (defined $core[$addr]) {
+#     printf "\n%05o)", $addr unless $addr == $oaddr;
+#     printf "%04o ", $core[$addr];
+#     $oaddr = $addr+1;
+#   }
+# }
+  $of = $f; $of =~ y/A-Z/a-z/;
+  $of =~ s/\.sv/.svb/;
+  if (-f $of) {
+#   warn "Skipping $of: exists\n";
+#   next;
+  }
+  open(OUTPUT, ">$of") || die "$of: $!";
+  binmode(OUTPUT);
+  print "Writing $of\n";
+  # Leader
+  for ($i = 0; $i < 64; $i++) {
+    print OUTPUT "\200";
+  }
+  $oaddr = -2;
+  $cksum = 0;
+  for ($addr = 0; $addr <= 077777; $addr++) {
+    if (defined $core[$addr]) {
+      # Change fields of $oadder is different field from $addr
+      if (($oaddr & 070000) != ($addr & 070000)) {
+        print OUTPUT pack("C", 0300 + (($addr >> 9) & 070));
+      }
+      # Output an origin if needed.
+      if ($addr != $oaddr + 1) {
+        $c1 = 0100 + (($addr >> 6) & 077);
+        $c2 = $addr & 077;
+        print OUTPUT pack("CC", $c1, $c2);
+        $cksum += $c1 + $c2;
+      }
+      # Output the data.
+      $c1 = ($core[$addr] >> 6) & 077;
+      $c2 = $core[$addr] & 077;
+      print OUTPUT pack("CC", $c1, $c2);
+      $cksum += $c1 + $c2;
+      # Remember the address.
+      $oaddr = $addr;
+    }
+  }
+  # Output the 12 bit checksum.
+  $c1 = ($cksum >> 6) & 077;
+  $c2 = $cksum & 077;
+  print OUTPUT pack("CC", $c1, $c2);
+  # Trailer
+  for ($i = 0; $i < 64; $i++) {
+    print OUTPUT "\200";
+  }
+  close(OUTPUT) || die "$of: $!";
+}
+exit 0;

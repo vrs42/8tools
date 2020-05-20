@@ -1,0 +1,207 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# The original date algorithm was 3 bits, added to 1970.
+# Later, two more bits were added, so years go thru 1999.
+# Dates in the future are interpreted as dates in the
+# previous 8 years.
+# First, get the right epoch.
+($_, $_, $_, $dy, $mo, $i) = localtime(time);
+$i = ($i + 1900) & 037;
+$cyear = $i & 07;
+$epoch = 70 + ($i&030);
+$i += 70;
+@month = ("0",  "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
+	 "AUG", "SEP", "OCT", "NOV", "DEC", "13",  "14",  "15");
+#print " $dy-$month[$mo+1]-$i\n\n";
+
+open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
+binmode(INPUT);
+
+# Check for OS/8 or COS.
+# Read a directory segment
+$link = 001; $fsbase = 0; $bsize = 2*0400;
+seek(INPUT, $bsize*($fsbase+$link), 0) || die "seek($dsk): $!";
+read(INPUT, $buf, $bsize) || die "read($dsk): $!";
+@blk = unpack("S512", $buf);
+$nent = shift @blk;
+$sblk = shift @blk;
+# If it has files in the system area, it's not a system device.
+$sys = 0 if $sblk < 070; # Not a system image
+$cos = 0 if $sblk < 0140; # Not a COS image
+$nent = 010000 - $nent;
+$link = shift @blk;
+$tent = shift @blk;
+$aiw = shift @blk;
+$aiw = 010000 - $aiw unless $aiw == 0;
+die "$ARGV[0] looks like OS/8\n" if $sblk == 0007;
+die "$ARGV[0] looks like OS/8\n" if $sblk == 0070;
+die "$ARGV[0] looks like COS\n" if $sblk == 0140;
+
+#
+# Version name is in block 001.
+$link = 001;
+#
+# Read in the CATalog (two 0400 byte blocks).
+{
+    seek(INPUT, $link*0400, 0) || die "directory seek: $!";
+    read(INPUT, $dir, 1*0400) || die "directory read: $!";
+    # 0400 bytes = 128 words
+    @dir = unpack("S128", $dir);
+    $n1 = $dir[012];
+    $n1 = $dir[020] if (($n1>>6)&~1) != 070;
+    if ((($n1>>6)&~1) != 070) {
+        print "$ARGV[0] is not bootable PQS8\n\n";
+#       exit 1;
+    }
+    @name = ($n1>>6, $n1&077);
+    grep($_ = ($_ > 040? $_ : $_ + 0100), @name, @ext);
+    $version = pack("CC", @name);
+    print "$ARGV[0] is PQS8 V$version\n\n";
+}
+
+#
+# File types for System Directory.
+@typ = (
+  "          ", # 0
+  "GENO  GENI", # 1
+  "      BIN ", # 2
+  "BIN   BIN ", # 3
+  "BIN       ", # 4
+  "ASC   ASC ", # 5
+  "ASC       ", # 6
+  "BIN   PAL ", # 7
+  "PAL   PAL ", # 8
+  "      BAT ", # 9
+  "      DUMP", # 10
+  "      FOC ", # 11
+  "PAL       ", # 12
+  "      PAL ", # 13
+);
+
+#
+# Catalog starts in block 015.
+$link = 015;
+#
+# Read in the CATalog (two 0400 byte blocks).
+{
+    seek(INPUT, $link*0400, 0) || die "directory seek: $!";
+    read(INPUT, $dir, 2*0400) || die "directory read: $!";
+    # 2*0400 = 01000 bytes = 0400 (256) words
+    @dir = unpack("S256", $dir);
+    #
+    # The last 3 words are magic.
+    $start = $dir[255];
+    $start = pop(@dir);
+    $end = pop(@dir);
+    $_ = pop(@dir); # Remove funky redundant count
+    $slots = int(($end-$start) / 16);
+    if ($slots <= 0) {
+        print "Not PQS8\n\n";
+        exit 1;
+    }
+    #
+    # @dir starts with a directory segment header.
+    $slot = $used = 0;
+    while (@dir) {
+        $date = "";
+	$n1 = shift @dir;
+	$n2 = shift @dir;
+	$n3 = shift @dir;
+        last if $slot++ == $slots;
+	if ($n1) {
+	    $length = 16; # Length of these is always 16x128 words.
+	    @name = ($n1>>6, $n1&077, $n2>>6, $n2&077, $n3>>6, $n3&077);
+	    grep($_ = ($_ > 040? $_ : $_ + 0100), @name, @ext);
+	    $name = pack("CCCCCC", @name);
+	    $name =~ s/@//g;
+            $used++;
+	} else {
+	    $length = 16;
+	    $name = "<empty>";
+	    $date = "";
+	}
+	printf "%-9s\t%04o\t%d\t%s\n", $name, $start, $length, $date if $n1;
+	$start += $length;
+    }
+    print "\nUsed $used of $slots slots\n";
+}
+
+#
+# System Directory starts in block 063.
+$link = 063;
+#
+# Read in the System Directory (four 0400 byte blocks).
+{
+    seek(INPUT, $link*0400, 0) || die "directory seek: $!";
+    read(INPUT, $dir, 4*0400) || die "directory read: $!";
+    # 4*0400 = 02000 bytes = 01000 (512) words
+    @dir = unpack("S512", $dir);
+    $slot = $used = 0;
+    $slots = 85;
+    print "\n Name\tBlock\tSize\tLoad\tLength";
+    print "\t Out   In" if $version gt '8T';
+    print "\tR S O\tStart\n";
+    $size = 0;
+    while (@dir) {
+	# Each entry is six words long.
+	$n1 = shift @dir;
+	$n2 = shift @dir;
+	$n3 = shift @dir;
+        $start = shift @dir; # Word 4
+        $laddr = shift @dir; # Word 5
+        $length = $laddr & 037;
+        $files = !!($laddr & 0100);
+        $expr = !!($laddr & 040);
+	$laddr &= 07600;
+        $saddr = shift @dir; # Word 6
+	$size = $dir[3] - $start unless $start == $dir[3];
+        $size = $length if $dir[3] == 0;
+        $ifiles = !!($saddr & 0100);
+	# See "Figure 1" for meaning of $typ.
+	$typ = $typ[$saddr & 037];
+        $typ = "         " unless defined $typ;
+	$saddr &= 07600 if $version gt '8T';
+	if ($n1) {
+	    @name = ($n1>>6, $n1&077, $n2>>6, $n2&077, $n3>>6, $n3&077);
+	    grep($_ = ($_ > 040? $_ : $_ + 0100), @name, @ext);
+	    $name = pack("CCCCCC", @name);
+	    $name =~ s/@//g;
+            $used++;
+	} else {
+	    $name = "<empty>";
+next;
+	}
+	printf "%-6s\t%04o\t%03o\t%04o\t  %02o",  $name, $start, $size, $laddr, $length;
+        printf "\t%s", $typ if $version gt '8T';
+	printf "\t%o %o %o\t%05o\n", $expr, $files, $ifiles, $saddr;
+	$start += $length;
+    }
+    print "\nUsed $used of $slots slots\n\n";
+}

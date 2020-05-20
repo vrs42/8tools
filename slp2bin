@@ -1,0 +1,113 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Convert a .slp file to .bin format.
+#
+# DTORG, if any, in the input is assumed to be of the new form:
+#    *7777; *blockno; *org
+# which should pass through the conversion nicely.  (No native
+# PDP-8 assembler is known to generate this for DTORG.)
+#
+# Slurp format consists of 128 word blocks, which consist
+# of 7 word segments.  The first word of head segment controls
+# the disposition of the remaining six.  This control word is
+# made up of six two bit commands, starting with the MSB.  The 
+# commands are:
+#    00  Data word to be stored.
+#    01  EOF.  Stop processing further words.
+#    10  Set the origin.
+#    11  Use as a CDF instruction to set the field.
+#
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+open(INPUT, "$ARGV[0]") || die "$ARGV[0] open: $!";
+binmode(INPUT);
+
+open(OUTPUT, ">$ARGV[1]") || die "$ARGV[1] open: $!";
+binmode(OUTPUT);
+
+#
+# Generate leader or trailer
+sub ltrailer {
+    local($i, $c);
+
+    $c = pack("C", 0200);
+    for ($i = 0; $i < 64; $i++) {
+	print OUTPUT $c;
+    }
+}
+
+#
+# Generate leader in the .bin file.
+&ltrailer;
+# Initialize checksum, no location yet.
+$checksum = 0;
+$loc = undef;
+# Read blocks of the .slp file.
+while (read(INPUT, $buf, 2*128)) {
+    @buf = unpack("S128", $buf);
+    # Process the segments in the block.
+    for ($i = 0; $i < 18; $i++) {
+	$ctl = shift @buf;
+        for ($w = 0; $w < 6; $w++) {
+	    $word = shift @buf;
+            $op = ($ctl & 06000) >> 10;
+#warn "op $op\n";
+	    if ($op == 0) {
+		# We better know where this goes.
+		die "$ARGV[0]: no location setting!\n" unless defined $loc;
+		# Data word
+		print OUTPUT pack("CC", $word >>6, $word & 077);
+		# Update checksum
+		$checksum += ($word>>6) + ($word&077);
+	    } elsif ($op == 1) {
+		# EOF -- output the checksum.
+		print OUTPUT pack("CC", $checksum >>6, $checksum & 077);
+		# Generate trailer.
+		&ltrailer;
+		# That's all
+		exit 0;
+	    } elsif ($op == 2) {
+		# Origin word
+		print OUTPUT pack("CC", 0100+($word>>6), $word & 077);
+		$loc = $word;
+		# Update checksum
+		$checksum += 0100+($word>>6) + ($word&077);
+	    } else {
+		# Field setting
+		$word &= 070;
+		print OUTPUT pack("C", 0300+$word);
+		# No checksum update
+	    }
+            $ctl <<= 2;
+	}
+    }
+}
+# Should have exited avove!
+die "$ARGV[0]: no EOF word!\n";

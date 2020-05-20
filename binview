@@ -1,0 +1,117 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Convert a .bin file to readable stream.
+#
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+open(INPUT, "$ARGV[0]") || die "$ARGV[0] open: $!";
+binmode(INPUT);
+
+#
+# Get a character as an integer byte value.
+sub getch {
+    local($c);
+
+    return unpack("C", $c) if read(INPUT,$c,1);
+#warn "$ARGV[0] read: $!";
+    return undef;
+}
+
+#
+# Ignore leader in the .bin file.
+while (($c1 = getch(INPUT)) == 0200) { }
+$checksum = 0;
+$loc = undef;
+$data = undef;
+while (1) {
+#warn "c1 $c1\n";
+    # Is it the start of a comment?
+    if ($c1 == 0377) {
+        # Yes, look for the other end.
+        print "<del>";
+        while (($c1 = getch(INPUT)) != 0377) {
+            print pack("C", $c1);
+	}
+        print "<del>\n";
+        $c1 = getch(INPUT);
+        next;
+    }
+    # Is it a field setting or trailer?
+    if ($c1&0200) {
+	# Neither a field settings or trailer should change $checksum.
+        # Is it a field setting?
+        if ($c1&0100) {
+	    if (defined $data) {
+		printf "%04o ", $data;
+		$loc++;
+	    }
+            undef $data;
+	    printf "\nFIELD %o\n", ($c1 & 070)>>3;
+        } else {
+            # Better be trailer!
+            die "Invalid trailer code" unless $c1 == 0200;
+	    # ($checksum & 07777) must equal last frame read.
+            # $data has the checksum as read, which should not
+	    # have been added in, but was.  Subtract it out.
+	    $checksum -= ($data >> 6) + ($data&077);
+            $checksum &= 07777;
+            warn "Checksum error: $data <> $checksum\n" unless $data == $checksum;
+	    print "\n";
+	    last;
+        }
+    } else {
+	# Location or Data -- get second byte of frame
+	$c2 = getch(INPUT);
+#warn "c2 $c2\n";
+	die "$ARGV[0] low word has extra bits" if $c2 & 0300;
+	# Update the checksum.
+	$checksum = $checksum + $c1 + $c2;
+	# Assemble the word.
+	$c1 = ($c1 << 6) | $c2;
+	# Location setting?
+	if ($c1&010000) {
+	    printf "%04o\n", $data if defined $data;
+	    undef $data;
+	    $loc = $c1 & 07777;
+	    printf "%04o)", $loc;
+	} else {
+	    # Output of $data lags one behind, in case it's checksum, not data.
+	    if (defined $data) {
+		printf "%04o ", $data;
+		$loc++;
+	    }
+	    printf "\n%04o/", $loc if ($loc%16) == 0;
+	    $data = $c1;
+	}
+    }
+    # Start again with next byte.
+    $c1 = getch(INPUT);
+}
+exit 0;

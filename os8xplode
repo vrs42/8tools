@@ -128,7 +128,9 @@ sub ofile {
   $eof = 0;
   for ($i = $first; $i <= $last; $i++) {
     # Read a block
-    read(INPUT, $buf, $bsize) || die "read($dsk $f): $!";
+    # We deliberately allow reading off the end of the media
+    # if the file was an empty area anyway.
+    read(INPUT, $buf, $bsize) || die "read($dsk $f offset ". $bsize*($fsbase+$i) ."): $!" unless $f =~ m:/[.][0-9]:;
     @buf = unpack("S512", $buf);
     # Repack the bits amd write the block.
     while (@buf && !$eof) {

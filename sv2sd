@@ -1,0 +1,109 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Convert a suitable .sv file to .sd (PQS8 System  DIRECTory) format.
+# The .sv file may have one or two segments, which are each expected
+# to be 4K long.
+#
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+#
+# Read a block from an OS/8 packed file and unpack it.
+sub getblk {
+    local($blk) = @_;
+    local(*buf, $w1, $w2, @r);
+
+    # OS/8 packing means each block is 384 bytes (for 256 words).
+    seek(INPUT, 384*$blk, 0) || die "seek($f): $!";
+    read(INPUT, $buf, 384) || die "read($f): $!";
+    @buf = unpack("C384", $buf);
+    @r = ();
+    while (@buf) {
+        $w1 = shift @buf;
+        $w2 = shift @buf;
+        $buf = shift @buf;
+        $w1 |= ($buf&0xF0) << 4;
+        $w2 |= ($buf&0x0F) << 8;
+        push(@r, $w1, $w2);
+    }
+    return @r;
+}
+
+#
+# Copy out a segment to the output file.
+sub dosegment {
+    local($field, $blk) = @_;
+    local($i, @buf);
+
+    # Each segment is essentially a field.
+    # Seek to the correct position for the field.
+    seek(OUTPUT, 010000*2*$field, 0) || die "seek($f): $!";
+    for ($i = 0; $i < 020; $i++) {
+        @buf = getblk($blk);
+        $blk++;
+        $buf = pack("S256", @buf);
+        print OUTPUT $buf;
+    }
+}
+
+# Open the input file for binary input.
+open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
+binmode(INPUT);
+
+# Read and sanity check the first block.
+@buf = &getblk(0);
+$segments = shift @buf;
+$segments = 010000 - $segments;
+$cdif = shift @buf;
+$sa = shift @buf;
+$jsw = shift @buf;
+die "Only one or two segments allowed: $segments" if $segments < 1;
+die "Only one or two segments allowed: $segments" if $segments > 2;
+
+#
+# Open the output file for binary output.
+$f = @ARGV[0]; $f =~ s/[.]sv$//;
+$f .= ".sd";
+open(OUTPUT, ">$f") || die "$f: $!";
+binmode(OUTPUT);
+
+#
+# Walk the segment table, outputting segments to
+# their new home.
+$blk = 1;
+for ($s = 0; $s < $segments; $s++) {
+     $origin = shift @buf;
+     $w2 = shift @buf;
+     $pages = ($w2 >> 6) & 037;
+     $field = $w2 & 070;
+     warn "Segment size must be 4K: $pages\n" unless $pages == 037;
+     die "Segment field must be 0 or 1: $field\n" if $field & 060;
+     &dosegment($field>>3, $blk);
+     $blk += 020;
+}

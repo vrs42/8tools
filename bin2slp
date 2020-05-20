@@ -1,0 +1,154 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Convert a .bin file to Slurp (.slp) format.
+#
+# DTORG, if any, in the input is assumed to be of the new form:
+#    *7777; *blockno; *org
+# which should pass through the conversion nicely.  (No native
+# PDP-8 assembler is known to generate this for DTORG.)
+#
+# Slurp format consists of 128 word blocks, which consist
+# of 7 word segments.  The first word of head segment controls
+# the disposition of the remaining six.  This control word is
+# made up of six two bit commands, starting with the MSB.  The 
+# commands are:
+#    00  Data word to be stored.
+#    01  EOF.  Stop processing further words.
+#    10  Set the origin.
+#    11  Use as a CDF instruction to set the field.
+#
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+open(INPUT, "$ARGV[0]") || die "$ARGV[0] open: $!";
+binmode(INPUT);
+
+open(OUTPUT, ">$ARGV[1]") || die "$ARGV[1] open: $!";
+binmode(OUTPUT);
+
+#
+# Add a frame to the output file.  Frames will be written when the segment
+# is full, and the block will be padded when the slack words are reached.
+# the two slack words at the end of each bytes are filled with "SLRP" in
+# sixbit, for the heck of it.
+@segment = (0);
+$segments = 0;
+sub oframe {
+    local($ftype, $data) = @_;
+
+#warn "oframe($ftype, $data): $#segment $segments\n";
+    $segment[0] = ($segment[0]<<2) + $ftype;
+    push(@segment, $data);
+    # Is this segment full?
+    if ($#segment == 6) {
+	# Yes, output it
+	print OUTPUT pack("SSSSSSS", @segment);
+	# and start a new one.
+	@segment = (0);
+	# Last segment in a block?
+	if (++$segments == 022) {
+	    print OUTPUT pack("SS", 02314, 02220);
+            $segments = 0;
+	}
+    }
+}
+
+#
+# Get a character as an integer byte value.
+sub getch {
+    local($c);
+
+    return unpack("C", $c) if read(INPUT,$c,1);
+#warn "$ARGV[0] read: $!";
+    return undef;
+}
+
+#
+# Ignore leader in the .bin file.
+while (($c1 = getch(INPUT)) == 0200) { }
+$checksum = 0;
+$loc = undef;
+$data = undef;
+while (1) {
+#warn "c1 $c1\n";
+    # Is it the start of a comment?
+    if ($c1 == 0377) {
+        # Yes, look for the other end.
+        while (($c1 = getch(INPUT)) != 0377) { }
+        $c1 = getch(INPUT);
+        next;
+    }
+    # Is it a field setting or trailer?
+    if ($c1&0200) {
+	# Neither a field settings or trailer should change $checksum.
+        # Is it a field setting?
+        if ($c1&0100) {
+	    &oframe(00, $data) if defined $data;
+            undef $data;
+            &oframe(03, ($c1&070)+06201);
+        } else {
+            # Better be trailer!
+            die "Invalid trailer code" unless $c1 == 0200;
+	    # ($checksum & 07777) must equal last frame read.
+            # $data has the checksum as read, which should not
+	    # have been added in, but was.  Subtract it out.
+	    $checksum -= ($data >> 6) + ($data&077);
+            $checksum &= 07777;
+            warn "Checksum error: $data <> $checksum\n" unless $data == $checksum;
+            &oframe(01, 03232);
+	    last;
+        }
+    } else {
+	# Location or Data -- get second byte of frame
+	$c2 = getch(INPUT);
+#warn "c2 $c2\n";
+	die "$ARGV[0] low word has extra bits" if $c2 & 0300;
+	# Update the checksum.
+	$checksum = $checksum + $c1 + $c2;
+	# Assemble the word.
+	$c1 = ($c1 << 6) | $c2;
+	# Location setting?
+	if ($c1&010000) {
+	    &oframe(00, $data) if defined $data;
+	    undef $data;
+	    &oframe(02, $c1&07777);
+	} else {
+	    # Output of $data lags one behind, in case it's checksum, not data.
+	    &oframe(00, $data) if defined $data;
+	    $data = $c1;
+	}
+    }
+    # Start again with next byte.
+    $c1 = getch(INPUT);
+}
+# Pad out to the block.
+while ($segments) {
+    &oframe(01, 03232);
+}
+exit 0;

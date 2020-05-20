@@ -1,8 +1,8 @@
 sv2od dumps the contents of a packed .sv file
 
-This weird little command reads a list .sv files of
-the sort that might be created with os8xplode, and
-outputs on standard output the octal dump of an
+This weird little command reads a list of .sv files
+of the sort that might be created with os8xplode,
+and outputs on standard output the octal dump of an
 equivalent BIN format tape.
 
 For each input file on the command line, extensions

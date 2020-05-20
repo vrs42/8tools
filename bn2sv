@@ -1,0 +1,205 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+@rem = '
+@echo off
+c:\perl5\bin\perl %0 %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto endofperl
+@rem ' if @rem;
+
+#
+# Convert .bn/.bin (bin loader) files to .sv files.
+# The .sv format is defined in terms of the content of various 12-bit
+# words.  We do the .sv format conversion, and write pairs of 12-bit words
+# as 3 8-bit data bytes as follows:
+# Byte 1 -- Low 8 bits of the word 1.
+# Byte 2 -- Low 8 bits of the word 2.
+# Byte 3 -- High 4 bits of word 1 in the high 4 bits.
+#        -- High 4 bits of word 2 in the low 4 bits.
+#
+# This accomplishes 2 things:
+# 1) We save 25% (3 bytes per pair of words instead of 4).
+# 2) The other tools can convert it (back) to 12-bit data just like they do
+# any other file stored in 8-bit mode (ASCII or BIN formats).
+#
+# Note that .sv files are always a multiple of 256 words long, and hence our
+# output will always be a multiple of 384 bytes long.
+
+#
+# Read a file in BIN loader format.
+sub readBin {
+  local($file, *core) = @_;
+  #
+  # Open the input file in binary mode and read it in.
+  open(INPUT, $file) || die "$file: $!";
+  binmode(INPUT);
+  for (;;) {
+    $field = 0;
+    $loc = $store = undef;
+    $sum = $add = 0;
+    while (read(INPUT, $top, 1)) {
+      $top = unpack("C", $top);
+      last unless $top == 0200;
+    }
+    # EOF leaves $top eq ''
+    last if $top eq '';
+    # At the top of this loop the first character has been read
+    for (;;) {
+      last if $top == 0200;	# Trailer
+      # No trailer, so store data (if any)
+      if (defined($store)) {
+        $core[$field*010000 + $loc] = $store;
+        $store = undef;
+        $loc = ($loc + 1) & 07777;
+        $sum += $add; # Update checksum
+      }
+      if (($top&0300) == 0300) {
+        # Set data field and we're done. 
+        $field = ($top & 070) >> 3;
+      } else {
+        # Assemble a word
+        read(INPUT, $bot, 1) || die "read: $! $top at ", tell(INPUT);
+        $bot = unpack("C", $bot);
+        die "$file: not in bin format at ", tell(INPUT) unless $bot <= 077;
+        $word = ($top << 6) + $bot;
+        $add = $top + $bot; # Calculate Checksum delta
+        if ($word > 07777) {
+          #
+          # Change location counter
+          $loc = $word & 07777;
+          $sum += $add; # Update checksum
+        } else {
+          # Remember store in case this is the checksum, not data.
+          die "$file: no location counter" unless defined($loc);
+          $store = $word;
+        }
+      }
+      last unless read(INPUT, $top, 1);
+      $top = unpack("C", $top);
+    }
+    die "No trailer!" unless $top == 0200;
+    $sum = ($sum - $store) & 07777;
+    printf STDERR "$file: Checksum error -- %04o\n", $sum if $sum;
+  }
+  close(INPUT);
+}
+
+#
+# Read the input files
+@core = ();
+foreach $f (@ARGV) {
+  &readBin($f, *core);
+}
+
+#
+# JSW constants
+$NLOWF0 = 04000;	# Doesn't load low field 0
+$NLOWF1 = 02000;	# Doesn't load low field 1
+$NRSTRT = 01000;	# Cannot be restarted
+$NHIGHF = 00400;	# Doesn't use last field if >8K
+$F0TOSS = 00002;	# Doesn't need low field 0
+$F1TOSS = 00001;	# Doesn't need low field 1
+
+#
+# Compute the segment table and the JSW.  Note that the values for JSW
+# are just educated guesses.
+$jsw = $NLOWF0 | $NLOWF1 | $NHIGHF | $F0TOSS | $F1TOSS;
+$last = undef;		# Nothing loaded yet
+$segment = 0;		# No segments yet.
+for ($field = 7; $field >= 0; $field--) {
+  for (($i = $field<<12), $fmax = $i+07777; $i <= $fmax; $i++) {
+    next unless defined $core[$i];
+    #
+    # Fix JSW if load is into an area shared with OS8.
+    $jsw &= ~($NLOWF0 | $F0TOSS) if ($i&076000) == 000000;
+    $jsw &= ~($NLOWF1 | $F1TOSS) if ($i&076000) == 010000;
+    $jsw &= ~$NHIGHF if ($i&076000) >= 020000;
+    #
+    # Update segment table.
+    $page = int($i / 0200); # Page size is 0200 words.
+    if ((!defined($last)) || ($page-$last != 1)) {
+      next if defined($last) && $page == $last;
+#printf "%04o: %04o %04o\n", $i, $page, $last if $page != $last;
+      #
+      # Need a new load segment.
+      $stop[$segment] = $last;
+#printf "Segment  $segment ends at %05o\n", $last;
+      $segment++;
+      $start[$segment] = $page;
+#printf "Segment $segment starts at %05o\n", $page;
+    }
+    $last = $page;	# Last load was to page $last.
+  }
+}
+#printf "Segment  $segment ends at %05o\n", $last;
+$stop[$segment] = $last;
+
+#
+# Open the output file.
+open(OUTPUT, ">foo.sv") || die "foo.sv: $!";
+binmode(OUTPUT);
+
+#
+# Output a pair of 12-bit words as 3 8-bit bytes.
+sub outWords {
+    local($w1, $w2) = @_;
+#printf "%05o %05o: ", $w1, $w2;
+#printf "%03o %03o %03o\n", ($w1&0377), ($w2&0377), (($w1>>4)&0360) + ($w2>>8);
+    print OUTPUT pack("C3", ($w1&0377), ($w2&0377), (($w1>>4)&0360) + ($w2>>8));
+}
+
+#
+# Output the Core Image header.
+&outWords((-$segment) & 07777, 06203);
+&outWords(00200, $jsw);
+for ($i = 1; $i <= $segment; $i++) {
+  $w1 = ($start[$i] * 0200) & 07400;
+  $pages = $stop[$i] - ($w1/0200-1);
+  $field = int($start[$i]*0200 / 01000) & 070;
+#warn "pages == $pages, field = $field\n";
+  $w2 = ($pages * 0100) + $field;
+  &outWords($w1, $w2);
+}
+for (; $i <= 126; $i++) {
+  &outWords(0, 0);
+}
+#warn "offset is " . tell(OUTPUT) . "\n";
+
+#
+# Output the image data.
+for ($i = 1; $i <= $segment; $i++) {
+    $end = ($stop[$i]+1) * 0200;
+    $end += 0200 if $end & 0200; # Round up to a block.
+#warn "dumping from " . $start[$i]*200 . " to $end\n";
+    for ($l = $start[$i]*0200 & 077400; $l < $end; $l+= 2) {
+	&outWords($core[$l], $core[$l+1]);
+    }
+}
+
+__END__
+:endofperl
