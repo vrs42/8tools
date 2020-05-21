@@ -1,4 +1,4 @@
-slp2bin converts SLURP (.slp) files to BIN (.bin).
+**slp2bin** converts SLURP (.slp) files to BIN (.bin).
 
 Given the names of the input and output files, the input
 is read and interpreted as a SLURP format binary file

@@ -1,4 +1,4 @@
-bincmp compares the contents of two .bin files
+**bincmp** compares the contents of two .bin files.
 
 Each argument will be loaded into an array, checking 
 for valid format and checksums.  Then, a side-by-side 
@@ -8,7 +8,7 @@ locations which were not loaded in one or the other
 image.
 
 Like most utilities using BIN format, DTORG directives
-are not recognised.
+are not recognized.
 
-An effort is made to also recognise Fortran II tapes,
+An effort is made to also recognize Fortran II tapes,
 which use format similar to .bin.

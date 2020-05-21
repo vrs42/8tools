@@ -1,4 +1,4 @@
-dood outputs successive bytes in octal
+**dood** outputs successive bytes in octal.
 
 When given a list of file names, dood will (over)write
 a .od file for each one, consisting of a single octal 

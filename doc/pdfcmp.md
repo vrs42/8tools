@@ -1,4 +1,4 @@
-pdfcmp compares PDF files, ignoring CreationDate.
+**pdfcmp** compares PDF files, ignoring CreationDate.
 
 Given two PDF file names, are their contents the
 same, apart from the CreationDate?

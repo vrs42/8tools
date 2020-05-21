@@ -1,4 +1,4 @@
-os8p2dk converts packed "os8p" to .dsk format
+**os8p2dk** converts packed "os8p" to .dsk format.
 
 In "os8p" media, the bytes are packed.  Each sector
 is 128 (RX01) or 256 (RX02) bytes.  There are 77
@@ -20,7 +20,7 @@ a theoretical capacity of 658 blocks.
 Note: 660 are reported in the DIR listings!
 667 OS/8 blocks is the theoretical maximum
 for an RX01 in 8-bit mode.  660 free  data
-blocks is the maximim, since the directory
+blocks is the maximum, since the directory
 segments occupy blocks 1-6.
 
 We work around this by offsetting track by 

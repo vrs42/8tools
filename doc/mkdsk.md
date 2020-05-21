@@ -1,4 +1,4 @@
-mkdsk remakes media images from their .xml descriptions.
+**mkdsk** remakes media images from their .xml descriptions.
 
 An XML description created by os8xplode or os8implode is
 used to recreate the volume image from it's constituent

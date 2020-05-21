@@ -1,4 +1,4 @@
-findos8 attempts to find an OS/8 directory in a media image
+**findos8** attempts to find an OS/8 directory in a media image.
 
 Floppies, in particular, use a huge variety of encoding
 schemes to convert the words of OS/8 blocks into bytes

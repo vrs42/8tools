@@ -1,4 +1,60 @@
-pqs8xplode breaks a P?S/8 volume into it's constituent files.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**pqs8xplode** breaks a P?S/8 volume into it's constituent files.
 
 Given the name of a P?S/8 volume on the command line,
 it is opened and inspected for P?S/8 content.  If found,

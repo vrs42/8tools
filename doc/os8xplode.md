@@ -1,4 +1,4 @@
-os8xplode breaks an OS/8 volume into it's constituent files
+**os8xplode** breaks an OS/8 volume into it's constituent files.
 
 OS/8 media may contain one or more file-systems, each with
 it's own directory and optional system areas.
@@ -49,7 +49,7 @@ Other operating systems will likely require their own
 similar tools.
 
 BUG: Date conversion and modify times are basically
-nonsense.  OS/8 cannot represent a moder date, nor 
+nonsense.  OS/8 cannot represent a modern date, nor 
 even unambiguously represent a vintage date.  A message
 is printed stating which date era was used, FWIW.
 

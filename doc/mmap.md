@@ -1,4 +1,4 @@
-mmap outputs bitmap for a .bin file
+**mmap** outputs bitmap for a .bin file.
 
 A single .bin file is read and checked for format and
 checksum.
@@ -14,4 +14,5 @@ report "9".
 
 Verifying which locations were loaded and how many times 
 can be valuable in verifying that code is assembling as 
-intened, etc.
+intended, etc.
+

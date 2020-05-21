@@ -1,4 +1,4 @@
-tss8xplode breaks a TSS/8 volume into it's constituent files
+**tss8xplode** breaks a TSS/8 volume into it's constituent files.
 
 A single file name is expected on the command line.  This file
 is opened and interpreted to contain a TSS file-system.  The

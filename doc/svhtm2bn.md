@@ -1,4 +1,4 @@
-svhtm2bn converts saved HTML dumps of .sv files to .bn.
+**svhtm2bn** converts saved HTML dumps of .sv files to .bn.
 
 Some *.sv files are most easily found on the web, and
 most easily saved to local disk by saving the web page.

@@ -1,4 +1,4 @@
-bin2pal is a rudimentary disassembler.
+**bin2pal** is a rudimentary disassembler.
 
 It takes a single argument, the name of a file
 in .bin format.  This file will be disassembled,
@@ -11,7 +11,7 @@ The program will attempt to intuit the use of the
 FPP instructions, and the the common emulation 
 packages that simulate them.
 
-In general, the instructions recognised are the
+In general, the instructions recognized are the
 "family of eight" subset of instructions which
 are expected to work on all machines except the
 8/S.

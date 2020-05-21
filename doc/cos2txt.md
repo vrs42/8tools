@@ -1,4 +1,4 @@
-cos2txt converts COS text files to ASCII
+**cos2txt** converts COS text files to ASCII.
 
 COS "text" files are actually stored in a packed,
 6-bit representation, using an unconventional

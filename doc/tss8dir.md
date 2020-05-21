@@ -1,4 +1,4 @@
-tss8dir outputs a directory of a TSS/8 file-system
+**tss8dir** outputs a directory of a TSS/8 file-system.
 
 A single filename is expected, as the name of the
 image of the TSS/8 system to be processed.

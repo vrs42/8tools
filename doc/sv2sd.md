@@ -1,8 +1,8 @@
-sv2sd outputs the code from a .sv to P?S/8 .sd format.
+**sv2sd** outputs the code from a .sv to P?S/8 .sd format.
 
 Given the name of a .sv file, write a corresponding .sd
 file containing the code segments in the order expected
-bu P?S/8.
+by P?S/8.
 
 P?S/8 system DIRECTory files contain the executable code
 for the basic utilities and services that the system 

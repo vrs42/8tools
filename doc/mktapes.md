@@ -1,4 +1,4 @@
-mktapes reconstructs files from their dumps.
+**mktapes** reconstructs files from their dumps.
 
 Given a directory as argument, or the current
 directory as default, scan for *.od files.

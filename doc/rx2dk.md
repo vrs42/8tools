@@ -1,4 +1,4 @@
-rx2dk converts SIMH RX01 images to .dsk format
+**rx2dk** converts SIMH RX01 images to .dsk format.
 
 The bytes are packed.  Each sector is 128 (RX01) 
 or 256 (RX02) bytes.  There are 77 tracks and 

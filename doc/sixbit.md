@@ -1,4 +1,4 @@
-sixbit outputs a file as sixbit text.
+**sixbit** outputs a file as sixbit text.
 
 Given the name of a file on the command line,
 the successive words are interpreted and output 

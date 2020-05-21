@@ -1,4 +1,4 @@
-sv2bn converts a .sv file into a .bn file.
+**sv2bn** converts a .sv file into a .bn file.
 
 Given a list of .sv files of the sort that might
 be created with os8xplode, this outputs a .svb 
@@ -9,7 +9,7 @@ of the matching .sv.
 Note that .sv files lack the word level granularity 
 of the BIN format.  As a result, the .sv file
 nearly always specifies contents for values not
-needed by the orinal program.  This extra content
+needed by the original program.  This extra content
 will be preserved in the BIN files created.
 
 The other information about starting address and 

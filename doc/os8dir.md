@@ -1,4 +1,4 @@
-os8dir prints a directory listing of an OS/8 image
+**os8dir** prints a directory listing of an OS/8 image.
 
 For media in the standard .dsk format, this tool will
 list the OS/8 directory that begins in block one.

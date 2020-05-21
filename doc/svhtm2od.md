@@ -1,4 +1,4 @@
-svhtm2od converts saved HTML dumps of .sv files to .od.
+**svhtm2od** converts saved HTML dumps of .sv files to .od.
 
 Some *.sv files are most easily found on the web, and
 most easily saved to local disk by saving the web page.

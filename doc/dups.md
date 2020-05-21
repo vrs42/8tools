@@ -1,4 +1,4 @@
-dups creates a list of identical file pairs
+**dups** creates a list of identical file pairs.
 
 The dups command takes a list of directories, optionally
 preceded by "-r".  Each directory is processed (recursively 

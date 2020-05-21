@@ -1,4 +1,4 @@
-bnhtm2od converts a text .BN file to -pb.od format
+**bnhtm2od** converts a text .BN file to -pb.od format.
 
 This tool provides quick conversion of .BN files from media
 images on the Internet to a useable form.

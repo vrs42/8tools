@@ -1,4 +1,4 @@
-sv2od dumps the contents of a packed .sv file
+**sv2od** dumps the contents of a packed .sv file.
 
 This weird little command reads a list of .sv files
 of the sort that might be created with os8xplode,

@@ -1,4 +1,4 @@
-pqs8dir prints the directories of a P?S/8 volume.
+**pqs8dir** prints the directories of a P?S/8 volume.
 
 Given the name of a P?S/8 volume on the command line,
 the file is opened and checked for P?S/8 content.  If

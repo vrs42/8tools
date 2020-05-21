@@ -1,4 +1,4 @@
-isreloc checks relocatable tapes used by LOADER and LIBSET.
+**isreloc** checks relocatable tapes used by LOADER and LIBSET.
 
 Given a single file name as argument, that file is opened
 and checked for valid relocatable format.

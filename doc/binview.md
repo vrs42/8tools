@@ -1,4 +1,4 @@
-binview dumps a .bin file in a human readable octal format.
+**binview** dumps a .bin file in a human readable octal format.
 
 Given the name of a BIN format file, the file is checked for
 validity, while at the same time being written to standard

@@ -1,4 +1,4 @@
-cos2dk convert packed "cos" images to .dsk images.
+**cos2dk** converts packed "cos" images to .dsk images.
 
 The input bytes are packed.  Each sector is 128 (RX01)
 or 256 (RX02) bytes.  There are 77 tracks and

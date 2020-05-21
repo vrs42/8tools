@@ -1,4 +1,4 @@
-pal is a PDP-8 cross-assembler
+**pal** is a PDP-8 cross-assembler.
 
 The argument is taken to be the name of a file to be
 parsed as PDP-8 assembly code, to generate a binary
@@ -9,7 +9,7 @@ of the source file:
 * -d	dump the symbol table at end of assembly
 * -e	Define Omnibus-era only instructions
 * -j	Do not pad TEXT or SIXBIT
-* -l	do not warn about offpage references
+* -l	do not warn about off-page references
 * -r	produce output in rim format (default is bin format)
 
 The following extensions are used when creating output files:
@@ -20,5 +20,5 @@ The following extensions are used when creating output files:
 The extension, if any, on the input file will be removed before
 these extensions are added to create output files.
 
-This is a decendant of Doug Jones' assembler, with many fixes and
+This is a descendant of Doug Jones' assembler, with many fixes and
 features added over the years..

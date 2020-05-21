@@ -1,4 +1,4 @@
-cksum is used to check the BIN checksum in .od files.
+**cksum** is used to check the BIN checksum in .od files.
 
 This utility examines the directories listed on the command
 line and all their sub-directories, looking for directories

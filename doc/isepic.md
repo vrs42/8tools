@@ -1,4 +1,4 @@
-isepic checks files created by EPIC.SV. 
+**isepic** checks files created by EPIC.SV. 
 
 Given a single file name as argument, that file is
 checked for valid EPIC format.
@@ -15,3 +15,4 @@ Every 041 segments form a 0400 word OS/8 block, and
 are followed by two bytes of CRC.  The CRC is in
 turn followed by at least one frame of leader/trailer
 if more data follows; otherwise by a <DEL>.
+

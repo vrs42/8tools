@@ -1,4 +1,4 @@
-bin2slp converts a .bin file to a SLURP (.slp) file.
+**bin2slp** converts a .bin file to a SLURP (.slp) file.
 
 Passed the name of the input and output files on the command
 line, this program reads the first and checks it for valid
@@ -14,6 +14,7 @@ of 7 word segments.  The first word of head segment controls
 the disposition of the remaining six.  This control word is
 made up of six two bit commands, starting with the MSB.  The 
 commands are:
+
 * 00  Data word to be stored.
 * 01  EOF.  Stop processing further words.
 * 10  Set the origin.

@@ -1,4 +1,4 @@
-elabel looks for files with embedded tape labels
+**elabel** looks for files with embedded tape labels.
 
 Given a list of files to be processed on the command
 line, this script looks for files that start with
