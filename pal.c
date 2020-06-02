@@ -271,12 +271,20 @@ struct symbol {
 /* seems to disagree.  As a compromise, I have added the -e	*/
 /* option which defines these. VRS				*/
 	{ "MQA", 007501 }, /* group 3 */
+	{ "SCA", 007441 },
 	{ "MQL", 007421 },
+	{ "SCL", 007403 },
+	{ "MUY", 007405 },
+	{ "DVI", 007407 },
+	{ "NMI", 007411 },
+	{ "SHL", 007413 },
+	{ "ASR", 007415 },
+	{ "LSR", 007417 },
 	{ "SKON",006000 }, /* IOTs */
 	{ "GTF", 006004 },
 	{ "SGT", 006006 },
 	{ "CAF", 006007 },
-#define pdp8e 6	/* Number of extensions to the symbol table */
+#define pdp8e 14	/* Number of extensions to the symbol table */
 #else
 #define pdp8e 0
 #endif
@@ -284,7 +292,11 @@ struct symbol {
 };
 
 /* the following define is based on a careful count of the above entries */
-int firstsym = 88;
+#ifdef PDP8E
+int firstsym = 82+pdp8e;
+#else
+int firstsym = 82;
+#endif
 
 /* command line argument processing */
 void
