@@ -27,7 +27,7 @@
 # from those authors.
 
 # This just copies input to output, 3 bytes per
-# doubleword.  We strip off the parity bit so you
+# doubleword.  We set the parity bit so the PDP-8
 # can recognise the characters.
 
 foreach $f (@ARGV) {
@@ -35,9 +35,9 @@ foreach $f (@ARGV) {
   binmode(INPUT);
   while (read(INPUT, $buf, 3) > 0) {
     ($b1, $b2, $b3) = unpack("CCC", $buf);
-    $b1 &= 0177;
-    $b2 &= 0177 if defined $b2;
-    $b3 &= 0177 if defined $b3;
+    $b1 |= 0200;
+    $b2 |= 0200 if defined $b2;
+    $b3 |= 0200 if defined $b3;
 #   print pack("CCC", $b2, $b3, $b1);
     print pack("C", $b1);
     print pack("C", $b2) if defined $b2;;
