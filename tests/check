@@ -1,0 +1,37 @@
+#!/usr/bin/perl
+
+# SIMH output looks like:
+#	Breakpoint, PC: 00200 (JMP 156)
+#	PC:	00200
+#	AC:	0000
+#	L:	0
+#	MQ:	0000
+#
+# Perl output looks like:
+#	00000 0000 00 00200:5156
+# where the extra "00" is SC
+#
+
+# Look for a mismatch.
+
+open(SIMH, "simh.out") || die "simh.out: $!";
+open(PERL, "log") || die "log: $!";
+
+while (<SIMH>) {
+  $pc = $1 if /PC:\t(\d+)/;
+  $ac = $1 if /AC:\t(\d+)/;
+  $l  = $1 if /L:\t(\d+)/;
+  $mq = $1 if /MQ:\t(\d+)/;
+  if (/MQ:\t(\d+)/) {
+    # We have a complete record from SIMH.
+    $simh = "$l$ac $mq 00 $pc";
+    $perl = <PERL>;
+    print $perl if $perl =~ /EAE/;
+    $perl = <PERL> if $perl =~ /EAE/;
+    $perl =~ s/[\r\n]*$//; 
+    print "$perl?\n";
+    next if $perl =~ /^$simh:/;
+    die  "simh: $simh\n";
+    die  "perl: $perl\n";
+  }
+}

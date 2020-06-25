@@ -1,0 +1,1203 @@
+#!/usr/bin/perl
+
+# Boilerplate startup.
+
+use Term::ReadKey;
+ReadMode 'ultra-raw';
+# Use ^E for force hlt.
+
+#
+# Wave a wand to set all uninitialized memory to HLT.
+for ($loc = 0; $loc < 0100000; $loc++) {
+  $core[$loc] = 07402; $code[$loc] = *emul8;
+}
+
+#
+# IF is in $pc, CIF sets $ib.
+# BUGBUG: Guessing at starting address!
+$df = $ib = 0; $pc = 00200;
+$swr = 07777;
+# LINK is in $lac.
+$hlt = $ion = $ionn = $um = $rib = $lac = $mq = $modeb = $sc = 0;
+# I/O Devices.
+$ttof = $ttofn = 0; # Teleprinter flag is clear
+$ttie = 1;
+# Run-time behavior.
+$interact = 0;
+$trace = 0;
+$echar = 0205; # Usually ^E
+
+#
+# Run-time Command line parsing.  Command lines can use:
+# =0nnnnn to specify a starting address.
+# %0nnnnn to specify switch register contents.
+# !0nnnnn to specify an exit character other than ^E.
+# -i to activate interaction after HLT.
+# -t to activate trace output on STDERR.
+# Other stuff on the command line is retained with the intent
+#   to eventually add code to pass file specs to USR when OS/8
+#   support is added.
+@usr = ();
+foreach (@ARGV) {
+  $pc = $1 if /^\=(0\d+)/;
+  $swr = $1 if /^\%(0\d+)/;
+  $echar = $1 if /^\!(0\d+)/;
+  next if /^[=\%!](0\d+)/;
+  die "Number is not octal: '$1'\n" if s/^[=\%!](\d+)//;
+  $interact = 1 if $_ eq "-i";
+  next if $_ eq "-i";
+  $trace = 1 if $_ eq "-t";
+  next if $_ eq "-t";
+  die "Unsupported option '$1'\n" if /^-(.*)/;
+  next if /^-(.*)/;
+  s/_/</; # Sneaks '<' past the shell
+  y/A-Z/a-z/; # Monocase for USR
+  push(@usr, $_);
+}
+
+#
+# Compiled code:
+$core[000000] = 00000; $code[000000] = *S00000; sub S00000 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000001] = 05001; $code[000001] = *L00001; sub L00001 { $pc = 000001; $inh = 0; goto &fetch; }
+$core[000002] = 00002; $code[000002] = *D00002; sub D00002 { $lac &= (010000|$core[000002]); goto &fetch; }
+$core[000003] = 00003; $code[000003] = *D00003; sub D00003 { $lac &= (010000|$core[000003]); goto &fetch; }
+$core[000017] = 04177; $code[000017] = *P00017; sub P00017 { $core[000177] = 00020; $pc = 000177+1; $code[000177] = *emul8; $inh = 0; goto &fetch; }
+$core[000020] = 00000; $code[000020] = *S00020; sub S00020 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000021] = 06046; $code[000021] = *I00021; sub I00021 { &emul8; goto &fetch; }
+$core[000022] = 06041; $code[000022] = *L00022; sub L00022 { &emul8; goto &fetch; }
+$core[000023] = 05022; $code[000023] = *I00023; sub I00023 { $pc = 000022; $inh = 0; goto &fetch; }
+$core[000024] = 07200; $code[000024] = *I00024; sub I00024 { $lac &= 010000; goto &fetch; }
+$core[000025] = 05420; $code[000025] = *I00025; sub I00025 { $pc = ($ib<<12)+$core[16]; $inh = 0; goto &fetch; }
+$core[000026] = 00000; $code[000026] = *S00026; sub S00026 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000027] = 07240; $code[000027] = *I00027; sub I00027 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000030] = 00104; $code[000030] = *I00030; sub I00030 { $lac &= (010000|$core[000104]); goto &fetch; }
+$core[000031] = 04020; $code[000031] = *I00031; sub I00031 { $core[000020] = 00032; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000032] = 07240; $code[000032] = *I00032; sub I00032 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000033] = 00103; $code[000033] = *I00033; sub I00033 { $lac &= (010000|$core[000103]); goto &fetch; }
+$core[000034] = 04020; $code[000034] = *I00034; sub I00034 { $core[000020] = 00035; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000035] = 07240; $code[000035] = *I00035; sub I00035 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000036] = 00103; $code[000036] = *I00036; sub I00036 { $lac &= (010000|$core[000103]); goto &fetch; }
+$core[000037] = 04020; $code[000037] = *I00037; sub I00037 { $core[000020] = 00040; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000040] = 05426; $code[000040] = *D00040; sub D00040 { $pc = ($ib<<12)+$core[22]; $inh = 0; goto &fetch; }
+$core[000041] = 00000; $code[000041] = *S00041; sub S00041 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000042] = 07240; $code[000042] = *I00042; sub I00042 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000043] = 00104; $code[000043] = *I00043; sub I00043 { $lac &= (010000|$core[000104]); goto &fetch; }
+$core[000044] = 04020; $code[000044] = *I00044; sub I00044 { $core[000020] = 00045; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000045] = 07240; $code[000045] = *I00045; sub I00045 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000046] = 00103; $code[000046] = *I00046; sub I00046 { $lac &= (010000|$core[000103]); goto &fetch; }
+$core[000047] = 04020; $code[000047] = *I00047; sub I00047 { $core[000020] = 00050; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000050] = 05441; $code[000050] = *I00050; sub I00050 { $pc = ($ib<<12)+$core[33]; $inh = 0; goto &fetch; }
+$core[000051] = 00000; $code[000051] = *D00051; sub D00051 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000052] = 00000; $code[000052] = *D00052; sub D00052 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000053] = 00000; $code[000053] = *D00053; sub D00053 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000054] = 00000; $code[000054] = *D00054; sub D00054 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000055] = 00000; $code[000055] = *D00055; sub D00055 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000056] = 00000; $code[000056] = *D00056; sub D00056 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000057] = 00000; $code[000057] = *D00057; sub D00057 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000060] = 04000; $code[000060] = *D00060; sub D00060 { $core[000000] = 00061; $pc = 000000+1; $code[000000] = *emul8; $inh = 0; goto &fetch; }
+$core[000061] = 02000; $code[000061] = *D00061; sub D00061 { if (++$core[000000] == 010000) { $core[000000] = 0; $pc++; }$code[000000] = *emul8; goto &fetch; }
+$core[000062] = 01000; $code[000062] = *D00062; sub D00062 { $lac += $core[000000]; goto &fetch; }
+$core[000063] = 00400; $code[000063] = *D00063; sub D00063 { $lac &= (010000|$core[($df<<12)+$core[0]]); goto &fetch; }
+$core[000064] = 00200; $code[000064] = *P00064; sub P00064 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000065] = 00100; $code[000065] = *P00065; sub P00065 { $lac &= (010000|$core[000100]); goto &fetch; }
+$core[000066] = 00040; $code[000066] = *I00066; sub I00066 { $lac &= (010000|$core[000040]); goto &fetch; }
+$core[000067] = 00020; $code[000067] = *I00067; sub I00067 { $lac &= (010000|$core[000020]); goto &fetch; }
+$core[000070] = 00010; $code[000070] = *I00070; sub I00070 { $lac &= (010000|$core[000010]); goto &fetch; }
+$core[000071] = 00004; $code[000071] = *I00071; sub I00071 { $lac &= (010000|$core[000004]); goto &fetch; }
+$core[000072] = 00002; $code[000072] = *D00072; sub D00072 { $lac &= (010000|$core[000002]); goto &fetch; }
+$core[000073] = 00001; $code[000073] = *I00073; sub I00073 { $lac &= (010000|$core[000001]); goto &fetch; }
+$core[000074] = 00057; $code[000074] = *D00074; sub D00074 { $lac &= (010000|$core[000057]); goto &fetch; }
+$core[000075] = 00322; $code[000075] = *D00075; sub D00075 { $lac &= (010000|$core[000122]); goto &fetch; }
+$core[000076] = 00301; $code[000076] = *D00076; sub D00076 { $lac &= (010000|$core[000101]); goto &fetch; }
+$core[000077] = 00314; $code[000077] = *D00077; sub D00077 { $lac &= (010000|$core[000114]); goto &fetch; }
+$core[000100] = 00324; $code[000100] = *D00100; sub D00100 { $lac &= (010000|$core[000124]); goto &fetch; }
+$core[000101] = 00320; $code[000101] = *D00101; sub D00101 { $lac &= (010000|$core[000120]); goto &fetch; }
+$core[000102] = 00240; $code[000102] = *D00102; sub D00102 { $lac &= (010000|$core[000040]); goto &fetch; }
+$core[000103] = 00212; $code[000103] = *D00103; sub D00103 { $lac &= (010000|$core[000012]); goto &fetch; }
+$core[000104] = 00215; $code[000104] = *D00104; sub D00104 { $lac &= (010000|$core[000015]); goto &fetch; }
+$core[000105] = 00060; $code[000105] = *D00105; sub D00105 { $lac &= (010000|$core[000060]); goto &fetch; }
+$core[000106] = 00061; $code[000106] = *D00106; sub D00106 { $lac &= (010000|$core[000061]); goto &fetch; }
+$core[000107] = 00317; $code[000107] = *P00107; sub P00107 { $lac &= (010000|$core[000117]); goto &fetch; }
+$core[000110] = 00313; $code[000110] = *D00110; sub D00110 { $lac &= (010000|$core[000113]); goto &fetch; }
+$core[000111] = 07764; $code[000111] = *D00111; sub D00111 { $skp = 0; $skp = 1 unless $lac&07777; $skp = 1 if $lac&04000; $skp = 1 if $lac&010000; $pc += $skp; $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[000112] = 00000; $code[000112] = *D00112; sub D00112 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000113] = 00262; $code[000113] = *D00113; sub D00113 { $lac &= (010000|$core[000062]); goto &fetch; }
+$core[000114] = 00302; $code[000114] = *D00114; sub D00114 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000115] = 00000; $code[000115] = *D00115; sub D00115 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000116] = 00000; $code[000116] = *D00116; sub D00116 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000117] = 00000; $code[000117] = *D00117; sub D00117 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000120] = 00000; $code[000120] = *D00120; sub D00120 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000121] = 00000; $code[000121] = *P00121; sub P00121 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000122] = 00000; $code[000122] = *D00122; sub D00122 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000123] = 00000; $code[000123] = *D00123; sub D00123 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000124] = 00000; $code[000124] = *D00124; sub D00124 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000125] = 00000; $code[000125] = *P00125; sub P00125 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000126] = 07776; $code[000126] = *D00126; sub D00126 { $skp = 0; $skp = 1 unless $lac&07777; $skp = 1 if $lac&04000; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; $lac &= 010000; $lac |= $swr; $hlt = 1; goto &fetch; }
+$core[000127] = 00000; $code[000127] = *D00127; sub D00127 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000130] = 00307; $code[000130] = *D00130; sub D00130 { $lac &= (010000|$core[000107]); goto &fetch; }
+$core[000131] = 00304; $code[000131] = *D00131; sub D00131 { $lac &= (010000|$core[000104]); goto &fetch; }
+$core[000132] = 00330; $code[000132] = *D00132; sub D00132 { $lac &= (010000|$core[000130]); goto &fetch; }
+$core[000133] = 00331; $code[000133] = *D00133; sub D00133 { $lac &= (010000|$core[000131]); goto &fetch; }
+$core[000134] = 00000; $code[000134] = *D00134; sub D00134 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000135] = 00000; $code[000135] = *D00135; sub D00135 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000136] = 00000; $code[000136] = *D00136; sub D00136 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000137] = 07763; $code[000137] = *D00137; sub D00137 { &emul8; goto &fetch; }
+$core[000140] = 00000; $code[000140] = *D00140; sub D00140 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000141] = 07377; $code[000141] = *I00141; sub I00141 { $lac &= 010000; $lac &= 07777; $lac ^= 010000; $lac ^= 07777; $lac++; $lac = ($lac<<2) + (($lac>>11)&3); $lac = (($lac&017777)>>2) + (($lac&3)<<11); goto &fetch; }
+$core[000142] = 00000; $code[000142] = *S00142; sub S00142 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000143] = 07240; $code[000143] = *I00143; sub I00143 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000144] = 00140; $code[000144] = *I00144; sub I00144 { $lac &= (010000|$core[000140]); goto &fetch; }
+$core[000145] = 07440; $code[000145] = *I00145; sub I00145 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[000146] = 05150; $code[000146] = *I00146; sub I00146 { $pc = 000150; $inh = 0; goto &fetch; }
+$core[000147] = 05152; $code[000147] = *I00147; sub I00147 { $pc = 000152; $inh = 0; goto &fetch; }
+$core[000150] = 07360; $code[000150] = *L00150; sub L00150 { $lac &= 010000; $lac &= 07777; $lac ^= 010000; $lac ^= 07777; goto &fetch; }
+$core[000151] = 05542; $code[000151] = *I00151; sub I00151 { $pc = ($ib<<12)+$core[98]; $inh = 0; goto &fetch; }
+$core[000152] = 07340; $code[000152] = *L00152; sub L00152 { $lac &= 010000; $lac &= 07777; $lac ^= 07777; goto &fetch; }
+$core[000153] = 05542; $code[000153] = *I00153; sub I00153 { $pc = ($ib<<12)+$core[98]; $inh = 0; goto &fetch; }
+$core[000200] = 07240; $code[000200] = *L00200; sub L00200 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000201] = 03124; $code[000201] = *I00201; sub I00201 { $core[000124] = $lac & 07777; $lac &= 010000; $code[000124] = *emul8; goto &fetch; }
+$core[000202] = 07240; $code[000202] = *I00202; sub I00202 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000203] = 03135; $code[000203] = *I00203; sub I00203 { $core[000135] = $lac & 07777; $lac &= 010000; $code[000135] = *emul8; goto &fetch; }
+$core[000204] = 07240; $code[000204] = *I00204; sub I00204 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000205] = 03136; $code[000205] = *I00205; sub I00205 { $core[000136] = $lac & 07777; $lac &= 010000; $code[000136] = *emul8; goto &fetch; }
+$core[000206] = 07240; $code[000206] = *I00206; sub I00206 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000207] = 03121; $code[000207] = *I00207; sub I00207 { $core[000121] = $lac & 07777; $lac &= 010000; $code[000121] = *emul8; goto &fetch; }
+$core[000210] = 03134; $code[000210] = *I00210; sub I00210 { $core[000134] = $lac & 07777; $lac &= 010000; $code[000134] = *emul8; goto &fetch; }
+$core[000211] = 03115; $code[000211] = *I00211; sub I00211 { $core[000115] = $lac & 07777; $lac &= 010000; $code[000115] = *emul8; goto &fetch; }
+$core[000212] = 05223; $code[000212] = *I00212; sub I00212 { $pc = 000223; $inh = 0; goto &fetch; }
+$core[000213] = 03120; $code[000213] = *I00213; sub I00213 { $core[000120] = $lac & 07777; $lac &= 010000; $code[000120] = *emul8; goto &fetch; }
+$core[000214] = 07340; $code[000214] = *L00214; sub L00214 { $lac &= 010000; $lac &= 07777; $lac ^= 07777; goto &fetch; }
+$core[000215] = 00135; $code[000215] = *I00215; sub I00215 { $lac &= (010000|$core[000135]); goto &fetch; }
+$core[000216] = 01136; $code[000216] = *I00216; sub I00216 { $lac += $core[000136]; goto &fetch; }
+$core[000217] = 03122; $code[000217] = *I00217; sub I00217 { $core[000122] = $lac & 07777; $lac &= 010000; $code[000122] = *emul8; goto &fetch; }
+$core[000220] = 07004; $code[000220] = *I00220; sub I00220 { $lac = ($lac<<1) + (($lac>>12)&1); goto &fetch; }
+$core[000221] = 03134; $code[000221] = *I00221; sub I00221 { $core[000134] = $lac & 07777; $lac &= 010000; $code[000134] = *emul8; goto &fetch; }
+$core[000222] = 05737; $code[000222] = *I00222; sub I00222 { $pc = ($ib<<12)+$core[223]; $inh = 0; goto &fetch; }
+$core[000223] = 05624; $code[000223] = *L00223; sub L00223 { $pc = ($ib<<12)+$core[148]; $inh = 0; goto &fetch; }
+$core[000224] = 04020; $code[000224] = *P00224; sub P00224 { $core[000020] = 00225; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000225] = 07240; $code[000225] = *L00225; sub L00225 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000226] = 00135; $code[000226] = *I00226; sub I00226 { $lac &= (010000|$core[000135]); goto &fetch; }
+$core[000227] = 03115; $code[000227] = *I00227; sub I00227 { $core[000115] = $lac & 07777; $lac &= 010000; $code[000115] = *emul8; goto &fetch; }
+$core[000230] = 07240; $code[000230] = *I00230; sub I00230 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000231] = 00136; $code[000231] = *I00231; sub I00231 { $lac &= (010000|$core[000136]); goto &fetch; }
+$core[000232] = 03116; $code[000232] = *I00232; sub I00232 { $core[000116] = $lac & 07777; $lac &= 010000; $code[000116] = *emul8; goto &fetch; }
+$core[000233] = 04235; $code[000233] = *I00233; sub I00233 { $core[000235] = 00234; $pc = 000235+1; $code[000235] = *emul8; $inh = 0; goto &fetch; }
+$core[000234] = 05214; $code[000234] = *I00234; sub I00234 { $pc = 000214; $inh = 0; goto &fetch; }
+$core[000235] = 00000; $code[000235] = *S00235; sub S00235 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000236] = 07300; $code[000236] = *I00236; sub I00236 { $lac &= 010000; $lac &= 07777; goto &fetch; }
+$core[000237] = 03121; $code[000237] = *I00237; sub I00237 { $core[000121] = $lac & 07777; $lac &= 010000; $code[000121] = *emul8; goto &fetch; }
+$core[000240] = 03120; $code[000240] = *I00240; sub I00240 { $core[000120] = $lac & 07777; $lac &= 010000; $code[000120] = *emul8; goto &fetch; }
+$core[000241] = 07040; $code[000241] = *I00241; sub I00241 { $lac ^= 07777; goto &fetch; }
+$core[000242] = 00111; $code[000242] = *I00242; sub I00242 { $lac &= (010000|$core[000111]); goto &fetch; }
+$core[000243] = 03123; $code[000243] = *I00243; sub I00243 { $core[000123] = $lac & 07777; $lac &= 010000; $code[000123] = *emul8; goto &fetch; }
+$core[000244] = 07040; $code[000244] = *L00244; sub L00244 { $lac ^= 07777; goto &fetch; }
+$core[000245] = 00115; $code[000245] = *I00245; sub I00245 { $lac &= (010000|$core[000115]); goto &fetch; }
+$core[000246] = 07010; $code[000246] = *I00246; sub I00246 { $lac = (($lac&017777)>>1) + (($lac&1)<<12); goto &fetch; }
+$core[000247] = 03115; $code[000247] = *I00247; sub I00247 { $core[000115] = $lac & 07777; $lac &= 010000; $code[000115] = *emul8; goto &fetch; }
+$core[000250] = 07004; $code[000250] = *I00250; sub I00250 { $lac = ($lac<<1) + (($lac>>12)&1); goto &fetch; }
+$core[000251] = 03117; $code[000251] = *I00251; sub I00251 { $core[000117] = $lac & 07777; $lac &= 010000; $code[000117] = *emul8; goto &fetch; }
+$core[000252] = 07040; $code[000252] = *I00252; sub I00252 { $lac ^= 07777; goto &fetch; }
+$core[000253] = 00116; $code[000253] = *I00253; sub I00253 { $lac &= (010000|$core[000116]); goto &fetch; }
+$core[000254] = 07010; $code[000254] = *I00254; sub I00254 { $lac = (($lac&017777)>>1) + (($lac&1)<<12); goto &fetch; }
+$core[000255] = 03116; $code[000255] = *I00255; sub I00255 { $core[000116] = $lac & 07777; $lac &= 010000; $code[000116] = *emul8; goto &fetch; }
+$core[000256] = 07040; $code[000256] = *I00256; sub I00256 { $lac ^= 07777; goto &fetch; }
+$core[000257] = 00117; $code[000257] = *I00257; sub I00257 { $lac &= (010000|$core[000117]); goto &fetch; }
+$core[000260] = 07420; $code[000260] = *I00260; sub I00260 { $skp = 0; $skp = 1 if $lac&010000; $pc += $skp; goto &fetch; }
+$core[000261] = 05302; $code[000261] = *I00261; sub I00261 { $pc = 000302; $inh = 0; goto &fetch; }
+$core[000262] = 07450; $code[000262] = *I00262; sub I00262 { $skp = 0; $skp = 1 unless $lac&07777; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[000263] = 05305; $code[000263] = *I00263; sub I00263 { $pc = 000305; $inh = 0; goto &fetch; }
+$core[000264] = 07300; $code[000264] = *I00264; sub I00264 { $lac &= 010000; $lac &= 07777; goto &fetch; }
+$core[000265] = 07040; $code[000265] = *L00265; sub L00265 { $lac ^= 07777; goto &fetch; }
+$core[000266] = 00120; $code[000266] = *I00266; sub I00266 { $lac &= (010000|$core[000120]); goto &fetch; }
+$core[000267] = 07010; $code[000267] = *I00267; sub I00267 { $lac = (($lac&017777)>>1) + (($lac&1)<<12); goto &fetch; }
+$core[000270] = 07040; $code[000270] = *I00270; sub I00270 { $lac ^= 07777; goto &fetch; }
+$core[000271] = 00117; $code[000271] = *I00271; sub I00271 { $lac &= (010000|$core[000117]); goto &fetch; }
+$core[000272] = 03120; $code[000272] = *L00272; sub L00272 { $core[000120] = $lac & 07777; $lac &= 010000; $code[000120] = *emul8; goto &fetch; }
+$core[000273] = 07040; $code[000273] = *I00273; sub I00273 { $lac ^= 07777; goto &fetch; }
+$core[000274] = 00121; $code[000274] = *I00274; sub I00274 { $lac &= (010000|$core[000121]); goto &fetch; }
+$core[000275] = 07010; $code[000275] = *I00275; sub I00275 { $lac = (($lac&017777)>>1) + (($lac&1)<<12); goto &fetch; }
+$core[000276] = 03121; $code[000276] = *I00276; sub I00276 { $core[000121] = $lac & 07777; $lac &= 010000; $code[000121] = *emul8; goto &fetch; }
+$core[000277] = 02123; $code[000277] = *I00277; sub I00277 { if (++$core[000123] == 010000) { $core[000123] = 0; $pc++; }$code[000123] = *emul8; goto &fetch; }
+$core[000300] = 05244; $code[000300] = *I00300; sub I00300 { $pc = 000244; $inh = 0; goto &fetch; }
+$core[000301] = 05635; $code[000301] = *I00301; sub I00301 { $pc = ($ib<<12)+$core[157]; $inh = 0; goto &fetch; }
+$core[000302] = 07450; $code[000302] = *L00302; sub L00302 { $skp = 0; $skp = 1 unless $lac&07777; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[000303] = 05265; $code[000303] = *I00303; sub I00303 { $pc = 000265; $inh = 0; goto &fetch; }
+$core[000304] = 07220; $code[000304] = *I00304; sub I00304 { $lac &= 010000; $lac ^= 010000; goto &fetch; }
+$core[000305] = 07040; $code[000305] = *L00305; sub L00305 { $lac ^= 07777; goto &fetch; }
+$core[000306] = 00120; $code[000306] = *I00306; sub I00306 { $lac &= (010000|$core[000120]); goto &fetch; }
+$core[000307] = 07440; $code[000307] = *I00307; sub I00307 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[000310] = 07100; $code[000310] = *I00310; sub I00310 { $lac &= 07777; goto &fetch; }
+$core[000311] = 05272; $code[000311] = *I00311; sub I00311 { $pc = 000272; $inh = 0; goto &fetch; }
+$core[000312] = 04041; $code[000312] = *L00312; sub L00312 { $core[000041] = 00313; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[000313] = 07240; $code[000313] = *I00313; sub I00313 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000314] = 00076; $code[000314] = *I00314; sub I00314 { $lac &= (010000|$core[000076]); goto &fetch; }
+$core[000315] = 04020; $code[000315] = *I00315; sub I00315 { $core[000020] = 00316; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000316] = 07240; $code[000316] = *I00316; sub I00316 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000317] = 00131; $code[000317] = *D00317; sub D00317 { $lac &= (010000|$core[000131]); goto &fetch; }
+$core[000320] = 04020; $code[000320] = *I00320; sub I00320 { $core[000020] = 00321; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000321] = 07240; $code[000321] = *I00321; sub I00321 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000322] = 00131; $code[000322] = *I00322; sub I00322 { $lac &= (010000|$core[000131]); goto &fetch; }
+$core[000323] = 04020; $code[000323] = *I00323; sub I00323 { $core[000020] = 00324; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000324] = 07240; $code[000324] = *I00324; sub I00324 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000325] = 00102; $code[000325] = *I00325; sub I00325 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000326] = 04020; $code[000326] = *I00326; sub I00326 { $core[000020] = 00327; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000327] = 07240; $code[000327] = *I00327; sub I00327 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000330] = 00107; $code[000330] = *I00330; sub I00330 { $lac &= (010000|$core[000107]); goto &fetch; }
+$core[000331] = 04020; $code[000331] = *I00331; sub I00331 { $core[000020] = 00332; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000332] = 07240; $code[000332] = *I00332; sub I00332 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000333] = 00110; $code[000333] = *I00333; sub I00333 { $lac &= (010000|$core[000110]); goto &fetch; }
+$core[000334] = 04020; $code[000334] = *I00334; sub I00334 { $core[000020] = 00335; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000335] = 05736; $code[000335] = *I00335; sub I00335 { $pc = ($ib<<12)+$core[222]; $inh = 0; goto &fetch; }
+$core[000336] = 02000; $code[000336] = *P00336; sub P00336 { if (++$core[000000] == 010000) { $core[000000] = 0; $pc++; }$code[000000] = *emul8; goto &fetch; }
+$core[000337] = 04051; $code[000337] = *P00337; sub P00337 { $core[000051] = 00340; $pc = 000051+1; $code[000051] = *emul8; $inh = 0; goto &fetch; }
+$core[000400] = 07604; $code[000400] = *P00400; sub P00400 { $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[000401] = 07106; $code[000401] = *I00401; sub I00401 { $lac &= 07777; $lac = ($lac<<2) + (($lac>>11)&3); goto &fetch; }
+$core[000402] = 07510; $code[000402] = *I00402; sub I00402 { $skp = 0; $skp = 1 if $lac&04000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[000403] = 04216; $code[000403] = *I00403; sub I00403 { $core[000416] = 00404; $pc = 000416+1; $code[000416] = *emul8; $inh = 0; goto &fetch; }
+$core[000404] = 07604; $code[000404] = *I00404; sub I00404 { $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[000405] = 07510; $code[000405] = *I00405; sub I00405 { $skp = 0; $skp = 1 if $lac&04000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[000406] = 07402; $code[000406] = *I00406; sub I00406 { $hlt = 1; goto &fetch; }
+$core[000407] = 07604; $code[000407] = *L00407; sub L00407 { $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[000410] = 07104; $code[000410] = *I00410; sub I00410 { $lac &= 07777; $lac = ($lac<<1) + (($lac>>12)&1); goto &fetch; }
+$core[000411] = 07510; $code[000411] = *I00411; sub I00411 { $skp = 0; $skp = 1 if $lac&04000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[000412] = 05614; $code[000412] = *I00412; sub I00412 { $pc = ($ib<<12)+$core[268]; $inh = 0; goto &fetch; }
+$core[000413] = 05615; $code[000413] = *I00413; sub I00413 { $pc = ($ib<<12)+$core[269]; $inh = 0; goto &fetch; }
+$core[000414] = 00225; $code[000414] = *P00414; sub P00414 { $lac &= (010000|$core[000425]); goto &fetch; }
+$core[000415] = 00223; $code[000415] = *P00415; sub P00415 { $lac &= (010000|$core[000423]); goto &fetch; }
+$core[000416] = 00000; $code[000416] = *S00416; sub S00416 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000417] = 07240; $code[000417] = *I00417; sub I00417 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000420] = 00124; $code[000420] = *I00420; sub I00420 { $lac &= (010000|$core[000124]); goto &fetch; }
+$core[000421] = 07440; $code[000421] = *I00421; sub I00421 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[000422] = 04321; $code[000422] = *I00422; sub I00422 { $core[000521] = 00423; $pc = 000521+1; $code[000521] = *emul8; $inh = 0; goto &fetch; }
+$core[000423] = 07000; $code[000423] = *D00423; sub D00423 { goto &fetch; }
+$core[000424] = 04041; $code[000424] = *I00424; sub I00424 { $core[000041] = 00425; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[000425] = 04020; $code[000425] = *D00425; sub D00425 { $core[000020] = 00426; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000426] = 07240; $code[000426] = *P00426; sub P00426 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000427] = 00120; $code[000427] = *I00427; sub I00427 { $lac &= (010000|$core[000120]); goto &fetch; }
+$core[000430] = 04635; $code[000430] = *I00430; sub I00430 { $core[($ib<<12)+$core[285]] = 00431; $pc = ($ib<<12)+$core[285]+1; $code[($ib<<12)+$core[285]] = *emul8; $inh = 0; goto &fetch; }
+$core[000431] = 07240; $code[000431] = *I00431; sub I00431 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000432] = 00102; $code[000432] = *I00432; sub I00432 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000433] = 04020; $code[000433] = *I00433; sub I00433 { $core[000020] = 00434; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000434] = 05236; $code[000434] = *I00434; sub I00434 { $pc = 000436; $inh = 0; goto &fetch; }
+$core[000435] = 02637; $code[000435] = *P00435; sub P00435 { if (++$core[($df<<12)+$core[287]] == 010000) { $core[($df<<12)+$core[287]] = 0; $pc++; }$code[($df<<12)+$core[287]] = *emul8; goto &fetch; }
+$core[000436] = 07240; $code[000436] = *L00436; sub L00436 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000437] = 00121; $code[000437] = *P00437; sub P00437 { $lac &= (010000|$core[000121]); goto &fetch; }
+$core[000440] = 03125; $code[000440] = *I00440; sub I00440 { $core[000125] = $lac & 07777; $lac &= 010000; $code[000125] = *emul8; goto &fetch; }
+$core[000441] = 04266; $code[000441] = *I00441; sub I00441 { $core[000466] = 00442; $pc = 000466+1; $code[000466] = *emul8; $inh = 0; goto &fetch; }
+$core[000442] = 07240; $code[000442] = *I00442; sub I00442 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000443] = 00134; $code[000443] = *I00443; sub I00443 { $lac &= (010000|$core[000134]); goto &fetch; }
+$core[000444] = 04635; $code[000444] = *I00444; sub I00444 { $core[($ib<<12)+$core[285]] = 00445; $pc = ($ib<<12)+$core[285]+1; $code[($ib<<12)+$core[285]] = *emul8; $inh = 0; goto &fetch; }
+$core[000445] = 07240; $code[000445] = *I00445; sub I00445 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000446] = 00102; $code[000446] = *I00446; sub I00446 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000447] = 04020; $code[000447] = *I00447; sub I00447 { $core[000020] = 00450; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000450] = 05251; $code[000450] = *I00450; sub I00450 { $pc = 000451; $inh = 0; goto &fetch; }
+$core[000451] = 07240; $code[000451] = *L00451; sub L00451 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000452] = 00122; $code[000452] = *I00452; sub I00452 { $lac &= (010000|$core[000122]); goto &fetch; }
+$core[000453] = 03125; $code[000453] = *I00453; sub I00453 { $core[000125] = $lac & 07777; $lac &= 010000; $code[000125] = *emul8; goto &fetch; }
+$core[000454] = 04266; $code[000454] = *I00454; sub I00454 { $core[000466] = 00455; $pc = 000466+1; $code[000466] = *emul8; $inh = 0; goto &fetch; }
+$core[000455] = 07240; $code[000455] = *I00455; sub I00455 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000456] = 00135; $code[000456] = *I00456; sub I00456 { $lac &= (010000|$core[000135]); goto &fetch; }
+$core[000457] = 03125; $code[000457] = *I00457; sub I00457 { $core[000125] = $lac & 07777; $lac &= 010000; $code[000125] = *emul8; goto &fetch; }
+$core[000460] = 04266; $code[000460] = *I00460; sub I00460 { $core[000466] = 00461; $pc = 000466+1; $code[000466] = *emul8; $inh = 0; goto &fetch; }
+$core[000461] = 07240; $code[000461] = *I00461; sub I00461 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000462] = 00136; $code[000462] = *I00462; sub I00462 { $lac &= (010000|$core[000136]); goto &fetch; }
+$core[000463] = 03125; $code[000463] = *I00463; sub I00463 { $core[000125] = $lac & 07777; $lac &= 010000; $code[000125] = *emul8; goto &fetch; }
+$core[000464] = 04266; $code[000464] = *I00464; sub I00464 { $core[000466] = 00465; $pc = 000466+1; $code[000466] = *emul8; $inh = 0; goto &fetch; }
+$core[000465] = 05616; $code[000465] = *I00465; sub I00465 { $pc = ($ib<<12)+$core[270]; $inh = 0; goto &fetch; }
+$core[000466] = 00000; $code[000466] = *S00466; sub S00466 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000467] = 07240; $code[000467] = *I00467; sub I00467 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000470] = 00137; $code[000470] = *I00470; sub I00470 { $lac &= (010000|$core[000137]); goto &fetch; }
+$core[000471] = 03112; $code[000471] = *I00471; sub I00471 { $core[000112] = $lac & 07777; $lac &= 010000; $code[000112] = *emul8; goto &fetch; }
+$core[000472] = 02112; $code[000472] = *L00472; sub L00472 { if (++$core[000112] == 010000) { $core[000112] = 0; $pc++; }$code[000112] = *emul8; goto &fetch; }
+$core[000473] = 07410; $code[000473] = *I00473; sub I00473 { $skp = 0; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[000474] = 05312; $code[000474] = *I00474; sub I00474 { $pc = 000512; $inh = 0; goto &fetch; }
+$core[000475] = 07240; $code[000475] = *I00475; sub I00475 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000476] = 00125; $code[000476] = *I00476; sub I00476 { $lac &= (010000|$core[000125]); goto &fetch; }
+$core[000477] = 07100; $code[000477] = *I00477; sub I00477 { $lac &= 07777; goto &fetch; }
+$core[000500] = 07004; $code[000500] = *I00500; sub I00500 { $lac = ($lac<<1) + (($lac>>12)&1); goto &fetch; }
+$core[000501] = 03125; $code[000501] = *I00501; sub I00501 { $core[000125] = $lac & 07777; $lac &= 010000; $code[000125] = *emul8; goto &fetch; }
+$core[000502] = 07430; $code[000502] = *P00502; sub P00502 { $skp = 0; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[000503] = 05306; $code[000503] = *I00503; sub I00503 { $pc = 000506; $inh = 0; goto &fetch; }
+$core[000504] = 04764; $code[000504] = *I00504; sub I00504 { $core[($ib<<12)+$core[372]] = 00505; $pc = ($ib<<12)+$core[372]+1; $code[($ib<<12)+$core[372]] = *emul8; $inh = 0; goto &fetch; }
+$core[000505] = 05272; $code[000505] = *I00505; sub I00505 { $pc = 000472; $inh = 0; goto &fetch; }
+$core[000506] = 07240; $code[000506] = *L00506; sub L00506 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000507] = 00106; $code[000507] = *I00507; sub I00507 { $lac &= (010000|$core[000106]); goto &fetch; }
+$core[000510] = 04020; $code[000510] = *I00510; sub I00510 { $core[000020] = 00511; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000511] = 05272; $code[000511] = *I00511; sub I00511 { $pc = 000472; $inh = 0; goto &fetch; }
+$core[000512] = 07240; $code[000512] = *L00512; sub L00512 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000513] = 00102; $code[000513] = *I00513; sub I00513 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000514] = 04020; $code[000514] = *I00514; sub I00514 { $core[000020] = 00515; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000515] = 07240; $code[000515] = *I00515; sub I00515 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000516] = 00102; $code[000516] = *I00516; sub I00516 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000517] = 04020; $code[000517] = *I00517; sub I00517 { $core[000020] = 00520; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000520] = 05666; $code[000520] = *I00520; sub I00520 { $pc = ($ib<<12)+$core[310]; $inh = 0; goto &fetch; }
+$core[000521] = 00000; $code[000521] = *S00521; sub S00521 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000522] = 07200; $code[000522] = *I00522; sub I00522 { $lac &= 010000; goto &fetch; }
+$core[000523] = 03124; $code[000523] = *I00523; sub I00523 { $core[000124] = $lac & 07777; $lac &= 010000; $code[000124] = *emul8; goto &fetch; }
+$core[000524] = 07240; $code[000524] = *I00524; sub I00524 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000525] = 00126; $code[000525] = *I00525; sub I00525 { $lac &= (010000|$core[000126]); goto &fetch; }
+$core[000526] = 03127; $code[000526] = *I00526; sub I00526 { $core[000127] = $lac & 07777; $lac &= 010000; $code[000127] = *emul8; goto &fetch; }
+$core[000527] = 04041; $code[000527] = *I00527; sub I00527 { $core[000041] = 00530; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[000530] = 07240; $code[000530] = *L00530; sub L00530 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000531] = 00102; $code[000531] = *I00531; sub I00531 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000532] = 04020; $code[000532] = *I00532; sub I00532 { $core[000020] = 00533; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000533] = 02127; $code[000533] = *I00533; sub I00533 { if (++$core[000127] == 010000) { $core[000127] = 0; $pc++; }$code[000127] = *emul8; goto &fetch; }
+$core[000534] = 05330; $code[000534] = *I00534; sub I00534 { $pc = 000530; $inh = 0; goto &fetch; }
+$core[000535] = 07240; $code[000535] = *I00535; sub I00535 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000536] = 00130; $code[000536] = *I00536; sub I00536 { $lac &= (010000|$core[000130]); goto &fetch; }
+$core[000537] = 04020; $code[000537] = *I00537; sub I00537 { $core[000020] = 00540; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000540] = 07240; $code[000540] = *I00540; sub I00540 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000541] = 00107; $code[000541] = *I00541; sub I00541 { $lac &= (010000|$core[000107]); goto &fetch; }
+$core[000542] = 04020; $code[000542] = *I00542; sub I00542 { $core[000020] = 00543; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000543] = 07240; $code[000543] = *I00543; sub I00543 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000544] = 00107; $code[000544] = *I00544; sub I00544 { $lac &= (010000|$core[000107]); goto &fetch; }
+$core[000545] = 04020; $code[000545] = *I00545; sub I00545 { $core[000020] = 00546; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000546] = 07240; $code[000546] = *I00546; sub I00546 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000547] = 00131; $code[000547] = *I00547; sub I00547 { $lac &= (010000|$core[000131]); goto &fetch; }
+$core[000550] = 04020; $code[000550] = *I00550; sub I00550 { $core[000020] = 00551; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000551] = 04762; $code[000551] = *I00551; sub I00551 { $core[($ib<<12)+$core[370]] = 00552; $pc = ($ib<<12)+$core[370]+1; $code[($ib<<12)+$core[370]] = *emul8; $inh = 0; goto &fetch; }
+$core[000552] = 07240; $code[000552] = *I00552; sub I00552 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000553] = 00114; $code[000553] = *I00553; sub I00553 { $lac &= (010000|$core[000114]); goto &fetch; }
+$core[000554] = 04020; $code[000554] = *I00554; sub I00554 { $core[000020] = 00555; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000555] = 07240; $code[000555] = *I00555; sub I00555 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000556] = 00076; $code[000556] = *I00556; sub I00556 { $lac &= (010000|$core[000076]); goto &fetch; }
+$core[000557] = 04020; $code[000557] = *I00557; sub I00557 { $core[000020] = 00560; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000560] = 05761; $code[000560] = *I00560; sub I00560 { $pc = ($ib<<12)+$core[369]; $inh = 0; goto &fetch; }
+$core[000561] = 00600; $code[000561] = *P00561; sub P00561 { $lac &= (010000|$core[($df<<12)+$core[256]]); goto &fetch; }
+$core[000562] = 00626; $code[000562] = *P00562; sub P00562 { $lac &= (010000|$core[($df<<12)+$core[278]]); goto &fetch; }
+$core[000563] = 05721; $code[000563] = *L00563; sub L00563 { $pc = ($ib<<12)+$core[337]; $inh = 0; goto &fetch; }
+$core[000564] = 02702; $code[000564] = *P00564; sub P00564 { if (++$core[($df<<12)+$core[322]] == 010000) { $core[($df<<12)+$core[322]] = 0; $pc++; }$code[($df<<12)+$core[322]] = *emul8; goto &fetch; }
+$core[000600] = 07240; $code[000600] = *L00600; sub L00600 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000601] = 00131; $code[000601] = *I00601; sub I00601 { $lac &= (010000|$core[000131]); goto &fetch; }
+$core[000602] = 04020; $code[000602] = *I00602; sub I00602 { $core[000020] = 00603; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000603] = 04226; $code[000603] = *I00603; sub I00603 { $core[000626] = 00604; $pc = 000626+1; $code[000626] = *emul8; $inh = 0; goto &fetch; }
+$core[000604] = 07240; $code[000604] = *I00604; sub I00604 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000605] = 00132; $code[000605] = *I00605; sub I00605 { $lac &= (010000|$core[000132]); goto &fetch; }
+$core[000606] = 04020; $code[000606] = *I00606; sub I00606 { $core[000020] = 00607; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000607] = 07240; $code[000607] = *I00607; sub I00607 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000610] = 00102; $code[000610] = *I00610; sub I00610 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000611] = 04020; $code[000611] = *I00611; sub I00611 { $core[000020] = 00612; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000612] = 04240; $code[000612] = *I00612; sub I00612 { $core[000640] = 00613; $pc = 000640+1; $code[000640] = *emul8; $inh = 0; goto &fetch; }
+$core[000613] = 04226; $code[000613] = *I00613; sub I00613 { $core[000626] = 00614; $pc = 000626+1; $code[000626] = *emul8; $inh = 0; goto &fetch; }
+$core[000614] = 07240; $code[000614] = *I00614; sub I00614 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000615] = 00133; $code[000615] = *I00615; sub I00615 { $lac &= (010000|$core[000133]); goto &fetch; }
+$core[000616] = 04020; $code[000616] = *I00616; sub I00616 { $core[000020] = 00617; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000617] = 07240; $code[000617] = *I00617; sub I00617 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000620] = 00102; $code[000620] = *I00620; sub I00620 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000621] = 04020; $code[000621] = *I00621; sub I00621 { $core[000020] = 00622; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000622] = 04240; $code[000622] = *I00622; sub I00622 { $core[000640] = 00623; $pc = 000640+1; $code[000640] = *emul8; $inh = 0; goto &fetch; }
+$core[000623] = 04041; $code[000623] = *I00623; sub I00623 { $core[000041] = 00624; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[000624] = 05625; $code[000624] = *I00624; sub I00624 { $pc = ($ib<<12)+$core[405]; $inh = 0; goto &fetch; }
+$core[000625] = 00563; $code[000625] = *P00625; sub P00625 { $lac &= (010000|$core[($df<<12)+$core[115]]); goto &fetch; }
+$core[000626] = 00000; $code[000626] = *S00626; sub S00626 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000627] = 07240; $code[000627] = *I00627; sub I00627 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000630] = 00111; $code[000630] = *I00630; sub I00630 { $lac &= (010000|$core[000111]); goto &fetch; }
+$core[000631] = 03127; $code[000631] = *I00631; sub I00631 { $core[000127] = $lac & 07777; $lac &= 010000; $code[000127] = *emul8; goto &fetch; }
+$core[000632] = 07240; $code[000632] = *L00632; sub L00632 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000633] = 00102; $code[000633] = *I00633; sub I00633 { $lac &= (010000|$core[000102]); goto &fetch; }
+$core[000634] = 04020; $code[000634] = *I00634; sub I00634 { $core[000020] = 00635; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000635] = 02127; $code[000635] = *I00635; sub I00635 { if (++$core[000127] == 010000) { $core[000127] = 0; $pc++; }$code[000127] = *emul8; goto &fetch; }
+$core[000636] = 05232; $code[000636] = *I00636; sub I00636 { $pc = 000632; $inh = 0; goto &fetch; }
+$core[000637] = 05626; $code[000637] = *I00637; sub I00637 { $pc = ($ib<<12)+$core[406]; $inh = 0; goto &fetch; }
+$core[000640] = 00000; $code[000640] = *S00640; sub S00640 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[000641] = 07240; $code[000641] = *I00641; sub I00641 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000642] = 00076; $code[000642] = *I00642; sub I00642 { $lac &= (010000|$core[000076]); goto &fetch; }
+$core[000643] = 04020; $code[000643] = *I00643; sub I00643 { $core[000020] = 00644; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000644] = 07240; $code[000644] = *I00644; sub I00644 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000645] = 00075; $code[000645] = *I00645; sub I00645 { $lac &= (010000|$core[000075]); goto &fetch; }
+$core[000646] = 04020; $code[000646] = *I00646; sub I00646 { $core[000020] = 00647; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000647] = 07240; $code[000647] = *I00647; sub I00647 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[000650] = 00130; $code[000650] = *I00650; sub I00650 { $lac &= (010000|$core[000130]); goto &fetch; }
+$core[000651] = 04020; $code[000651] = *I00651; sub I00651 { $core[000020] = 00652; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[000652] = 05640; $code[000652] = *I00652; sub I00652 { $pc = ($ib<<12)+$core[416]; $inh = 0; goto &fetch; }
+$core[002000] = 04316; $code[002000] = *L02000; sub L02000 { $core[002116] = 02001; $pc = 002116+1; $code[002116] = *emul8; $inh = 0; goto &fetch; }
+$core[002001] = 04142; $code[002001] = *I02001; sub I02001 { $core[000142] = 02002; $pc = 000142+1; $code[000142] = *emul8; $inh = 0; goto &fetch; }
+$core[002002] = 00051; $code[002002] = *I02002; sub I02002 { $lac &= (010000|$core[000051]); goto &fetch; }
+$core[002003] = 07001; $code[002003] = *I02003; sub I02003 { $lac++; goto &fetch; }
+$core[002004] = 03051; $code[002004] = *I02004; sub I02004 { $core[000051] = $lac & 07777; $lac &= 010000; $code[000051] = *emul8; goto &fetch; }
+$core[002005] = 07420; $code[002005] = *I02005; sub I02005 { $skp = 0; $skp = 1 if $lac&010000; $pc += $skp; goto &fetch; }
+$core[002006] = 05215; $code[002006] = *I02006; sub I02006 { $pc = 002015; $inh = 0; goto &fetch; }
+$core[002007] = 01060; $code[002007] = *I02007; sub I02007 { $lac += $core[000060]; goto &fetch; }
+$core[002010] = 03140; $code[002010] = *I02010; sub I02010 { $core[000140] = $lac & 07777; $lac &= 010000; $code[000140] = *emul8; goto &fetch; }
+$core[002011] = 04352; $code[002011] = *L02011; sub L02011 { $core[002152] = 02012; $pc = 002152+1; $code[002152] = *emul8; $inh = 0; goto &fetch; }
+$core[002012] = 07440; $code[002012] = *I02012; sub I02012 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002013] = 05220; $code[002013] = *I02013; sub I02013 { $pc = 002020; $inh = 0; goto &fetch; }
+$core[002014] = 05274; $code[002014] = *I02014; sub I02014 { $pc = 002074; $inh = 0; goto &fetch; }
+$core[002015] = 07200; $code[002015] = *L02015; sub L02015 { $lac &= 010000; goto &fetch; }
+$core[002016] = 03140; $code[002016] = *I02016; sub I02016 { $core[000140] = $lac & 07777; $lac &= 010000; $code[000140] = *emul8; goto &fetch; }
+$core[002017] = 05211; $code[002017] = *I02017; sub I02017 { $pc = 002011; $inh = 0; goto &fetch; }
+$core[002020] = 07240; $code[002020] = *L02020; sub L02020 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[002021] = 03056; $code[002021] = *I02021; sub I02021 { $core[000056] = $lac & 07777; $lac &= 010000; $code[000056] = *emul8; goto &fetch; }
+$core[002022] = 07340; $code[002022] = *I02022; sub I02022 { $lac &= 010000; $lac &= 07777; $lac ^= 07777; goto &fetch; }
+$core[002023] = 00140; $code[002023] = *I02023; sub I02023 { $lac &= (010000|$core[000140]); goto &fetch; }
+$core[002024] = 07440; $code[002024] = *I02024; sub I02024 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002025] = 05272; $code[002025] = *I02025; sub I02025 { $pc = 002072; $inh = 0; goto &fetch; }
+$core[002026] = 07140; $code[002026] = *I02026; sub I02026 { $lac &= 07777; $lac ^= 07777; goto &fetch; }
+$core[002027] = 00051; $code[002027] = *L02027; sub L02027 { $lac &= (010000|$core[000051]); goto &fetch; }
+$core[002030] = 07004; $code[002030] = *I02030; sub I02030 { $lac = ($lac<<1) + (($lac>>12)&1); goto &fetch; }
+$core[002031] = 03052; $code[002031] = *I02031; sub I02031 { $core[000052] = $lac & 07777; $lac &= 010000; $code[000052] = *emul8; goto &fetch; }
+$core[002032] = 07430; $code[002032] = *I02032; sub I02032 { $skp = 0; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002033] = 01060; $code[002033] = *I02033; sub I02033 { $lac += $core[000060]; goto &fetch; }
+$core[002034] = 03053; $code[002034] = *I02034; sub I02034 { $core[000053] = $lac & 07777; $lac &= 010000; $code[000053] = *emul8; goto &fetch; }
+$core[002035] = 07240; $code[002035] = *I02035; sub I02035 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[002036] = 00052; $code[002036] = *I02036; sub I02036 { $lac &= (010000|$core[000052]); goto &fetch; }
+$core[002037] = 07010; $code[002037] = *I02037; sub I02037 { $lac = (($lac&017777)>>1) + (($lac&1)<<12); goto &fetch; }
+$core[002040] = 03054; $code[002040] = *I02040; sub I02040 { $core[000054] = $lac & 07777; $lac &= 010000; $code[000054] = *emul8; goto &fetch; }
+$core[002041] = 07430; $code[002041] = *I02041; sub I02041 { $skp = 0; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002042] = 01060; $code[002042] = *I02042; sub I02042 { $lac += $core[000060]; goto &fetch; }
+$core[002043] = 03055; $code[002043] = *I02043; sub I02043 { $core[000055] = $lac & 07777; $lac &= 010000; $code[000055] = *emul8; goto &fetch; }
+$core[002044] = 07340; $code[002044] = *I02044; sub I02044 { $lac &= 010000; $lac &= 07777; $lac ^= 07777; goto &fetch; }
+$core[002045] = 00054; $code[002045] = *I02045; sub I02045 { $lac &= (010000|$core[000054]); goto &fetch; }
+$core[002046] = 07040; $code[002046] = *I02046; sub I02046 { $lac ^= 07777; goto &fetch; }
+$core[002047] = 01051; $code[002047] = *I02047; sub I02047 { $lac += $core[000051]; goto &fetch; }
+$core[002050] = 07040; $code[002050] = *I02050; sub I02050 { $lac ^= 07777; goto &fetch; }
+$core[002051] = 07450; $code[002051] = *I02051; sub I02051 { $skp = 0; $skp = 1 unless $lac&07777; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002052] = 07430; $code[002052] = *I02052; sub I02052 { $skp = 0; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002053] = 05715; $code[002053] = *I02053; sub I02053 { $pc = ($ib<<12)+$core[1101]; $inh = 0; goto &fetch; }
+$core[002054] = 01060; $code[002054] = *I02054; sub I02054 { $lac += $core[000060]; goto &fetch; }
+$core[002055] = 00051; $code[002055] = *I02055; sub I02055 { $lac &= (010000|$core[000051]); goto &fetch; }
+$core[002056] = 07040; $code[002056] = *I02056; sub I02056 { $lac ^= 07777; goto &fetch; }
+$core[002057] = 01053; $code[002057] = *I02057; sub I02057 { $lac += $core[000053]; goto &fetch; }
+$core[002060] = 07040; $code[002060] = *I02060; sub I02060 { $lac ^= 07777; goto &fetch; }
+$core[002061] = 07440; $code[002061] = *I02061; sub I02061 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002062] = 05715; $code[002062] = *I02062; sub I02062 { $pc = ($ib<<12)+$core[1101]; $inh = 0; goto &fetch; }
+$core[002063] = 01055; $code[002063] = *I02063; sub I02063 { $lac += $core[000055]; goto &fetch; }
+$core[002064] = 07040; $code[002064] = *I02064; sub I02064 { $lac ^= 07777; goto &fetch; }
+$core[002065] = 01140; $code[002065] = *I02065; sub I02065 { $lac += $core[000140]; goto &fetch; }
+$core[002066] = 07040; $code[002066] = *I02066; sub I02066 { $lac ^= 07777; goto &fetch; }
+$core[002067] = 07440; $code[002067] = *I02067; sub I02067 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002070] = 05715; $code[002070] = *I02070; sub I02070 { $pc = ($ib<<12)+$core[1101]; $inh = 0; goto &fetch; }
+$core[002071] = 05751; $code[002071] = *I02071; sub I02071 { $pc = ($ib<<12)+$core[1129]; $inh = 0; goto &fetch; }
+$core[002072] = 07360; $code[002072] = *L02072; sub L02072 { $lac &= 010000; $lac &= 07777; $lac ^= 010000; $lac ^= 07777; goto &fetch; }
+$core[002073] = 05227; $code[002073] = *I02073; sub I02073 { $pc = 002027; $inh = 0; goto &fetch; }
+$core[002074] = 04316; $code[002074] = *L02074; sub L02074 { $core[002116] = 02075; $pc = 002116+1; $code[002116] = *emul8; $inh = 0; goto &fetch; }
+$core[002075] = 04142; $code[002075] = *I02075; sub I02075 { $core[000142] = 02076; $pc = 000142+1; $code[000142] = *emul8; $inh = 0; goto &fetch; }
+$core[002076] = 00051; $code[002076] = *I02076; sub I02076 { $lac &= (010000|$core[000051]); goto &fetch; }
+$core[002077] = 07001; $code[002077] = *I02077; sub I02077 { $lac++; goto &fetch; }
+$core[002100] = 03051; $code[002100] = *I02100; sub I02100 { $core[000051] = $lac & 07777; $lac &= 010000; $code[000051] = *emul8; goto &fetch; }
+$core[002101] = 07420; $code[002101] = *I02101; sub I02101 { $skp = 0; $skp = 1 if $lac&010000; $pc += $skp; goto &fetch; }
+$core[002102] = 05311; $code[002102] = *I02102; sub I02102 { $pc = 002111; $inh = 0; goto &fetch; }
+$core[002103] = 01060; $code[002103] = *I02103; sub I02103 { $lac += $core[000060]; goto &fetch; }
+$core[002104] = 03140; $code[002104] = *I02104; sub I02104 { $core[000140] = $lac & 07777; $lac &= 010000; $code[000140] = *emul8; goto &fetch; }
+$core[002105] = 04363; $code[002105] = *L02105; sub L02105 { $core[002163] = 02106; $pc = 002163+1; $code[002163] = *emul8; $inh = 0; goto &fetch; }
+$core[002106] = 07440; $code[002106] = *I02106; sub I02106 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002107] = 05714; $code[002107] = *I02107; sub I02107 { $pc = ($ib<<12)+$core[1100]; $inh = 0; goto &fetch; }
+$core[002110] = 05332; $code[002110] = *I02110; sub I02110 { $pc = 002132; $inh = 0; goto &fetch; }
+$core[002111] = 07200; $code[002111] = *L02111; sub L02111 { $lac &= 010000; goto &fetch; }
+$core[002112] = 03140; $code[002112] = *I02112; sub I02112 { $core[000140] = $lac & 07777; $lac &= 010000; $code[000140] = *emul8; goto &fetch; }
+$core[002113] = 05305; $code[002113] = *I02113; sub I02113 { $pc = 002105; $inh = 0; goto &fetch; }
+$core[002114] = 02200; $code[002114] = *P02114; sub P02114 { if (++$core[002000] == 010000) { $core[002000] = 0; $pc++; }$code[002000] = *emul8; goto &fetch; }
+$core[002115] = 02400; $code[002115] = *P02115; sub P02115 { if (++$core[($df<<12)+$core[0]] == 010000) { $core[($df<<12)+$core[0]] = 0; $pc++; }$code[($df<<12)+$core[0]] = *emul8; goto &fetch; }
+$core[002116] = 00000; $code[002116] = *S02116; sub S02116 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002117] = 07300; $code[002117] = *I02117; sub I02117 { $lac &= 010000; $lac &= 07777; goto &fetch; }
+$core[002120] = 03051; $code[002120] = *I02120; sub I02120 { $core[000051] = $lac & 07777; $lac &= 010000; $code[000051] = *emul8; goto &fetch; }
+$core[002121] = 03052; $code[002121] = *I02121; sub I02121 { $core[000052] = $lac & 07777; $lac &= 010000; $code[000052] = *emul8; goto &fetch; }
+$core[002122] = 03054; $code[002122] = *I02122; sub I02122 { $core[000054] = $lac & 07777; $lac &= 010000; $code[000054] = *emul8; goto &fetch; }
+$core[002123] = 03053; $code[002123] = *I02123; sub I02123 { $core[000053] = $lac & 07777; $lac &= 010000; $code[000053] = *emul8; goto &fetch; }
+$core[002124] = 03055; $code[002124] = *I02124; sub I02124 { $core[000055] = $lac & 07777; $lac &= 010000; $code[000055] = *emul8; goto &fetch; }
+$core[002125] = 03140; $code[002125] = *I02125; sub I02125 { $core[000140] = $lac & 07777; $lac &= 010000; $code[000140] = *emul8; goto &fetch; }
+$core[002126] = 07000; $code[002126] = *I02126; sub I02126 { goto &fetch; }
+$core[002127] = 07000; $code[002127] = *I02127; sub I02127 { goto &fetch; }
+$core[002130] = 07000; $code[002130] = *I02130; sub I02130 { goto &fetch; }
+$core[002131] = 05716; $code[002131] = *I02131; sub I02131 { $pc = ($ib<<12)+$core[1102]; $inh = 0; goto &fetch; }
+$core[002132] = 07200; $code[002132] = *L02132; sub L02132 { $lac &= 010000; goto &fetch; }
+$core[002133] = 04041; $code[002133] = *I02133; sub I02133 { $core[000041] = 02134; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[002134] = 01075; $code[002134] = *I02134; sub I02134 { $lac += $core[000075]; goto &fetch; }
+$core[002135] = 04020; $code[002135] = *I02135; sub I02135 { $core[000020] = 02136; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002136] = 01107; $code[002136] = *I02136; sub I02136 { $lac += $core[000107]; goto &fetch; }
+$core[002137] = 04020; $code[002137] = *I02137; sub I02137 { $core[000020] = 02140; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002140] = 01100; $code[002140] = *I02140; sub I02140 { $lac += $core[000100]; goto &fetch; }
+$core[002141] = 04020; $code[002141] = *I02141; sub I02141 { $core[000020] = 02142; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002142] = 04041; $code[002142] = *I02142; sub I02142 { $core[000041] = 02143; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[002143] = 01113; $code[002143] = *I02143; sub I02143 { $lac += $core[000113]; goto &fetch; }
+$core[002144] = 04020; $code[002144] = *I02144; sub I02144 { $core[000020] = 02145; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002145] = 01114; $code[002145] = *I02145; sub I02145 { $lac += $core[000114]; goto &fetch; }
+$core[002146] = 04020; $code[002146] = *I02146; sub I02146 { $core[000020] = 02147; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002147] = 05750; $code[002147] = *I02147; sub I02147 { $pc = ($ib<<12)+$core[1128]; $inh = 0; goto &fetch; }
+$core[002150] = 00200; $code[002150] = *P02150; sub P02150 { $lac &= (010000|$core[002000]); goto &fetch; }
+$core[002151] = 02521; $code[002151] = *P02151; sub P02151 { if (++$core[($df<<12)+$core[81]] == 010000) { $core[($df<<12)+$core[81]] = 0; $pc++; }$code[($df<<12)+$core[81]] = *emul8; goto &fetch; }
+$core[002152] = 00000; $code[002152] = *S02152; sub S02152 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002153] = 01140; $code[002153] = *I02153; sub I02153 { $lac += $core[000140]; goto &fetch; }
+$core[002154] = 07440; $code[002154] = *I02154; sub I02154 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002155] = 07410; $code[002155] = *I02155; sub I02155 { $skp = 0; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002156] = 05220; $code[002156] = *I02156; sub I02156 { $pc = 002020; $inh = 0; goto &fetch; }
+$core[002157] = 07240; $code[002157] = *I02157; sub I02157 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[002160] = 00051; $code[002160] = *I02160; sub I02160 { $lac &= (010000|$core[000051]); goto &fetch; }
+$core[002161] = 07040; $code[002161] = *I02161; sub I02161 { $lac ^= 07777; goto &fetch; }
+$core[002162] = 05752; $code[002162] = *I02162; sub I02162 { $pc = ($ib<<12)+$core[1130]; $inh = 0; goto &fetch; }
+$core[002163] = 00000; $code[002163] = *S02163; sub S02163 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002164] = 01140; $code[002164] = *I02164; sub I02164 { $lac += $core[000140]; goto &fetch; }
+$core[002165] = 07440; $code[002165] = *I02165; sub I02165 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002166] = 07410; $code[002166] = *I02166; sub I02166 { $skp = 0; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002167] = 05714; $code[002167] = *I02167; sub I02167 { $pc = ($ib<<12)+$core[1100]; $inh = 0; goto &fetch; }
+$core[002170] = 07240; $code[002170] = *I02170; sub I02170 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[002171] = 00051; $code[002171] = *I02171; sub I02171 { $lac &= (010000|$core[000051]); goto &fetch; }
+$core[002172] = 07040; $code[002172] = *I02172; sub I02172 { $lac ^= 07777; goto &fetch; }
+$core[002173] = 05763; $code[002173] = *I02173; sub I02173 { $pc = ($ib<<12)+$core[1139]; $inh = 0; goto &fetch; }
+$core[002200] = 07300; $code[002200] = *L02200; sub L02200 { $lac &= 010000; $lac &= 07777; goto &fetch; }
+$core[002201] = 03056; $code[002201] = *I02201; sub I02201 { $core[000056] = $lac & 07777; $lac &= 010000; $code[000056] = *emul8; goto &fetch; }
+$core[002202] = 07340; $code[002202] = *I02202; sub I02202 { $lac &= 010000; $lac &= 07777; $lac ^= 07777; goto &fetch; }
+$core[002203] = 00140; $code[002203] = *I02203; sub I02203 { $lac &= (010000|$core[000140]); goto &fetch; }
+$core[002204] = 07440; $code[002204] = *I02204; sub I02204 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002205] = 05250; $code[002205] = *I02205; sub I02205 { $pc = 002250; $inh = 0; goto &fetch; }
+$core[002206] = 07140; $code[002206] = *I02206; sub I02206 { $lac &= 07777; $lac ^= 07777; goto &fetch; }
+$core[002207] = 00051; $code[002207] = *L02207; sub L02207 { $lac &= (010000|$core[000051]); goto &fetch; }
+$core[002210] = 07012; $code[002210] = *I02210; sub I02210 { $lac = (($lac&017777)>>2) + (($lac&3)<<11); goto &fetch; }
+$core[002211] = 03054; $code[002211] = *I02211; sub I02211 { $core[000054] = $lac & 07777; $lac &= 010000; $code[000054] = *emul8; goto &fetch; }
+$core[002212] = 07430; $code[002212] = *I02212; sub I02212 { $skp = 0; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002213] = 01072; $code[002213] = *I02213; sub I02213 { $lac += $core[000072]; goto &fetch; }
+$core[002214] = 03055; $code[002214] = *I02214; sub I02214 { $core[000055] = $lac & 07777; $lac &= 010000; $code[000055] = *emul8; goto &fetch; }
+$core[002215] = 01054; $code[002215] = *I02215; sub I02215 { $lac += $core[000054]; goto &fetch; }
+$core[002216] = 07006; $code[002216] = *I02216; sub I02216 { $lac = ($lac<<2) + (($lac>>11)&3); goto &fetch; }
+$core[002217] = 03052; $code[002217] = *I02217; sub I02217 { $core[000052] = $lac & 07777; $lac &= 010000; $code[000052] = *emul8; goto &fetch; }
+$core[002220] = 07430; $code[002220] = *I02220; sub I02220 { $skp = 0; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002221] = 01060; $code[002221] = *I02221; sub I02221 { $lac += $core[000060]; goto &fetch; }
+$core[002222] = 03053; $code[002222] = *I02222; sub I02222 { $core[000053] = $lac & 07777; $lac &= 010000; $code[000053] = *emul8; goto &fetch; }
+$core[002223] = 07100; $code[002223] = *I02223; sub I02223 { $lac &= 07777; goto &fetch; }
+$core[002224] = 01052; $code[002224] = *I02224; sub I02224 { $lac += $core[000052]; goto &fetch; }
+$core[002225] = 07040; $code[002225] = *I02225; sub I02225 { $lac ^= 07777; goto &fetch; }
+$core[002226] = 01051; $code[002226] = *I02226; sub I02226 { $lac += $core[000051]; goto &fetch; }
+$core[002227] = 07040; $code[002227] = *I02227; sub I02227 { $lac ^= 07777; goto &fetch; }
+$core[002230] = 07440; $code[002230] = *I02230; sub I02230 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002231] = 05652; $code[002231] = *I02231; sub I02231 { $pc = ($ib<<12)+$core[1194]; $inh = 0; goto &fetch; }
+$core[002232] = 01072; $code[002232] = *I02232; sub I02232 { $lac += $core[000072]; goto &fetch; }
+$core[002233] = 00051; $code[002233] = *I02233; sub I02233 { $lac &= (010000|$core[000051]); goto &fetch; }
+$core[002234] = 07040; $code[002234] = *I02234; sub I02234 { $lac ^= 07777; goto &fetch; }
+$core[002235] = 01055; $code[002235] = *I02235; sub I02235 { $lac += $core[000055]; goto &fetch; }
+$core[002236] = 07040; $code[002236] = *I02236; sub I02236 { $lac ^= 07777; goto &fetch; }
+$core[002237] = 07440; $code[002237] = *I02237; sub I02237 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002240] = 05652; $code[002240] = *I02240; sub I02240 { $pc = ($ib<<12)+$core[1194]; $inh = 0; goto &fetch; }
+$core[002241] = 01053; $code[002241] = *I02241; sub I02241 { $lac += $core[000053]; goto &fetch; }
+$core[002242] = 07040; $code[002242] = *I02242; sub I02242 { $lac ^= 07777; goto &fetch; }
+$core[002243] = 01140; $code[002243] = *I02243; sub I02243 { $lac += $core[000140]; goto &fetch; }
+$core[002244] = 07040; $code[002244] = *I02244; sub I02244 { $lac ^= 07777; goto &fetch; }
+$core[002245] = 07440; $code[002245] = *I02245; sub I02245 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002246] = 05652; $code[002246] = *I02246; sub I02246 { $pc = ($ib<<12)+$core[1194]; $inh = 0; goto &fetch; }
+$core[002247] = 05653; $code[002247] = *I02247; sub I02247 { $pc = ($ib<<12)+$core[1195]; $inh = 0; goto &fetch; }
+$core[002250] = 07360; $code[002250] = *L02250; sub L02250 { $lac &= 010000; $lac &= 07777; $lac ^= 010000; $lac ^= 07777; goto &fetch; }
+$core[002251] = 05207; $code[002251] = *I02251; sub I02251 { $pc = 002207; $inh = 0; goto &fetch; }
+$core[002252] = 02406; $code[002252] = *P02252; sub P02252 { if (++$core[($df<<12)+$core[6]] == 010000) { $core[($df<<12)+$core[6]] = 0; $pc++; }$code[($df<<12)+$core[6]] = *emul8; goto &fetch; }
+$core[002253] = 02525; $code[002253] = *P02253; sub P02253 { if (++$core[($df<<12)+$core[85]] == 010000) { $core[($df<<12)+$core[85]] = 0; $pc++; }$code[($df<<12)+$core[85]] = *emul8; goto &fetch; }
+$core[002400] = 07200; $code[002400] = *P02400; sub P02400 { $lac &= 010000; goto &fetch; }
+$core[002401] = 01244; $code[002401] = *I02401; sub I02401 { $lac += $core[002444]; goto &fetch; }
+$core[002402] = 03215; $code[002402] = *I02402; sub I02402 { $core[002415] = $lac & 07777; $lac &= 010000; $code[002415] = *emul8; goto &fetch; }
+$core[002403] = 01245; $code[002403] = *I02403; sub I02403 { $lac += $core[002445]; goto &fetch; }
+$core[002404] = 03214; $code[002404] = *I02404; sub I02404 { $core[002414] = $lac & 07777; $lac &= 010000; $code[002414] = *emul8; goto &fetch; }
+$core[002405] = 05216; $code[002405] = *I02405; sub I02405 { $pc = 002416; $inh = 0; goto &fetch; }
+$core[002406] = 07200; $code[002406] = *L02406; sub L02406 { $lac &= 010000; goto &fetch; }
+$core[002407] = 01250; $code[002407] = *I02407; sub I02407 { $lac += $core[002450]; goto &fetch; }
+$core[002410] = 03215; $code[002410] = *I02410; sub I02410 { $core[002415] = $lac & 07777; $lac &= 010000; $code[002415] = *emul8; goto &fetch; }
+$core[002411] = 01251; $code[002411] = *I02411; sub I02411 { $lac += $core[002451]; goto &fetch; }
+$core[002412] = 03214; $code[002412] = *I02412; sub I02412 { $core[002414] = $lac & 07777; $lac &= 010000; $code[002414] = *emul8; goto &fetch; }
+$core[002413] = 05216; $code[002413] = *I02413; sub I02413 { $pc = 002416; $inh = 0; goto &fetch; }
+$core[002414] = 00000; $code[002414] = *P02414; sub P02414 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002415] = 00000; $code[002415] = *P02415; sub P02415 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002416] = 07604; $code[002416] = *P02416; sub P02416 { $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[002417] = 00062; $code[002417] = *I02417; sub I02417 { $lac &= (010000|$core[000062]); goto &fetch; }
+$core[002420] = 07040; $code[002420] = *I02420; sub I02420 { $lac ^= 07777; goto &fetch; }
+$core[002421] = 01062; $code[002421] = *I02421; sub I02421 { $lac += $core[000062]; goto &fetch; }
+$core[002422] = 07040; $code[002422] = *I02422; sub I02422 { $lac ^= 07777; goto &fetch; }
+$core[002423] = 07450; $code[002423] = *I02423; sub I02423 { $skp = 0; $skp = 1 unless $lac&07777; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002424] = 04255; $code[002424] = *I02424; sub I02424 { $core[002455] = 02425; $pc = 002455+1; $code[002455] = *emul8; $inh = 0; goto &fetch; }
+$core[002425] = 07604; $code[002425] = *I02425; sub I02425 { $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[002426] = 00060; $code[002426] = *I02426; sub I02426 { $lac &= (010000|$core[000060]); goto &fetch; }
+$core[002427] = 07040; $code[002427] = *I02427; sub I02427 { $lac ^= 07777; goto &fetch; }
+$core[002430] = 01060; $code[002430] = *I02430; sub I02430 { $lac += $core[000060]; goto &fetch; }
+$core[002431] = 07040; $code[002431] = *I02431; sub I02431 { $lac ^= 07777; goto &fetch; }
+$core[002432] = 07450; $code[002432] = *I02432; sub I02432 { $skp = 0; $skp = 1 unless $lac&07777; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002433] = 07402; $code[002433] = *I02433; sub I02433 { $hlt = 1; goto &fetch; }
+$core[002434] = 07604; $code[002434] = *L02434; sub L02434 { $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[002435] = 00061; $code[002435] = *I02435; sub I02435 { $lac &= (010000|$core[000061]); goto &fetch; }
+$core[002436] = 07040; $code[002436] = *I02436; sub I02436 { $lac ^= 07777; goto &fetch; }
+$core[002437] = 01061; $code[002437] = *I02437; sub I02437 { $lac += $core[000061]; goto &fetch; }
+$core[002440] = 07040; $code[002440] = *I02440; sub I02440 { $lac ^= 07777; goto &fetch; }
+$core[002441] = 07450; $code[002441] = *I02441; sub I02441 { $skp = 0; $skp = 1 unless $lac&07777; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002442] = 05615; $code[002442] = *I02442; sub I02442 { $pc = ($ib<<12)+$core[1293]; $inh = 0; goto &fetch; }
+$core[002443] = 05614; $code[002443] = *I02443; sub I02443 { $pc = ($ib<<12)+$core[1292]; $inh = 0; goto &fetch; }
+$core[002444] = 02020; $code[002444] = *D02444; sub D02444 { if (++$core[000020] == 010000) { $core[000020] = 0; $pc++; }$code[000020] = *emul8; goto &fetch; }
+$core[002445] = 02001; $code[002445] = *D02445; sub D02445 { if (++$core[000001] == 010000) { $core[000001] = 0; $pc++; }$code[000001] = *emul8; goto &fetch; }
+$core[002446] = 02000; $code[002446] = *I02446; sub I02446 { if (++$core[000000] == 010000) { $core[000000] = 0; $pc++; }$code[000000] = *emul8; goto &fetch; }
+$core[002447] = 02074; $code[002447] = *I02447; sub I02447 { if (++$core[000074] == 010000) { $core[000074] = 0; $pc++; }$code[000074] = *emul8; goto &fetch; }
+$core[002450] = 02200; $code[002450] = *P02450; sub P02450 { if (++$core[002400] == 010000) { $core[002400] = 0; $pc++; }$code[002400] = *emul8; goto &fetch; }
+$core[002451] = 02075; $code[002451] = *D02451; sub D02451 { if (++$core[000075] == 010000) { $core[000075] = 0; $pc++; }$code[000075] = *emul8; goto &fetch; }
+$core[002452] = 02464; $code[002452] = *I02452; sub I02452 { if (++$core[($df<<12)+$core[52]] == 010000) { $core[($df<<12)+$core[52]] = 0; $pc++; }$code[($df<<12)+$core[52]] = *emul8; goto &fetch; }
+$core[002453] = 02465; $code[002453] = *I02453; sub I02453 { if (++$core[($df<<12)+$core[53]] == 010000) { $core[($df<<12)+$core[53]] = 0; $pc++; }$code[($df<<12)+$core[53]] = *emul8; goto &fetch; }
+$core[002454] = 02650; $code[002454] = *D02454; sub D02454 { if (++$core[($df<<12)+$core[1320]] == 010000) { $core[($df<<12)+$core[1320]] = 0; $pc++; }$code[($df<<12)+$core[1320]] = *emul8; goto &fetch; }
+$core[002455] = 00000; $code[002455] = *S02455; sub S02455 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002456] = 04026; $code[002456] = *I02456; sub I02456 { $core[000026] = 02457; $pc = 000026+1; $code[000026] = *emul8; $inh = 0; goto &fetch; }
+$core[002457] = 04714; $code[002457] = *I02457; sub I02457 { $core[($ib<<12)+$core[1356]] = 02460; $pc = ($ib<<12)+$core[1356]+1; $code[($ib<<12)+$core[1356]] = *emul8; $inh = 0; goto &fetch; }
+$core[002460] = 07200; $code[002460] = *I02460; sub I02460 { $lac &= 010000; goto &fetch; }
+$core[002461] = 01056; $code[002461] = *I02461; sub I02461 { $lac += $core[000056]; goto &fetch; }
+$core[002462] = 07440; $code[002462] = *I02462; sub I02462 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002463] = 05266; $code[002463] = *I02463; sub I02463 { $pc = 002466; $inh = 0; goto &fetch; }
+$core[002464] = 04715; $code[002464] = *I02464; sub I02464 { $core[($ib<<12)+$core[1357]] = 02465; $pc = ($ib<<12)+$core[1357]+1; $code[($ib<<12)+$core[1357]] = *emul8; $inh = 0; goto &fetch; }
+$core[002465] = 05655; $code[002465] = *I02465; sub I02465 { $pc = ($ib<<12)+$core[1325]; $inh = 0; goto &fetch; }
+$core[002466] = 07200; $code[002466] = *L02466; sub L02466 { $lac &= 010000; goto &fetch; }
+$core[002467] = 01254; $code[002467] = *I02467; sub I02467 { $lac += $core[002454]; goto &fetch; }
+$core[002470] = 03714; $code[002470] = *I02470; sub I02470 { $core[($df<<12)+$core[1356]] = $lac & 07777; $lac &= 010000; $code[($df<<12)+$core[1356]] = *emul8; goto &fetch; }
+$core[002471] = 04041; $code[002471] = *I02471; sub I02471 { $core[000041] = 02472; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[002472] = 07200; $code[002472] = *I02472; sub I02472 { $lac &= 010000; goto &fetch; }
+$core[002473] = 01075; $code[002473] = *I02473; sub I02473 { $lac += $core[000075]; goto &fetch; }
+$core[002474] = 04020; $code[002474] = *I02474; sub I02474 { $core[000020] = 02475; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002475] = 01076; $code[002475] = *I02475; sub I02475 { $lac += $core[000076]; goto &fetch; }
+$core[002476] = 04020; $code[002476] = *P02476; sub P02476 { $core[000020] = 02477; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002477] = 01077; $code[002477] = *I02477; sub I02477 { $lac += $core[000077]; goto &fetch; }
+$core[002500] = 04020; $code[002500] = *I02500; sub I02500 { $core[000020] = 02501; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002501] = 01102; $code[002501] = *I02501; sub I02501 { $lac += $core[000102]; goto &fetch; }
+$core[002502] = 04020; $code[002502] = *P02502; sub P02502 { $core[000020] = 02503; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002503] = 01053; $code[002503] = *I02503; sub I02503 { $lac += $core[000053]; goto &fetch; }
+$core[002504] = 07440; $code[002504] = *I02504; sub I02504 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002505] = 05716; $code[002505] = *I02505; sub I02505 { $pc = ($ib<<12)+$core[1358]; $inh = 0; goto &fetch; }
+$core[002506] = 04717; $code[002506] = *I02506; sub I02506 { $core[($ib<<12)+$core[1359]] = 02507; $pc = ($ib<<12)+$core[1359]+1; $code[($ib<<12)+$core[1359]] = *emul8; $inh = 0; goto &fetch; }
+$core[002507] = 01102; $code[002507] = *L02507; sub L02507 { $lac += $core[000102]; goto &fetch; }
+$core[002510] = 04020; $code[002510] = *I02510; sub I02510 { $core[000020] = 02511; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002511] = 01052; $code[002511] = *I02511; sub I02511 { $lac += $core[000052]; goto &fetch; }
+$core[002512] = 03057; $code[002512] = *I02512; sub I02512 { $core[000057] = $lac & 07777; $lac &= 010000; $code[000057] = *emul8; goto &fetch; }
+$core[002513] = 05720; $code[002513] = *I02513; sub I02513 { $pc = ($ib<<12)+$core[1360]; $inh = 0; goto &fetch; }
+$core[002514] = 02600; $code[002514] = *P02514; sub P02514 { if (++$core[($df<<12)+$core[1280]] == 010000) { $core[($df<<12)+$core[1280]] = 0; $pc++; }$code[($df<<12)+$core[1280]] = *emul8; goto &fetch; }
+$core[002515] = 02732; $code[002515] = *P02515; sub P02515 { if (++$core[($df<<12)+$core[1370]] == 010000) { $core[($df<<12)+$core[1370]] = 0; $pc++; }$code[($df<<12)+$core[1370]] = *emul8; goto &fetch; }
+$core[002516] = 02676; $code[002516] = *P02516; sub P02516 { if (++$core[($df<<12)+$core[1342]] == 010000) { $core[($df<<12)+$core[1342]] = 0; $pc++; }$code[($df<<12)+$core[1342]] = *emul8; goto &fetch; }
+$core[002517] = 02702; $code[002517] = *P02517; sub P02517 { if (++$core[($df<<12)+$core[1346]] == 010000) { $core[($df<<12)+$core[1346]] = 0; $pc++; }$code[($df<<12)+$core[1346]] = *emul8; goto &fetch; }
+$core[002520] = 02616; $code[002520] = *P02520; sub P02520 { if (++$core[($df<<12)+$core[1294]] == 010000) { $core[($df<<12)+$core[1294]] = 0; $pc++; }$code[($df<<12)+$core[1294]] = *emul8; goto &fetch; }
+$core[002521] = 07200; $code[002521] = *L02521; sub L02521 { $lac &= 010000; goto &fetch; }
+$core[002522] = 01245; $code[002522] = *I02522; sub I02522 { $lac += $core[002445]; goto &fetch; }
+$core[002523] = 03214; $code[002523] = *I02523; sub I02523 { $core[002414] = $lac & 07777; $lac &= 010000; $code[002414] = *emul8; goto &fetch; }
+$core[002524] = 05234; $code[002524] = *I02524; sub I02524 { $pc = 002434; $inh = 0; goto &fetch; }
+$core[002525] = 07200; $code[002525] = *L02525; sub L02525 { $lac &= 010000; goto &fetch; }
+$core[002526] = 01251; $code[002526] = *I02526; sub I02526 { $lac += $core[002451]; goto &fetch; }
+$core[002527] = 03214; $code[002527] = *I02527; sub I02527 { $core[002414] = $lac & 07777; $lac &= 010000; $code[002414] = *emul8; goto &fetch; }
+$core[002530] = 05234; $code[002530] = *I02530; sub I02530 { $pc = 002434; $inh = 0; goto &fetch; }
+$core[002600] = 00000; $code[002600] = *S02600; sub S02600 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002601] = 01101; $code[002601] = *I02601; sub I02601 { $lac += $core[000101]; goto &fetch; }
+$core[002602] = 04020; $code[002602] = *I02602; sub I02602 { $core[000020] = 02603; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002603] = 01076; $code[002603] = *I02603; sub I02603 { $lac += $core[000076]; goto &fetch; }
+$core[002604] = 04020; $code[002604] = *I02604; sub I02604 { $core[000020] = 02605; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002605] = 01100; $code[002605] = *I02605; sub I02605 { $lac += $core[000100]; goto &fetch; }
+$core[002606] = 04020; $code[002606] = *I02606; sub I02606 { $core[000020] = 02607; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002607] = 01102; $code[002607] = *I02607; sub I02607 { $lac += $core[000102]; goto &fetch; }
+$core[002610] = 04020; $code[002610] = *I02610; sub I02610 { $core[000020] = 02611; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002611] = 04361; $code[002611] = *I02611; sub I02611 { $core[002761] = 02612; $pc = 002761+1; $code[002761] = *emul8; $inh = 0; goto &fetch; }
+$core[002612] = 01102; $code[002612] = *I02612; sub I02612 { $lac += $core[000102]; goto &fetch; }
+$core[002613] = 04020; $code[002613] = *I02613; sub I02613 { $core[000020] = 02614; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002614] = 01051; $code[002614] = *I02614; sub I02614 { $lac += $core[000051]; goto &fetch; }
+$core[002615] = 03057; $code[002615] = *I02615; sub I02615 { $core[000057] = $lac & 07777; $lac &= 010000; $code[000057] = *emul8; goto &fetch; }
+$core[002616] = 04231; $code[002616] = *L02616; sub L02616 { $core[002631] = 02617; $pc = 002631+1; $code[002631] = *emul8; $inh = 0; goto &fetch; }
+$core[002617] = 00137; $code[002617] = *I02617; sub I02617 { $lac &= (010000|$core[000137]); goto &fetch; }
+$core[002620] = 03112; $code[002620] = *I02620; sub I02620 { $core[000112] = $lac & 07777; $lac &= 010000; $code[000112] = *emul8; goto &fetch; }
+$core[002621] = 02112; $code[002621] = *L02621; sub L02621 { if (++$core[000112] == 010000) { $core[000112] = 0; $pc++; }$code[000112] = *emul8; goto &fetch; }
+$core[002622] = 07410; $code[002622] = *I02622; sub I02622 { $skp = 0; $skp = !$skp; $pc += $skp; goto &fetch; }
+$core[002623] = 05600; $code[002623] = *I02623; sub I02623 { $pc = ($ib<<12)+$core[1408]; $inh = 0; goto &fetch; }
+$core[002624] = 07200; $code[002624] = *I02624; sub I02624 { $lac &= 010000; goto &fetch; }
+$core[002625] = 01057; $code[002625] = *I02625; sub I02625 { $lac += $core[000057]; goto &fetch; }
+$core[002626] = 00410; $code[002626] = *I02626; sub I02626 { $core[000010] = 0000 if ++$core[000010] == 010000; $lac &= (010000|$core[($df<<12)+$core[000010]]); goto &fetch; }
+$core[002627] = 04237; $code[002627] = *I02627; sub I02627 { $core[002637] = 02630; $pc = 002637+1; $code[002637] = *emul8; $inh = 0; goto &fetch; }
+$core[002630] = 05221; $code[002630] = *I02630; sub I02630 { $pc = 002621; $inh = 0; goto &fetch; }
+$core[002631] = 00000; $code[002631] = *S02631; sub S02631 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002632] = 07200; $code[002632] = *I02632; sub I02632 { $lac &= 010000; goto &fetch; }
+$core[002633] = 01074; $code[002633] = *I02633; sub I02633 { $lac += $core[000074]; goto &fetch; }
+$core[002634] = 03010; $code[002634] = *I02634; sub I02634 { $core[000010] = $lac & 07777; $lac &= 010000; $code[000010] = *emul8; goto &fetch; }
+$core[002635] = 07240; $code[002635] = *I02635; sub I02635 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[002636] = 05631; $code[002636] = *I02636; sub I02636 { $pc = ($ib<<12)+$core[1433]; $inh = 0; goto &fetch; }
+$core[002637] = 00000; $code[002637] = *S02637; sub S02637 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002640] = 07440; $code[002640] = *I02640; sub I02640 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002641] = 05244; $code[002641] = *I02641; sub I02641 { $pc = 002644; $inh = 0; goto &fetch; }
+$core[002642] = 04302; $code[002642] = *I02642; sub I02642 { $core[002702] = 02643; $pc = 002702+1; $code[002702] = *emul8; $inh = 0; goto &fetch; }
+$core[002643] = 05637; $code[002643] = *I02643; sub I02643 { $pc = ($ib<<12)+$core[1439]; $inh = 0; goto &fetch; }
+$core[002644] = 07240; $code[002644] = *L02644; sub L02644 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[002645] = 00106; $code[002645] = *I02645; sub I02645 { $lac &= (010000|$core[000106]); goto &fetch; }
+$core[002646] = 04020; $code[002646] = *I02646; sub I02646 { $core[000020] = 02647; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002647] = 05637; $code[002647] = *I02647; sub I02647 { $pc = ($ib<<12)+$core[1439]; $inh = 0; goto &fetch; }
+$core[002650] = 07200; $code[002650] = *I02650; sub I02650 { $lac &= 010000; goto &fetch; }
+$core[002651] = 01273; $code[002651] = *I02651; sub I02651 { $lac += $core[002673]; goto &fetch; }
+$core[002652] = 03200; $code[002652] = *I02652; sub I02652 { $core[002600] = $lac & 07777; $lac &= 010000; $code[002600] = *emul8; goto &fetch; }
+$core[002653] = 04041; $code[002653] = *I02653; sub I02653 { $core[000041] = 02654; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[002654] = 07200; $code[002654] = *I02654; sub I02654 { $lac &= 010000; goto &fetch; }
+$core[002655] = 01075; $code[002655] = *I02655; sub I02655 { $lac += $core[000075]; goto &fetch; }
+$core[002656] = 04020; $code[002656] = *I02656; sub I02656 { $core[000020] = 02657; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002657] = 01076; $code[002657] = *I02657; sub I02657 { $lac += $core[000076]; goto &fetch; }
+$core[002660] = 04020; $code[002660] = *I02660; sub I02660 { $core[000020] = 02661; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002661] = 04323; $code[002661] = *I02661; sub I02661 { $core[002723] = 02662; $pc = 002723+1; $code[002723] = *emul8; $inh = 0; goto &fetch; }
+$core[002662] = 01055; $code[002662] = *I02662; sub I02662 { $lac += $core[000055]; goto &fetch; }
+$core[002663] = 07440; $code[002663] = *I02663; sub I02663 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002664] = 05307; $code[002664] = *I02664; sub I02664 { $pc = 002707; $inh = 0; goto &fetch; }
+$core[002665] = 04302; $code[002665] = *I02665; sub I02665 { $core[002702] = 02666; $pc = 002702+1; $code[002702] = *emul8; $inh = 0; goto &fetch; }
+$core[002666] = 01102; $code[002666] = *L02666; sub L02666 { $lac += $core[000102]; goto &fetch; }
+$core[002667] = 04020; $code[002667] = *I02667; sub I02667 { $core[000020] = 02670; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002670] = 01054; $code[002670] = *I02670; sub I02670 { $lac += $core[000054]; goto &fetch; }
+$core[002671] = 03057; $code[002671] = *I02671; sub I02671 { $core[000057] = $lac & 07777; $lac &= 010000; $code[000057] = *emul8; goto &fetch; }
+$core[002672] = 05216; $code[002672] = *I02672; sub I02672 { $pc = 002616; $inh = 0; goto &fetch; }
+$core[002673] = 02465; $code[002673] = *D02673; sub D02673 { if (++$core[($df<<12)+$core[53]] == 010000) { $core[($df<<12)+$core[53]] = 0; $pc++; }$code[($df<<12)+$core[53]] = *emul8; goto &fetch; }
+$core[002674] = 02507; $code[002674] = *P02674; sub P02674 { if (++$core[($df<<12)+$core[71]] == 010000) { $core[($df<<12)+$core[71]] = 0; $pc++; }$code[($df<<12)+$core[71]] = *emul8; goto &fetch; }
+$core[002675] = 02744; $code[002675] = *D02675; sub D02675 { if (++$core[($df<<12)+$core[1508]] == 010000) { $core[($df<<12)+$core[1508]] = 0; $pc++; }$code[($df<<12)+$core[1508]] = *emul8; goto &fetch; }
+$core[002676] = 07240; $code[002676] = *L02676; sub L02676 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[002677] = 00106; $code[002677] = *I02677; sub I02677 { $lac &= (010000|$core[000106]); goto &fetch; }
+$core[002700] = 04020; $code[002700] = *I02700; sub I02700 { $core[000020] = 02701; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002701] = 05674; $code[002701] = *I02701; sub I02701 { $pc = ($ib<<12)+$core[1468]; $inh = 0; goto &fetch; }
+$core[002702] = 00000; $code[002702] = *S02702; sub S02702 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002703] = 07240; $code[002703] = *I02703; sub I02703 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[002704] = 00105; $code[002704] = *I02704; sub I02704 { $lac &= (010000|$core[000105]); goto &fetch; }
+$core[002705] = 04020; $code[002705] = *I02705; sub I02705 { $core[000020] = 02706; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002706] = 05702; $code[002706] = *I02706; sub I02706 { $pc = ($ib<<12)+$core[1474]; $inh = 0; goto &fetch; }
+$core[002707] = 07200; $code[002707] = *L02707; sub L02707 { $lac &= 010000; goto &fetch; }
+$core[002710] = 01106; $code[002710] = *I02710; sub I02710 { $lac += $core[000106]; goto &fetch; }
+$core[002711] = 04020; $code[002711] = *I02711; sub I02711 { $core[000020] = 02712; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002712] = 05266; $code[002712] = *I02712; sub I02712 { $pc = 002666; $inh = 0; goto &fetch; }
+$core[002713] = 00000; $code[002713] = *S02713; sub S02713 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002714] = 07200; $code[002714] = *I02714; sub I02714 { $lac &= 010000; goto &fetch; }
+$core[002715] = 04041; $code[002715] = *I02715; sub I02715 { $core[000041] = 02716; $pc = 000041+1; $code[000041] = *emul8; $inh = 0; goto &fetch; }
+$core[002716] = 01075; $code[002716] = *I02716; sub I02716 { $lac += $core[000075]; goto &fetch; }
+$core[002717] = 04020; $code[002717] = *I02717; sub I02717 { $core[000020] = 02720; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002720] = 01100; $code[002720] = *I02720; sub I02720 { $lac += $core[000100]; goto &fetch; }
+$core[002721] = 04020; $code[002721] = *I02721; sub I02721 { $core[000020] = 02722; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002722] = 05713; $code[002722] = *I02722; sub I02722 { $pc = ($ib<<12)+$core[1483]; $inh = 0; goto &fetch; }
+$core[002723] = 00000; $code[002723] = *S02723; sub S02723 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002724] = 07200; $code[002724] = *I02724; sub I02724 { $lac &= 010000; goto &fetch; }
+$core[002725] = 01075; $code[002725] = *I02725; sub I02725 { $lac += $core[000075]; goto &fetch; }
+$core[002726] = 04020; $code[002726] = *I02726; sub I02726 { $core[000020] = 02727; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002727] = 01102; $code[002727] = *I02727; sub I02727 { $lac += $core[000102]; goto &fetch; }
+$core[002730] = 04020; $code[002730] = *I02730; sub I02730 { $core[000020] = 02731; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002731] = 05723; $code[002731] = *I02731; sub I02731 { $pc = ($ib<<12)+$core[1491]; $inh = 0; goto &fetch; }
+$core[002732] = 07200; $code[002732] = *I02732; sub I02732 { $lac &= 010000; goto &fetch; }
+$core[002733] = 01275; $code[002733] = *I02733; sub I02733 { $lac += $core[002675]; goto &fetch; }
+$core[002734] = 03200; $code[002734] = *I02734; sub I02734 { $core[002600] = $lac & 07777; $lac &= 010000; $code[002600] = *emul8; goto &fetch; }
+$core[002735] = 04313; $code[002735] = *I02735; sub I02735 { $core[002713] = 02736; $pc = 002713+1; $code[002713] = *emul8; $inh = 0; goto &fetch; }
+$core[002736] = 04323; $code[002736] = *I02736; sub I02736 { $core[002723] = 02737; $pc = 002723+1; $code[002723] = *emul8; $inh = 0; goto &fetch; }
+$core[002737] = 01055; $code[002737] = *I02737; sub I02737 { $lac += $core[000055]; goto &fetch; }
+$core[002740] = 07440; $code[002740] = *I02740; sub I02740 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002741] = 05307; $code[002741] = *I02741; sub I02741 { $pc = 002707; $inh = 0; goto &fetch; }
+$core[002742] = 04302; $code[002742] = *I02742; sub I02742 { $core[002702] = 02743; $pc = 002702+1; $code[002702] = *emul8; $inh = 0; goto &fetch; }
+$core[002743] = 05266; $code[002743] = *I02743; sub I02743 { $pc = 002666; $inh = 0; goto &fetch; }
+$core[002744] = 07200; $code[002744] = *P02744; sub P02744 { $lac &= 010000; goto &fetch; }
+$core[002745] = 01273; $code[002745] = *I02745; sub I02745 { $lac += $core[002673]; goto &fetch; }
+$core[002746] = 03200; $code[002746] = *I02746; sub I02746 { $core[002600] = $lac & 07777; $lac &= 010000; $code[002600] = *emul8; goto &fetch; }
+$core[002747] = 04313; $code[002747] = *I02747; sub I02747 { $core[002713] = 02750; $pc = 002713+1; $code[002713] = *emul8; $inh = 0; goto &fetch; }
+$core[002750] = 01077; $code[002750] = *I02750; sub I02750 { $lac += $core[000077]; goto &fetch; }
+$core[002751] = 04020; $code[002751] = *I02751; sub I02751 { $core[000020] = 02752; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002752] = 01102; $code[002752] = *I02752; sub I02752 { $lac += $core[000102]; goto &fetch; }
+$core[002753] = 04020; $code[002753] = *I02753; sub I02753 { $core[000020] = 02754; $pc = 000020+1; $code[000020] = *emul8; $inh = 0; goto &fetch; }
+$core[002754] = 01053; $code[002754] = *I02754; sub I02754 { $lac += $core[000053]; goto &fetch; }
+$core[002755] = 07440; $code[002755] = *I02755; sub I02755 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[002756] = 05276; $code[002756] = *I02756; sub I02756 { $pc = 002676; $inh = 0; goto &fetch; }
+$core[002757] = 04302; $code[002757] = *I02757; sub I02757 { $core[002702] = 02760; $pc = 002702+1; $code[002702] = *emul8; $inh = 0; goto &fetch; }
+$core[002760] = 05674; $code[002760] = *I02760; sub I02760 { $pc = ($ib<<12)+$core[1468]; $inh = 0; goto &fetch; }
+$core[002761] = 00000; $code[002761] = *S02761; sub S02761 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[002762] = 01140; $code[002762] = *I02762; sub I02762 { $lac += $core[000140]; goto &fetch; }
+$core[002763] = 04237; $code[002763] = *I02763; sub I02763 { $core[002637] = 02764; $pc = 002637+1; $code[002637] = *emul8; $inh = 0; goto &fetch; }
+$core[002764] = 05761; $code[002764] = *I02764; sub I02764 { $pc = ($ib<<12)+$core[1521]; $inh = 0; goto &fetch; }
+$core[004000] = 07200; $code[004000] = *L04000; sub L04000 { $lac &= 010000; goto &fetch; }
+$core[004001] = 01417; $code[004001] = *I04001; sub I04001 { $core[000017] = 0000 if ++$core[000017] == 010000; $lac += $core[($df<<12)+$core[000017]]; goto &fetch; }
+$core[004002] = 03135; $code[004002] = *I04002; sub I04002 { $core[000135] = $lac & 07777; $lac &= 010000; $code[000135] = *emul8; goto &fetch; }
+$core[004003] = 01417; $code[004003] = *I04003; sub I04003 { $core[000017] = 0000 if ++$core[000017] == 010000; $lac += $core[($df<<12)+$core[000017]]; goto &fetch; }
+$core[004004] = 03136; $code[004004] = *I04004; sub I04004 { $core[000136] = $lac & 07777; $lac &= 010000; $code[000136] = *emul8; goto &fetch; }
+$core[004005] = 02216; $code[004005] = *I04005; sub I04005 { if (++$core[004016] == 010000) { $core[004016] = 0; $pc++; }$code[004016] = *emul8; goto &fetch; }
+$core[004006] = 05647; $code[004006] = *I04006; sub I04006 { $pc = ($ib<<12)+$core[2087]; $inh = 0; goto &fetch; }
+$core[004007] = 01215; $code[004007] = *I04007; sub I04007 { $lac += $core[004015]; goto &fetch; }
+$core[004010] = 03017; $code[004010] = *I04010; sub I04010 { $core[000017] = $lac & 07777; $lac &= 010000; $code[000017] = *emul8; goto &fetch; }
+$core[004011] = 01214; $code[004011] = *I04011; sub I04011 { $lac += $core[004014]; goto &fetch; }
+$core[004012] = 03216; $code[004012] = *I04012; sub I04012 { $core[004016] = $lac & 07777; $lac &= 010000; $code[004016] = *emul8; goto &fetch; }
+$core[004013] = 05647; $code[004013] = *I04013; sub I04013 { $pc = ($ib<<12)+$core[2087]; $inh = 0; goto &fetch; }
+$core[004014] = 07634; $code[004014] = *D04014; sub D04014 { $skp = 0; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[004015] = 04177; $code[004015] = *D04015; sub D04015 { $core[000177] = 04016; $pc = 000177+1; $code[000177] = *emul8; $inh = 0; goto &fetch; }
+$core[004016] = 00000; $code[004016] = *D04016; sub D04016 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[004017] = 00000; $code[004017] = *D04017; sub D04017 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[004020] = 07300; $code[004020] = *L04020; sub L04020 { $lac &= 010000; $lac &= 07777; goto &fetch; }
+$core[004021] = 02217; $code[004021] = *I04021; sub I04021 { if (++$core[004017] == 010000) { $core[004017] = 0; $pc++; }$code[004017] = *emul8; goto &fetch; }
+$core[004022] = 07000; $code[004022] = *I04022; sub I04022 { goto &fetch; }
+$core[004023] = 01217; $code[004023] = *I04023; sub I04023 { $lac += $core[004017]; goto &fetch; }
+$core[004024] = 07010; $code[004024] = *I04024; sub I04024 { $lac = (($lac&017777)>>1) + (($lac&1)<<12); goto &fetch; }
+$core[004025] = 07630; $code[004025] = *D04025; sub D04025 { $skp = 0; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; $lac &= 010000; goto &fetch; }
+$core[004026] = 05230; $code[004026] = *I04026; sub I04026 { $pc = 004030; $inh = 0; goto &fetch; }
+$core[004027] = 05200; $code[004027] = *I04027; sub I04027 { $pc = 004000; $inh = 0; goto &fetch; }
+$core[004030] = 07604; $code[004030] = *L04030; sub L04030 { $lac &= 010000; $lac |= $swr; goto &fetch; }
+$core[004031] = 00063; $code[004031] = *I04031; sub I04031 { $lac &= (010000|$core[000063]); goto &fetch; }
+$core[004032] = 07000; $code[004032] = *I04032; sub I04032 { goto &fetch; }
+$core[004033] = 07440; $code[004033] = *I04033; sub I04033 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[004034] = 05650; $code[004034] = *I04034; sub I04034 { $pc = ($ib<<12)+$core[2088]; $inh = 0; goto &fetch; }
+$core[004035] = 07240; $code[004035] = *I04035; sub I04035 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004036] = 00121; $code[004036] = *I04036; sub I04036 { $lac &= (010000|$core[000121]); goto &fetch; }
+$core[004037] = 07000; $code[004037] = *I04037; sub I04037 { goto &fetch; }
+$core[004040] = 03135; $code[004040] = *I04040; sub I04040 { $core[000135] = $lac & 07777; $lac &= 010000; $code[000135] = *emul8; goto &fetch; }
+$core[004041] = 07040; $code[004041] = *I04041; sub I04041 { $lac ^= 07777; goto &fetch; }
+$core[004042] = 00121; $code[004042] = *I04042; sub I04042 { $lac &= (010000|$core[000121]); goto &fetch; }
+$core[004043] = 07001; $code[004043] = *I04043; sub I04043 { $lac++; goto &fetch; }
+$core[004044] = 01410; $code[004044] = *I04044; sub I04044 { $core[000010] = 0000 if ++$core[000010] == 010000; $lac += $core[($df<<12)+$core[000010]]; goto &fetch; }
+$core[004045] = 03136; $code[004045] = *I04045; sub I04045 { $core[000136] = $lac & 07777; $lac &= 010000; $code[000136] = *emul8; goto &fetch; }
+$core[004046] = 05647; $code[004046] = *I04046; sub I04046 { $pc = ($ib<<12)+$core[2087]; $inh = 0; goto &fetch; }
+$core[004047] = 00225; $code[004047] = *P04047; sub P04047 { $lac &= (010000|$core[004025]); goto &fetch; }
+$core[004050] = 00312; $code[004050] = *P04050; sub P04050 { $lac &= (010000|$core[004112]); goto &fetch; }
+$core[004051] = 07240; $code[004051] = *L04051; sub L04051 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004052] = 00121; $code[004052] = *I04052; sub I04052 { $lac &= (010000|$core[000121]); goto &fetch; }
+$core[004053] = 07040; $code[004053] = *I04053; sub I04053 { $lac ^= 07777; goto &fetch; }
+$core[004054] = 00122; $code[004054] = *I04054; sub I04054 { $lac &= (010000|$core[000122]); goto &fetch; }
+$core[004055] = 03275; $code[004055] = *I04055; sub I04055 { $core[004075] = $lac & 07777; $lac &= 010000; $code[004075] = *emul8; goto &fetch; }
+$core[004056] = 07240; $code[004056] = *I04056; sub I04056 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004057] = 00122; $code[004057] = *I04057; sub I04057 { $lac &= (010000|$core[000122]); goto &fetch; }
+$core[004060] = 07040; $code[004060] = *I04060; sub I04060 { $lac ^= 07777; goto &fetch; }
+$core[004061] = 00121; $code[004061] = *I04061; sub I04061 { $lac &= (010000|$core[000121]); goto &fetch; }
+$core[004062] = 03274; $code[004062] = *I04062; sub I04062 { $core[004074] = $lac & 07777; $lac &= 010000; $code[004074] = *emul8; goto &fetch; }
+$core[004063] = 07240; $code[004063] = *I04063; sub I04063 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004064] = 00275; $code[004064] = *I04064; sub I04064 { $lac &= (010000|$core[004075]); goto &fetch; }
+$core[004065] = 07440; $code[004065] = *I04065; sub I04065 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[004066] = 05676; $code[004066] = *I04066; sub I04066 { $pc = ($ib<<12)+$core[2110]; $inh = 0; goto &fetch; }
+$core[004067] = 07240; $code[004067] = *I04067; sub I04067 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004070] = 00274; $code[004070] = *I04070; sub I04070 { $lac &= (010000|$core[004074]); goto &fetch; }
+$core[004071] = 07440; $code[004071] = *I04071; sub I04071 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[004072] = 05676; $code[004072] = *I04072; sub I04072 { $pc = ($ib<<12)+$core[2110]; $inh = 0; goto &fetch; }
+$core[004073] = 05277; $code[004073] = *I04073; sub I04073 { $pc = 004077; $inh = 0; goto &fetch; }
+$core[004074] = 00000; $code[004074] = *D04074; sub D04074 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[004075] = 00000; $code[004075] = *D04075; sub D04075 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[004076] = 00400; $code[004076] = *P04076; sub P04076 { $lac &= (010000|$core[($df<<12)+$core[0]]); goto &fetch; }
+$core[004077] = 07240; $code[004077] = *L04077; sub L04077 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004100] = 00134; $code[004100] = *I04100; sub I04100 { $lac &= (010000|$core[000134]); goto &fetch; }
+$core[004101] = 07040; $code[004101] = *I04101; sub I04101 { $lac ^= 07777; goto &fetch; }
+$core[004102] = 00120; $code[004102] = *I04102; sub I04102 { $lac &= (010000|$core[000120]); goto &fetch; }
+$core[004103] = 03322; $code[004103] = *I04103; sub I04103 { $core[004122] = $lac & 07777; $lac &= 010000; $code[004122] = *emul8; goto &fetch; }
+$core[004104] = 07240; $code[004104] = *I04104; sub I04104 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004105] = 00120; $code[004105] = *I04105; sub I04105 { $lac &= (010000|$core[000120]); goto &fetch; }
+$core[004106] = 07040; $code[004106] = *I04106; sub I04106 { $lac ^= 07777; goto &fetch; }
+$core[004107] = 00134; $code[004107] = *I04107; sub I04107 { $lac &= (010000|$core[000134]); goto &fetch; }
+$core[004110] = 03323; $code[004110] = *I04110; sub I04110 { $core[004123] = $lac & 07777; $lac &= 010000; $code[004123] = *emul8; goto &fetch; }
+$core[004111] = 07240; $code[004111] = *I04111; sub I04111 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004112] = 00322; $code[004112] = *D04112; sub D04112 { $lac &= (010000|$core[004122]); goto &fetch; }
+$core[004113] = 07440; $code[004113] = *I04113; sub I04113 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[004114] = 05676; $code[004114] = *I04114; sub I04114 { $pc = ($ib<<12)+$core[2110]; $inh = 0; goto &fetch; }
+$core[004115] = 07240; $code[004115] = *I04115; sub I04115 { $lac &= 010000; $lac ^= 07777; goto &fetch; }
+$core[004116] = 00323; $code[004116] = *I04116; sub I04116 { $lac &= (010000|$core[004123]); goto &fetch; }
+$core[004117] = 07440; $code[004117] = *I04117; sub I04117 { $skp = 0; $skp = 1 unless $lac&07777; $pc += $skp; goto &fetch; }
+$core[004120] = 05676; $code[004120] = *I04120; sub I04120 { $pc = ($ib<<12)+$core[2110]; $inh = 0; goto &fetch; }
+$core[004121] = 05724; $code[004121] = *I04121; sub I04121 { $pc = ($ib<<12)+$core[2132]; $inh = 0; goto &fetch; }
+$core[004122] = 00000; $code[004122] = *D04122; sub D04122 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[004123] = 00000; $code[004123] = *D04123; sub D04123 { $lac &= (010000|$core[000000]); goto &fetch; }
+$core[004124] = 00407; $code[004124] = *P04124; sub P04124 { $lac &= (010000|$core[($df<<12)+$core[7]]); goto &fetch; }
+$core[004200] = 07777; $code[004200] = *D04200; sub D04200 { &emul8; goto &fetch; }
+$core[004201] = 07777; $code[004201] = *I04201; sub I04201 { &emul8; goto &fetch; }
+$core[004202] = 07776; $code[004202] = *I04202; sub I04202 { $skp = 0; $skp = 1 unless $lac&07777; $skp = 1 if $lac&04000; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; $lac &= 010000; $lac |= $swr; $hlt = 1; goto &fetch; }
+$core[004203] = 07777; $code[004203] = *I04203; sub I04203 { &emul8; goto &fetch; }
+$core[004204] = 07775; $code[004204] = *I04204; sub I04204 { &emul8; goto &fetch; }
+$core[004205] = 07777; $code[004205] = *I04205; sub I04205 { &emul8; goto &fetch; }
+$core[004206] = 07773; $code[004206] = *I04206; sub I04206 { &emul8; goto &fetch; }
+$core[004207] = 07777; $code[004207] = *I04207; sub I04207 { &emul8; goto &fetch; }
+$core[004210] = 07767; $code[004210] = *I04210; sub I04210 { &emul8; goto &fetch; }
+$core[004211] = 07777; $code[004211] = *I04211; sub I04211 { &emul8; goto &fetch; }
+$core[004212] = 07757; $code[004212] = *I04212; sub I04212 { &emul8; goto &fetch; }
+$core[004213] = 07777; $code[004213] = *I04213; sub I04213 { &emul8; goto &fetch; }
+$core[004214] = 07737; $code[004214] = *I04214; sub I04214 { &emul8; goto &fetch; }
+$core[004215] = 07777; $code[004215] = *I04215; sub I04215 { &emul8; goto &fetch; }
+$core[004216] = 07677; $code[004216] = *I04216; sub I04216 { &emul8; goto &fetch; }
+$core[004217] = 07777; $code[004217] = *I04217; sub I04217 { &emul8; goto &fetch; }
+$core[004220] = 07577; $code[004220] = *I04220; sub I04220 { &emul8; goto &fetch; }
+$core[004221] = 07777; $code[004221] = *I04221; sub I04221 { &emul8; goto &fetch; }
+$core[004222] = 07377; $code[004222] = *I04222; sub I04222 { $lac &= 010000; $lac &= 07777; $lac ^= 010000; $lac ^= 07777; $lac++; $lac = ($lac<<2) + (($lac>>11)&3); $lac = (($lac&017777)>>2) + (($lac&3)<<11); goto &fetch; }
+$core[004223] = 07777; $code[004223] = *I04223; sub I04223 { &emul8; goto &fetch; }
+$core[004224] = 06777; $code[004224] = *I04224; sub I04224 { &emul8; goto &fetch; }
+$core[004225] = 07777; $code[004225] = *I04225; sub I04225 { &emul8; goto &fetch; }
+$core[004226] = 05777; $code[004226] = *I04226; sub I04226 { $pc = ($ib<<12)+$core[2303]; $inh = 0; goto &fetch; }
+$core[004227] = 07777; $code[004227] = *I04227; sub I04227 { &emul8; goto &fetch; }
+$core[004230] = 03777; $code[004230] = *I04230; sub I04230 { $core[($df<<12)+$core[2303]] = $lac & 07777; $lac &= 010000; $code[($df<<12)+$core[2303]] = *emul8; goto &fetch; }
+$core[004231] = 07777; $code[004231] = *I04231; sub I04231 { &emul8; goto &fetch; }
+$core[004232] = 07777; $code[004232] = *I04232; sub I04232 { &emul8; goto &fetch; }
+$core[004233] = 07777; $code[004233] = *I04233; sub I04233 { &emul8; goto &fetch; }
+$core[004234] = 07776; $code[004234] = *I04234; sub I04234 { $skp = 0; $skp = 1 unless $lac&07777; $skp = 1 if $lac&04000; $skp = 1 if $lac&010000; $skp = !$skp; $pc += $skp; $lac &= 010000; $lac |= $swr; $hlt = 1; goto &fetch; }
+$core[004235] = 07777; $code[004235] = *I04235; sub I04235 { &emul8; goto &fetch; }
+$core[004236] = 07775; $code[004236] = *I04236; sub I04236 { &emul8; goto &fetch; }
+$core[004237] = 07777; $code[004237] = *I04237; sub I04237 { &emul8; goto &fetch; }
+$core[004240] = 07773; $code[004240] = *I04240; sub I04240 { &emul8; goto &fetch; }
+$core[004241] = 07777; $code[004241] = *I04241; sub I04241 { &emul8; goto &fetch; }
+$core[004242] = 07767; $code[004242] = *I04242; sub I04242 { &emul8; goto &fetch; }
+$core[004243] = 07777; $code[004243] = *I04243; sub I04243 { &emul8; goto &fetch; }
+$core[004244] = 07757; $code[004244] = *I04244; sub I04244 { &emul8; goto &fetch; }
+$core[004245] = 07777; $code[004245] = *I04245; sub I04245 { &emul8; goto &fetch; }
+$core[004246] = 07737; $code[004246] = *I04246; sub I04246 { &emul8; goto &fetch; }
+$core[004247] = 07777; $code[004247] = *I04247; sub I04247 { &emul8; goto &fetch; }
+$core[004250] = 07677; $code[004250] = *I04250; sub I04250 { &emul8; goto &fetch; }
+$core[004251] = 07777; $code[004251] = *I04251; sub I04251 { &emul8; goto &fetch; }
+$core[004252] = 07577; $code[004252] = *I04252; sub I04252 { &emul8; goto &fetch; }
+$core[004253] = 07777; $code[004253] = *I04253; sub I04253 { &emul8; goto &fetch; }
+$core[004254] = 07377; $code[004254] = *I04254; sub I04254 { $lac &= 010000; $lac &= 07777; $lac ^= 010000; $lac ^= 07777; $lac++; $lac = ($lac<<2) + (($lac>>11)&3); $lac = (($lac&017777)>>2) + (($lac&3)<<11); goto &fetch; }
+$core[004255] = 06777; $code[004255] = *I04255; sub I04255 { &emul8; goto &fetch; }
+$core[004256] = 07777; $code[004256] = *I04256; sub I04256 { &emul8; goto &fetch; }
+$core[004257] = 05777; $code[004257] = *I04257; sub I04257 { $pc = ($ib<<12)+$core[2303]; $inh = 0; goto &fetch; }
+$core[004260] = 07777; $code[004260] = *I04260; sub I04260 { &emul8; goto &fetch; }
+$core[004261] = 03777; $code[004261] = *I04261; sub I04261 { $core[($df<<12)+$core[2303]] = $lac & 07777; $lac &= 010000; $code[($df<<12)+$core[2303]] = *emul8; goto &fetch; }
+$core[004262] = 07777; $code[004262] = *I04262; sub I04262 { &emul8; goto &fetch; }
+$core[004263] = 00001; $code[004263] = *I04263; sub I04263 { $lac &= (010000|$core[000001]); goto &fetch; }
+$core[004264] = 07777; $code[004264] = *I04264; sub I04264 { &emul8; goto &fetch; }
+$core[004265] = 00002; $code[004265] = *I04265; sub I04265 { $lac &= (010000|$core[000002]); goto &fetch; }
+$core[004266] = 07777; $code[004266] = *I04266; sub I04266 { &emul8; goto &fetch; }
+$core[004267] = 00004; $code[004267] = *I04267; sub I04267 { $lac &= (010000|$core[000004]); goto &fetch; }
+$core[004270] = 07777; $code[004270] = *I04270; sub I04270 { &emul8; goto &fetch; }
+$core[004271] = 00010; $code[004271] = *I04271; sub I04271 { $lac &= (010000|$core[000010]); goto &fetch; }
+$core[004272] = 07777; $code[004272] = *I04272; sub I04272 { &emul8; goto &fetch; }
+$core[004273] = 00020; $code[004273] = *I04273; sub I04273 { $lac &= (010000|$core[000020]); goto &fetch; }
+$core[004274] = 07777; $code[004274] = *I04274; sub I04274 { &emul8; goto &fetch; }
+$core[004275] = 00040; $code[004275] = *I04275; sub I04275 { $lac &= (010000|$core[000040]); goto &fetch; }
+$core[004276] = 07777; $code[004276] = *I04276; sub I04276 { &emul8; goto &fetch; }
+$core[004277] = 00100; $code[004277] = *I04277; sub I04277 { $lac &= (010000|$core[000100]); goto &fetch; }
+$core[004300] = 07777; $code[004300] = *I04300; sub I04300 { &emul8; goto &fetch; }
+$core[004301] = 00200; $code[004301] = *I04301; sub I04301 { $lac &= (010000|$core[004200]); goto &fetch; }
+$core[004302] = 07777; $code[004302] = *I04302; sub I04302 { &emul8; goto &fetch; }
+$core[004303] = 00400; $code[004303] = *I04303; sub I04303 { $lac &= (010000|$core[($df<<12)+$core[0]]); goto &fetch; }
+$core[004304] = 07777; $code[004304] = *I04304; sub I04304 { &emul8; goto &fetch; }
+$core[004305] = 01000; $code[004305] = *I04305; sub I04305 { $lac += $core[000000]; goto &fetch; }
+$core[004306] = 07777; $code[004306] = *I04306; sub I04306 { &emul8; goto &fetch; }
+$core[004307] = 02000; $code[004307] = *I04307; sub I04307 { if (++$core[000000] == 010000) { $core[000000] = 0; $pc++; }$code[000000] = *emul8; goto &fetch; }
+$core[004310] = 07777; $code[004310] = *I04310; sub I04310 { &emul8; goto &fetch; }
+$core[004311] = 04000; $code[004311] = *I04311; sub I04311 { $core[000000] = 04312; $pc = 000000+1; $code[000000] = *emul8; $inh = 0; goto &fetch; }
+$core[004312] = 00001; $code[004312] = *I04312; sub I04312 { $lac &= (010000|$core[000001]); goto &fetch; }
+$core[004313] = 07777; $code[004313] = *I04313; sub I04313 { &emul8; goto &fetch; }
+$core[004314] = 00002; $code[004314] = *I04314; sub I04314 { $lac &= (010000|$core[000002]); goto &fetch; }
+$core[004315] = 07777; $code[004315] = *I04315; sub I04315 { &emul8; goto &fetch; }
+$core[004316] = 00004; $code[004316] = *I04316; sub I04316 { $lac &= (010000|$core[000004]); goto &fetch; }
+$core[004317] = 07777; $code[004317] = *I04317; sub I04317 { &emul8; goto &fetch; }
+$core[004320] = 00010; $code[004320] = *I04320; sub I04320 { $lac &= (010000|$core[000010]); goto &fetch; }
+$core[004321] = 07777; $code[004321] = *I04321; sub I04321 { &emul8; goto &fetch; }
+$core[004322] = 00200; $code[004322] = *I04322; sub I04322 { $lac &= (010000|$core[004200]); goto &fetch; }
+$core[004323] = 07777; $code[004323] = *I04323; sub I04323 { &emul8; goto &fetch; }
+$core[004324] = 00400; $code[004324] = *I04324; sub I04324 { $lac &= (010000|$core[($df<<12)+$core[0]]); goto &fetch; }
+$core[004325] = 07777; $code[004325] = *I04325; sub I04325 { &emul8; goto &fetch; }
+$core[004326] = 00100; $code[004326] = *I04326; sub I04326 { $lac &= (010000|$core[000100]); goto &fetch; }
+$core[004327] = 07777; $code[004327] = *I04327; sub I04327 { &emul8; goto &fetch; }
+$core[004330] = 00200; $code[004330] = *I04330; sub I04330 { $lac &= (010000|$core[004200]); goto &fetch; }
+$core[004331] = 07777; $code[004331] = *I04331; sub I04331 { &emul8; goto &fetch; }
+$core[004332] = 00400; $code[004332] = *I04332; sub I04332 { $lac &= (010000|$core[($df<<12)+$core[0]]); goto &fetch; }
+$core[004333] = 07777; $code[004333] = *I04333; sub I04333 { &emul8; goto &fetch; }
+$core[004334] = 01000; $code[004334] = *I04334; sub I04334 { $lac += $core[000000]; goto &fetch; }
+$core[004335] = 07777; $code[004335] = *I04335; sub I04335 { &emul8; goto &fetch; }
+$core[004336] = 02000; $code[004336] = *I04336; sub I04336 { if (++$core[000000] == 010000) { $core[000000] = 0; $pc++; }$code[000000] = *emul8; goto &fetch; }
+$core[004337] = 07777; $code[004337] = *I04337; sub I04337 { &emul8; goto &fetch; }
+$core[004340] = 04000; $code[004340] = *I04340; sub I04340 { $core[000000] = 04341; $pc = 000000+1; $code[000000] = *emul8; $inh = 0; goto &fetch; }
+$core[004341] = 07777; $code[004341] = *I04341; sub I04341 { &emul8; goto &fetch; }
+# End of compiled code.
+
+#
+# More boilerplate.
+
+#
+# Emulate the hard stuff:
+#   IOT instructions.
+#   Group 3 OPR instructions (dependent on mode A or B).
+#   Code modified at runtime.
+sub emul8 {
+  # $pc has already been incremented by the caller.  Back it
+  # up, and have a look at the instruction that got us here.
+  $inst = $core[$pc-1];
+  $op = $inst >> 9;
+  if ($op < 6) {
+    #
+    # Operation refences memory
+    # Note: Direct EA is always in the current field!
+    $ea = $pc & 070000;
+    $ea += $inst & 0177;
+    $ea += $pc & 07600 if $inst & 0200; # Page bit set
+    if ($inst & 0400) { # Indirect reference
+      if (($ea&07770) == 0010) { # Autoindex
+        $core[$ea] = 0000 if ++$core[$ea] == 010000;
+      }
+      if ($op < 4) {
+        $ea = ($df<<12)+$core[$ea];
+      } else {
+        $ea = ($ib<<12)+$core[$ea];
+      }
+    }
+    if ($op == 0) {
+      $lac &= (010000|$core[$ea]);
+    } elsif ($op == 1) {
+      $lac += $core[$ea];
+    } elsif ($op == 2) {
+      if (++$core[$ea] == 010000) {
+        $core[$ea] = 0; $pc++;
+      }
+      $code[$ea] = *emul8;
+    } elsif ($op == 3) {
+      $core[$ea] = $lac & 07777; $lac &= 010000;
+      $code[$ea] = *emul8;
+    } elsif ($op == 4) {
+      $core[$ea] = $pc; $pc = $ea+1;
+      $code[$ea] = *emul8;
+      $inh = 0;
+    } else { # $op == 5
+      $pc = $ea;
+      $inh = 0;
+    }
+  } elsif ($op == 6) {
+    #
+    # IOT -- hair ensues.
+# BUGBUG: Should do more here.
+    if (($inst&07770) == 06000) { # Interrupt control
+      $pc += $ion, $ion = $ionn = 0 if ($inst&07) == 00; # SKON
+      $ionn = 1 if ($inst&07) == 01; # ION
+      $ion = $ionn = 0 if ($inst&07) == 02; # IOF
+      $pc += $irq if ($inst&07) == 03; # SRQ
+      $lac = ($lac&010000)+(($lac>>1)&04000)+($gt<<10)+($irq<<9)+($inh<<8)+($ion<<7)+$rif if ($inst&07) == 04; # GTF
+      if (($inst&07) == 05) { # RTF
+        # Contrary to documentation, RTF ignores IE and enables interrupts.
+        ($l, $gt, $inh, $ionn, $rif) = ($lac&04000, !!($lac&02000), !!($lac&0400), 1|!!($lac&0200), $lac&0177);
+        $lac = $l<<1 | ($lac&07777);
+      }
+      $pc += $gt if ($inst&07) == 06; # SGT
+      $lac = $ion = $ionn = $ttof = $ttofn = $ttif = 0 if ($inst&07) == 07; # CAF
+    } elsif (($inst&07700) == 06200) { # MMU
+      $fld = ($inst>>3) & 07;
+      if ($inst & 04) { # More decoding based on $fld
+        $lac |= $df<<3 if $fld == 01; # RDF
+        $lac |= $pc>>12 if $fld == 02; # RIF
+        $lac |= $ib if $fld == 03; # RIB
+        ($um, $ib, $df) = ($rif>>6, ($rif>>3)&07, $rif&07)if $fld == 04; # RMF
+      } else { # $fld is new IB, DF, or both
+        $df = $fld if $inst & 01; # CDF
+        if ($inst & 02) { # CIF
+          $ib = $fld; # Save for next JMP, JMS
+          $inh = 1; # CIF sets inhibit to delay interrupts.
+        }
+      }
+    } elsif (($inst&07770) == 06010) { # High spped reader
+    } elsif (($inst&07770) == 06030) { # Keyboard device
+      $ttif = 0 if $inst == 06030; # Clear input flag, no rrun
+      $pc += $ttif if $inst & 01; # Skip if ready
+      $lac &= 010000, $ttif = 0 if $inst & 02; # Clear flag, set rrun
+      $lac |= $ttib if ($inst&05) == 04; # OR in the last character
+      $ttie = $lac & 01 if ($inst&05) == 05; # TTY interrupt enable
+    } elsif (($inst&07770) == 06040) { # Teleprinter device
+      $ttof = $ttofn = 1 if $inst == 06040; # Set printer flag
+      $pc += $ttof if $inst == 06041; # Skip if ready
+      $ttof = $ttofn = 0 if $inst == 06042; # Clear flag
+      if ($inst & 04) { # Output a character
+        print pack("C", $lac&0177);
+        $ttofn = 1;
+      }
+    } elsif (($inst&07770) == 06070) { # VC8/I
+    } elsif (($inst&07770) == 06100) { # Memory Parity, Power Low
+    } elsif (($inst&07740) == 06140) { # 6140-6177 LINC, Type 338 display
+    } elsif (($inst&07770) == 06330) { # LAB-8
+    } elsif (($inst&07770) == 06340) { # LAB-8
+    } elsif (($inst&07760) == 06760) { # 6760-6777 DECTape
+    } else {
+      $inst = sprintf("%05o", $inst);
+      warn "IOT $inst treated as NOP\r\n";
+    }
+  } else { # $op == 7
+    # Must be an OPR.
+    if (($inst & 0400) == 0000) {
+      #
+      # Group 1 -- shifts, clears, complements
+      # These are clearest when printed in chronological order.
+      # The timing is model dependent, with the PDP-8I having the
+      # strictest ordering.
+      $lac &= 010000 if $inst & 0200; # T1 CLA
+      $lac &= 07777  if $inst & 0100; # T1 CLL
+      $lac ^= 010000 if $inst & 0020; # T2 CML
+      $lac ^= 07777  if $inst & 0040; # T2 CMA
+      $lac++  if ($inst & 0001) == 001; # T3 IAC
+      $lac = ($lac<<1) + (($lac>>12)&1) if ($inst & 0006) == 004; # T4 RAL
+      $lac = ($lac<<2) + (($lac>>11)&3) if ($inst & 0006) == 006; # T4 RTL
+      $lac = ($lac&017777>>1) + (($lac&1)<<12) if ($inst & 0012) == 010; # T4 RAR
+      $lac = ($lac&017777>>2) + (($lac&3)<<11) if ($inst & 0012) == 012; # T4 RTR
+      $lac = ($lac&010000) + (($lac&077)<<6) + (($lac>>6)&077) if ($inst & 0016) == 002; # T4 BSW
+    } elsif (($inst & 0401) == 0400) {
+      #
+      # Group 2 -- Skips, hlt, read switches
+      # These are clearest when printed in chronological order.
+      # The timing here is not model dependent.
+      $skp = 0  if ($inst & 0170) != 0000; # T1 may skip
+      $skp = !($lac&07777)  if $inst & 0040; # T1 SZA
+      $skp |= ($lac&04000)  if $inst & 0100; # T1 SMA
+      $skp |= ($lac&010000) if $inst & 0020; # T1 SNL
+      $skp = !$skp  if $inst & 0010; # T1 SKP
+      $pc += $skp  if ($inst & 0170) != 0000; # T1 SKP
+      $lac &= 010000 if $inst & 0200; # T2 CLA
+      $lac |= $swr if ($inst & 0004); # T3 OSR
+      $hlt = 1 if ($inst & 0002); # T4 HLT
+    } else {
+      #
+      # Group 3 -- Extended Arithmetic Unit
+      # Where to find the operand (if any) depends on the mode (A or B).
+      $lac &= 010000 if $inst & 0200; # T1 CLA
+      if (($inst & 0120) == 0100) {
+        $lac |= $mq; # T2 MQA
+      } elsif (($inst & 0120) == 0020) {
+        $mq = $lac & 07777; # T2 MQL
+        $lac &= 010000;
+      } elsif (($inst & 0120) == 0120) {
+        ($lac, $mq) = (($lac&010000)+$mq, $lac & 07777); # T2 SWP
+      }
+      if ($modeb) {
+# BUGBUG: This EAE stuff is basically unimplemented as yet!
+# BUGBUG: Fetch an operand from the instruction stream.
+# Addresses in the next word.
+    $inst = sprintf("%05o", $inst);
+warn "EAE Mode B $inst treated as NOP";
+      } else { # mode A
+# BUGBUG: Fetch an operand from the instruction stream.
+# Operands in the next word.
+        $lac |= $sc if $inst & 0040; # T2 SCA
+        if (($inst & 016) == 002) { # T3 SCL
+          print '$sc = (~$core[++$pc]) & 037; ';
+        } elsif (($inst & 016) == 004) { # T3 MUY
+          ++$pc;
+          print '($lac, $mq) = (($mq*$core[',$pc,']+$lac)>>12, ($mq*$core[',$pc,']+$lac)&07777; ';
+        } elsif (($inst & 016) == 006) { # T3 DVI
+          ++$pc;
+          print '$lnktmp = $lac < $core[',$pc,']? 010000 : 0; $lac &= 07777; ';
+          print '($lac, $mq) = (int(($lac<<12+$mq) / $core[',$pc,']), (($lac<<12+$mq) % $core[',$pc,'])); ';
+          print '$lac += $lnktmp; '
+        } elsif (($inst & 016) == 010) { # T3 NMI
+        } elsif (($inst & 016) == 012) { # T3 SHL
+        } elsif (($inst & 016) == 014) { # T3 ASR
+        } elsif (($inst & 016) == 016) { # T3 LSR
+        }
+      }
+    }
+  }
+  goto &fetch;
+}
+
+#
+# The main execution loop.
+sub fetch {
+  # Return if we are halted
+# $hlt = 1 if ++$vrs > 100000;
+  return $lac if $hlt;
+  # This cruft is here because interrupt based programs don't
+  # necessarily poll the input device.
+  # What we want is to allow (but not encourage) over-run, 
+  # with the new character replacing the old.
+  # Note that we don't get here at all until the program
+  # asks about keyboard ready..
+  $ttit = ReadKey(-1); # Get a character, if any.
+  if (defined $ttit) {
+    $ttib = 0200 | ord($ttit); # Remember the character
+    $ttif = 1; # ... and set the flag.
+    if ($ttib == 0205) { # Type ^E to hlt
+      ReadMode 'normal';
+      $hlt++;
+    }
+  }
+  $irq = ($ttie&$ttof) | ($ttie&$ttif); # TODO: OR in others here too.
+  if ($ion && !$inh) {
+    # Interrupts are allowed, so do them.
+    if ($irq) {
+      # Interrupt does a JMS 00000.
+      # BUGBUG: Should fiddle with extended memory here.
+      $rib = ($um<<6)+($lac>>9)+$df;
+      $core[00000] = $pc& 07777;
+      $pc = 00001;
+      $ion = $ionn = 0;
+    } 
+  } 
+  $ion = $ionn; # Allow one instruction after ION.
+  $ttof = $ttofn; # Allow at least one after TLS, before interrupt.
+  if ($trace) {
+    $txt = sprintf("%05o %04o %02o %05o:%04o\r\n", $lac, $mq, $sc, $pc, $core[$pc]);
+    warn $txt;
+  }
+  *verb = $code[$pc++];
+  goto &verb;
+}
+#
+# Start things up!
+&fetch(); 
+#
+# Return means a HLT was done.
+ReadMode 'normal';
+exit $lac&07777; 
+
