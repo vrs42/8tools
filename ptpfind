@@ -1,0 +1,91 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Look for files that might be paper tape images, with similar content.
+# For now, "might be paper tape images" means a size less than $toobig
+# and "similar content" means the same result from &hash.
+#
+$toobig = 100*1000;
+
+#
+# Read in the file and compute the hash function on it's contents.
+# For now, just sum the words loaded, ignoring 0000 and 0200, and
+# stopping at 0232.
+sub hash {
+  local($f) = @_;
+  return undef unless (-s $f) < $toobig;
+#warn "in hash, $f: " . (-s $f) . "\n";
+  open(INPUT, $f) || die "$f: $!";
+  $sum = 0;
+  while (read(INPUT, $buf, 1)) {
+    $buf = unpack("C", $buf);
+    next if $buf == 0200;
+    last if $buf == 0232;
+    # 0000 is harmless here.
+    $sum += $buf;
+  }
+  return sprintf("%0o", $sum);
+}
+
+#
+# Walk the directories and files given, building a hash table.
+$status = 0;
+@todo = @ARGV;
+%hash = (); # Nothing hashed yet
+while  (@todo) {
+  $f = shift @todo;
+#warn "processing $f\n";
+  if (-d $f) {
+    $d = $f;
+    # It is really a directory; enumerate it.
+    opendir(DIR, $d) || die "$d: $!";
+    while (($f = readdir(DIR))) {
+      if (-d "$d/$f") {
+        # Examine it later
+#warn "unshift $d/$f\n" unless $f =~ /^[.]/;
+        unshift(@todo, "$d/$f") unless $f =~ /^[.]/;
+        next;
+      }
+#warn "unshift $d/$f\n";
+      unshift(@todo, "$d/$f"); # Examine it later
+    }
+    next;
+  }
+  # It is a file.
+  $h = &hash($f);
+#warn "hash of $d/$f is $h\n";
+  next unless defined $h;
+  if (defined $hash{$h}) {
+    print "Hash collsion of $f with $hash{$h}\n";
+    $hash{$h} .= ":$f";
+  } else {
+    $hash{$h} = $f;
+  }
+}
+exit $status;

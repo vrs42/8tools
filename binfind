@@ -1,0 +1,160 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Look for -pb, .bin, or .bn files with similar content.
+# For now, "similar content" means the same result from &hash.
+#
+
+$max = 0;
+
+#open(STDERR, ">log") || die "log: $!";
+#
+# Open a file in binary mode and read it in.
+sub readbin {
+  local($f) = @_;
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+  @core1 = (); $loc = $store = undef;
+  $sum = $add = $field = 0;
+  $fortran = $fpp = 0;
+  while (read(INPUT, $top, 1)) {
+    $top = unpack("C", $top);
+    next if $top == 0200;	# Leader or Trailer
+    if (defined($store)) {
+      $core1[$field*4096+$loc] = $store;
+      $max = $field*4096+$loc unless $max > $field*4096+$loc;
+      $store = undef;
+      $loc = ($loc + 1) & 07777;
+      $sum += $add;
+      $fortran = 0;
+    }
+    if ($top & 0200) { # Better be field setting!
+      last if $top == 0232; # End of file
+      warn "$f: Invalid field setting $top" unless $top >= 0300;
+      return 0 unless $top >= 0300;
+      warn "$f: Invalid field setting $top" if $top & 0007;
+      return 0 if $top & 0007;
+      $fortran = 1 if $top == 0340;
+      $field = ($top & 070) >> 3;
+      next;
+    }
+    if (defined($store)) {
+      $core1[$field*4096+$loc] = $store;
+      $max = $field*4096+$loc unless $max > $field*4096+$loc;
+      $store = undef;
+      $loc = ($loc + 1) & 07777;
+      $sum += $add;
+    }
+    read(INPUT, $bot, 1) || do { warn "$f read: $!"; return 0; };
+    $bot = unpack("c", $bot);
+    warn "$f: ".$bot." not in bin format ". tell(INPUT) unless $bot <= 077;
+    return 0 unless $bot <= 077;
+    $word = ($top << 6) + $bot;
+    $add = $top + $bot; # Update checksum
+    if ($word > 07777) {
+      #
+      # Change location counter
+      $loc = $word & 07777;
+#printf "Loc == %04o\n", $loc;
+      $sum += $add;
+    } else {
+      warn "$f: no location counter" unless defined($loc);
+      return 0 unless defined($loc);
+      $store = $word;
+    }
+  }
+  close(INPUT);
+  if ($fortran) {
+    warn "$f: 4K Fortran Binary\n" if $fortran;
+    $sum += 0640; # 4K Fortran loader counts 0300 and 0340
+  }
+  $sum &= 07777;
+# printf "$f: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
+  #printf STDERR "$f: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
+  return 1;
+}
+
+#
+# Read in the file and compute the hash function on it's contents.
+# Initially, the lowest four words loaded seemed like a good hash,
+# but unfortunately it hashes nearly all the maindec files into the 
+# same hash bucket.  For now, just sum the words loaded.
+sub hash {
+  local($f) = @_;
+  return undef unless &readbin($f);
+  @hash = ();
+  $sum = 0;
+  # BUGBUG: Better load at least 4 locations!
+  for ($loc = 0; $loc < 0100000; $loc++) {
+    $sum += $core1[$loc] if defined $core1[$loc];
+  }
+  return sprintf("%0o", $sum);
+}
+
+#
+# Walk the directories and files given, building a hash table.
+$status = 0;
+@todo = @ARGV;
+%hash = (); # Nothing hashed yet
+while  (@todo) {
+  $f = shift @todo;
+#warn "processing $f\n";
+  if (-d $f) {
+    $d = $f;
+    # It is really a directory; enumerate it,
+    # taking note of *-pb, *.bin, and *.bn.
+    opendir(DIR, $d) || die "$d: $!";
+    while (($f = readdir(DIR))) {
+      if (-d "$d/$f") {
+        # Examine it later
+#warn "unshift $d/$f\n" unless $f =~ /^[.]/;
+        unshift(@todo, "$d/$f") unless $f =~ /^[.]/;
+        next;
+      }
+      $isbin = $f =~ /-pb[0-9]*$/;
+      $isbin |= $f =~ /[.]bin$/;
+      $isbin |= $f =~ /[.]bn$/;
+      next unless $isbin;
+#warn "unshift $d/$f\n";
+      unshift(@todo, "$d/$f"); # Examine it later
+    }
+    next;
+  }
+  # It is a file.
+  $h = &hash($f);
+#warn "hash of $d/$f is $h\n";
+  next unless defined $h;
+  if (defined $hash{$h}) {
+    print "Hash collsion of $f with $hash{$h}\n";
+    $hash{$h} .= ":$f";
+  } else {
+    $hash{$h} = $f;
+  }
+}
+exit $status;

@@ -104,7 +104,7 @@ for ($loc = 0; $loc <= $max; $loc += 0100) {
   print "\r\n" unless $loc % 0200;
   printf "%05o:", $loc;
   for ($off = 0; $off < 0100; $off++) {
-    print "  " unless $off % 010;
+    print " " unless $off % 010;
     $core1[$loc+$off] = 0 unless defined $core1[$loc+$off];
     $core1[$loc+$off] = 9 unless $core1[$loc+$off] < 10;
     printf "%1d", $core1[$loc+$off];

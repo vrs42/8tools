@@ -144,13 +144,10 @@ printf "$ARGV[1]: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
 $status = 0;
 for ($loc = 0; $loc <= $max; $loc++) {
   next unless defined($core1[$loc]) || defined($core2[$loc]);
-  if ($core1[$loc] != $core2[$loc]) {
-    $c1 = defined $core1[$loc]? sprintf("%04o", $core1[$loc]): "XXXX";
-    $c2 = defined $core2[$loc]? sprintf("%04o", $core2[$loc]): "XXXX";
-    printf "%04o: $c1 != $c2\n",
-                  $loc, $core1[$loc], $core2[$loc];
-#   printf STDERR "%04o: %04o != %04o\n",
-#                 $loc, $core1[$loc], $core2[$loc];
+  $c1 = defined $core1[$loc]? sprintf("%04o", $core1[$loc]): "XXXX";
+  $c2 = defined $core2[$loc]? sprintf("%04o", $core2[$loc]): "XXXX";
+  if ($c1 ne $c2) {
+    printf "%04o: $c1 != $c2\n", $loc;
     $status = 1;
   }
 }
