@@ -1,0 +1,82 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Parse the file a line at a time and decide whether to copy the line
+# or elide it.
+%symbols = ();	# Start with an empty symbol table
+foreach $file (@ARGV) {
+  $file =~ y/a-z/A-Z/;
+  if ($file =~ /-D(.*)/) {
+    $symbols{$1} = 1;
+  } else {
+    open(INPUT, $file) || die "$file: $!";
+    last;
+  }
+}
+open(STDOUT, ">perlpp.out") || die "perlpp.out: $!";
+$output = 1;	# Start with output enabled
+$line = 0;	# No lines yet
+$nest = 0;	# Not nested yet
+while (<INPUT>) {
+  $line++;
+  if (/^#/) {
+    y/a-z/A-Z/;
+    /^#\W*([A-Z]+)\W+(([A-Z0-9]+))*/;
+    if ($1 eq 'DEFINE') {
+      $symbols{$2} = 1;
+      next;
+    } elsif ($1 eq 'UNDEF') {
+      $symbols{$2} = undef;
+      next;
+    } elsif ($1 eq 'IFDEF') {
+      $output-- unless defined $symbols{$2};
+      $nest++;
+      next;
+    } elsif ($1 eq 'IFNDEF') {
+      $output-- if defined $symbols{$2};
+      $nest++;
+      next;
+    } elsif ($1 eq 'ELSE') {
+      next if $output < 0; # Ignore nested else
+      $output = !$output; # Toggle if not nested
+      next;
+    } elsif ($1 eq 'ENDIF') {
+      $nest--;
+      $output++ unless $output > 0;
+      die "Unmatched endif at line $line" if $nest < 0;
+      next;
+    }
+    die "Unknown directive: '$1' at line $line";
+  } else {
+    print if $output > 0;
+  }
+}
+
+__END__
+:endofperl
