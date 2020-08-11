@@ -1,0 +1,748 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+@rem = '
+@echo off
+c:\perl5\bin\perl %0 %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto endofperl
+@rem ' if @rem;
+
+#
+# Emit code to initialize simulation.
+$boiler = <<'!HERE!';
+#!/usr/bin/perl
+
+# Boilerplate startup.
+
+use Term::ReadKey;
+ReadMode 'ultra-raw';
+# Use ^E for force hlt.
+
+#
+# Wave a wand to set all uninitialized memory to HLT.
+for ($loc = 0; $loc < 0100000; $loc++) {
+  $core[$loc] = 07402; $code[$loc] = *emul8;
+}
+
+#
+# IF is in $pc, CIF sets $ib.
+# BUGBUG: Guessing at starting address!
+$df = $ib = 0; $pc = 00200;
+$swr = 07777;
+# LINK is in $lac.
+$hlt = $ion = $ionn = $um = $rib = $lac = $mq = $modeb = $sc = 0;
+# I/O Devices.
+$ttof = $ttofn = 0; # Teleprinter flag is clear
+$ttie = 1;
+# Run-time behavior.
+$interact = 0;
+$trace = 0;
+$echar = 0205; # Usually ^E
+
+#
+# Run-time Command line parsing.  Command lines can use:
+# =0nnnnn to specify a starting address.
+# %0nnnnn to specify switch register contents.
+# !0nnnnn to specify an exit character other than ^E.
+# -i to activate interaction after HLT.
+# -t to activate trace output on STDERR.
+# Other stuff on the command line is retained with the intent
+#   to eventually add code to pass file specs to USR when OS/8
+#   support is added.
+@usr = ();
+foreach (@ARGV) {
+  $pc = $1 if /^\=(0\d+)/;
+  $swr = $1 if /^\%(0\d+)/;
+  $echar = $1 if /^\!(0\d+)/;
+  next if /^[=\%!](0\d+)/;
+  die "Number is not octal: '$1'\n" if s/^[=\%!](\d+)//;
+  $interact = 1 if $_ eq "-i";
+  next if $_ eq "-i";
+  $trace = 1 if $_ eq "-t";
+  next if $_ eq "-t";
+  die "Unsupported option '$1'\n" if /^-(.*)/;
+  next if /^-(.*)/;
+  s/_/</; # Sneaks '<' past the shell
+  y/A-Z/a-z/; # Monocase for USR
+  push(@usr, $_);
+}
+
+#
+# Compiled code:
+!HERE!
+
+#
+# Compiler command line parsing.  Command lines can use:
+# =0nnnnn to specify a starting address to the run-time.
+# %0nnnnn to specify run-time switch register contents.
+# !0nnnnn to specify a run-time exit character other than ^E.
+# -i to activate interaction after HLT by default.
+# -t to activate trace output on STDERR by default.
+@files = ();
+foreach (@ARGV) {
+  $npc = "$1" if /\=(0\d+)/;
+  $boiler =~ s/pc = 00200/pc = $npc/ if s/\=(0\d+)//;
+  $nswr = "$1" if /\%(0\d+)/;
+  $boiler =~ s/swr = 07777/swr = $nswr/ if s/\%(0\d+)//;
+  $echar = "$1" if /\!(0\d+)/;
+  $boiler =~ s/echar = 0205/echar = $echar/ if s/\!(0\d+)//;
+  die "Number is not octal: '$1'\n" if s/([=\%!]\d+)//;
+  next if $_ eq '';
+  $boiler =~ s/interact = 0/interact = 1/ if $_ eq "-i";
+  next if $_ eq "-i";
+  $boiler =~ s/trace = 0/trace = 1/ if $_ eq "-t";
+  next if $_ eq "-t";
+  die "Unsupported option '$_'\n" if /^-(.*)/;
+  # Must be a filename.
+  push(@files, $_);
+}
+
+# BUGBUG: Load more input files?  Name the output file better?
+die "Too many files to load: @files\n" unless $#files == 0;
+&readBin($files[0], *core);
+
+open(STDOUT, ">foo.pl") || die "foo.pl: $!";
+select STDOUT; $| = 1; # Unbuffered, please
+
+print $boiler;
+
+#
+# Read a file in BIN loader format.
+sub readBin {
+  local($file, *core) = @_;
+  #
+  # Open the input file in binary mode and read it in.
+  open(INPUT, $file) || die "$file: $!";
+  binmode(INPUT);
+  @core = ();
+  $isbin = 0;   # Might be RIM format (no checksum)
+  for (;;) {
+    $field = 0;
+    $loc = $store = undef;
+    $sum = $add = 0;
+    while (read(INPUT, $top, 1)) {
+      $top = unpack("C", $top);
+      return if $top == 0232; # Stop at ^Z
+      last unless $top == 0200;
+    }
+    # EOF leaves $top eq ''
+    last if $top eq '';
+    # At the top of this loop the first character has been read
+    for (;;) {
+      last if $top == 0200;	# Trailer
+      # No trailer, so store data (if any)
+      if (defined($store)) {
+        $core[$field*010000 + $loc] = $store;
+        $store = undef;
+        $loc = ($loc + 1) & 07777;
+        $sum += $add; # Update checksum
+        $isbin = 1 unless $top & 0100;
+        $fortran = 0;
+      }
+      if (($top&0300) == 0300) {
+        # Set data field and we're done. 
+        $field = ($top & 070) >> 3;
+#print "Loading into field $field\n";
+        $isbin = 1;     # Can't be RIM format
+        $fortran = 1 if $top == 00340;
+      } else {
+        # Assemble a word
+        read(INPUT, $bot, 1) || die "read: $! $top at ", tell(INPUT);
+        $bot = unpack("C", $bot);
+        die "$file: not in bin format at ", tell(INPUT) unless $bot <= 077;
+        $word = ($top << 6) + $bot;
+        $add = $top + $bot; # Calculate Checksum delta
+        if ($word > 07777) {
+          #
+          # Change location counter
+          $loc = $word & 07777;
+          $sum += $add; # Update checksum
+        } else {
+          # Remember store in case this is the checksum, not data.
+          die "$file: no location counter" unless defined($loc);
+          $store = $word;
+        }
+      }
+      last unless read(INPUT, $top, 1);
+      $top = unpack("C", $top);
+    }
+    die "No trailer!" unless $top == 0200;
+    if ($isbin) {
+      if ($fortran) {
+        printf STDERR "$file: 4K Fortran binary!\n";
+        $sum += 0640; # Fortran loader counts 0300 and 0340;
+      }
+      $sum = ($sum - $store) & 07777;
+      printf STDERR "$file: Checksum error -- %04o\n", $sum if $sum;
+    } else {
+      # Last frame of what looks like a RIM tape!
+      printf STDERR "Found a RIM tape segment ending at %05o\n",
+                        $field*010000 + $loc;
+      $core[$field*010000 + $loc] = $store;
+    }
+  }
+  close(INPUT);
+}
+
+#
+# Pass 1:
+# Scan the program and remember which locations are used as data, subroutines,
+# or possible branch targets.
+# BUGBUG: This is currently wasted, as pass 2 doesn't really use it!
+@ref = ();
+$DREF = 1; # A direct data reference ("Dxxxx")
+$IREF = 2; # An indirect reference ("Pxxxx")
+$LREF = 4; # A direct branch reference ("Lxxxx")
+$RREF = 8; # Return reference (JMP I xxxx target)
+$SREF = 16; # A JMS reference (possible "Sxxxx")
+# Kludge: location zero is a subroutine (ISR), if included.
+$ref[0000] = $SREF|$DREF|$RREF if defined $core[0000];
+$usedfpp = $fpp = 0;
+foreach ($loc = 0; $loc <= $#core; $loc++) {
+  next unless defined $core[$loc];
+  $op = $core[$loc] >> 9;
+  # Note: Direct EA is always in the current field!
+  $ea = $loc & 070000;
+  $ea += $core[$loc] & 0177;
+  $ea += $loc & 07600 if $core[$loc] & 0200; # Page bit set
+  $ind = $core[$loc] & 0400; # Indirect reference
+  if ($fpp) {
+    if (($op > 0) && ($op < 7)) {
+      #
+      # Data reference implied by effective address
+      if ($ind) {
+        $ref[$ea] |= $IREF;
+        $ea = $core[$ea];
+        # Flag non-zero referent as a DREF
+        $ref[$ea] |= $DREF if $ea;
+      } else {
+        $ref[$ea] |= $DREF;
+      }
+    }
+    $fpp = 0 if $core[$loc] == 0;
+  } elsif ($op <= 3) {
+    #
+    # Data reference implied by effective address
+    if ($ind) {
+      $ref[$ea] |= $IREF;
+      $ea = $core[$ea];
+      # Flag non-zero referent as a DREF
+      $ref[$ea] |= $DREF if $ea;
+    } else {
+      $ref[$ea] |= $DREF;
+    }
+  } elsif ($op == 4) {
+    #
+    # Subroutine reference implied by effective address
+    if ($ind) {
+      $ref[$ea] |= $IREF;
+      $ea = $core[$ea];
+    }
+    # Kludge: Make note if JMS I 7 (04407) is encountered.
+    $usedfpp = $fpp = 1 if $core[$loc] == 04407;
+    # Kludge: Qualify the target -- it should contain 0 or $ea.
+    next unless ($core[$ea] == 0)  || ($core[$ea] == $ea);
+    # Mark the entry point as a possible entry point and as data.
+    $ref[$ea] |= $SREF|$DREF;
+  } elsif ($op == 5) {
+    #
+    # Branch reference implied by effective address
+    if ($ind) {
+      $ref[$ea] |= $IREF|$RREF;
+      $ea = $core[$ea];
+      $ref[$ea] |= $LREF if $ea;
+    } else {
+      $ref[$ea] |= $LREF;
+    }
+  }
+}
+
+#
+# Use $ref[] flags to compute the label, if any for a given EA.
+sub ref {
+  local($ea) = @_;
+  local($oea) = sprintf("%05o", $ea);
+  # If it's a target of a JMS and a return, it's a subroutine.
+  return "S".$oea if ($ref[$ea] & ($SREF|$RREF)) == ($SREF|$RREF);
+  # If it's a pointer to code or data, label it a pointer.
+  return "P".$oea if $ref[$ea] & $IREF;
+  # If it's the target of a branch, label it as code
+  return "L".$oea if $ref[$ea] & $LREF;
+  # If it's the target of a data instruction, label it as data.
+  return "D".$oea if $ref[$ea] & $DREF;
+  # Otherwise, return null label.
+  return "";
+}
+
+#
+# Pass 2:
+# Print the Perl equivalent for each location that was loaded.
+foreach ($loc = 0; $loc <= $#core; $loc++) {
+  next unless defined $core[$loc];
+  # Give this location a name.
+  $name = &ref($loc);
+  # If the name is null, it can be appened to the previous.
+# BUGBUG: Skip doing that, for now.
+  $oea = sprintf('%05o', $loc);
+  $name = "I" . $oea if $name eq '';
+  $i = sprintf('%05o', $core[$loc]);
+  print "\$core[0$oea] = $i; \$code[0$oea] = \*$name; ";
+  print "sub $name { ";
+  # Now generate some Perl.
+  if ($fpp) {
+    &fpp;
+# } elsif ($linc) {
+#   &linc;
+  } else {
+    &pdp;
+  }
+  print "goto &fetch; }\n";
+}
+
+sub pdp {
+  #
+  # Disassemble as a normal PDP-8 instruction.
+  $op = $core[$loc] >> 9;
+  if ($op <= 5) {
+    #
+    # Operation refences memory
+    # Note: Direct EA is always in the current field!
+    $ea = $loc & 070000;
+    $ea += $core[$loc] & 0177;
+    $ea += $loc & 07600 if $core[$loc] & 0200; # Page bit set
+    if ($core[$loc] & 0400) { # Indirect reference
+      if (($ea&07770) == 0010) { # Autoindex
+        $ea = sprintf("%06o", $ea);
+        print "\$core[$ea] = 0000 if ++\$core[$ea] == 010000; ";
+      }
+      if ($op < 4) {
+        $ea = '($df<<12)+$core['.$ea.']';
+      } else {
+        $ea = '($ib<<12)+$core['.$ea.']';
+      }
+    } else {
+      $ea = sprintf("%06o", $ea);
+    }
+    if ($op == 0) {
+      print '$lac &= (010000|$core['.$ea.']); ';
+    } elsif ($op == 1) {
+      print '$lac += $core['.$ea.']; ';
+    } elsif ($op == 2) {
+      print 'if (++$core[',$ea,'] == 010000) { $core[',$ea,'] = 0; $pc++; }';
+      print '$code[',$ea,'] = *emul8; ';
+    } elsif ($op == 3) {
+      print '$core[',$ea,'] = $lac & 07777; $lac &= 010000; ';
+      print '$code[',$ea,'] = *emul8; ';
+    } elsif ($op == 4) {
+      $i = sprintf("%05o", $loc+1);
+      print '$core[',$ea,'] = ',$i,'; $pc = ',$ea,'+1; ';
+      print '$code[',$ea,'] = *emul8; $inh = 0; ';
+    } else { # $op == 5
+      print '$pc = ',$ea,'; $inh = 0; ';
+    }
+    # Make a note of calls to the floating point package
+    $fpp = 1 if $core[$loc] == 04407;
+  } elsif ($op == 6) {
+    #
+    # IOTs are generally hard.
+    # Punt to &emul8, for now.
+    print "&emul8; ";
+  } else {
+    # Must be an OPR.
+    $op = $core[$loc];
+    if (($op & 0400) == 0000) {
+      #
+      # Group 1 -- shifts, clears, complements
+      # These are clearest when printed in chronological order.
+      # The timing is model dependent, with the PDP-8I having the
+      # strictest ordering.
+      print '$lac &= 010000; ' if $op & 0200; # T1 CLA
+      print '$lac &= 07777; '  if $op & 0100; # T1 CLL
+      print '$lac ^= 010000; ' if $op & 0020; # T2 CML
+      print '$lac ^= 07777; '  if $op & 0040; # T2 CMA
+      print '$lac++; '  if ($op & 0001) == 001; # T3 IAC
+      print '$lac = ($lac<<1) + (($lac>>12)&1); ' if ($op & 0006) == 004; # T4 RAL
+      print '$lac = ($lac<<2) + (($lac>>11)&3); ' if ($op & 0006) == 006; # T4 RTL
+      print '$lac = (($lac&017777)>>1) + (($lac&1)<<12); ' if ($op & 0012) == 010; # T4 RAR
+      print '$lac = (($lac&017777)>>2) + (($lac&3)<<11); ' if ($op & 0012) == 012; # T4 RTR
+      print '$lac = ($lac&010000) + (($lac&077)<<6) + (($lac>>6)&077); ' if ($op & 0016) == 002; # T4 BSW
+    } elsif (($op & 0401) == 0400) {
+      #
+      # Group 2 -- Skips, hlt, read switches
+      # These are clearest when printed in chronological order.
+      # The timing here is not model dependent.
+      print '$skp = 0; '  if ($op & 0170) != 0000; # T1 may skip
+      print '$skp = 1 unless $lac&07777; '  if $op & 0040; # T1 SZA
+      print '$skp = 1 if $lac&04000; '  if $op & 0100; # T1 SMA
+      print '$skp = 1 if $lac&010000; '  if $op & 0020; # T1 SNL
+      print '$skp = !$skp; '  if $op & 0010; # T1 SKP
+      print '$pc += $skp; '  if ($op & 0170) != 0000; # T1 SKP
+      print '$lac &= 010000; ' if $op & 0200; # T2 CLA
+      print '$lac |= $swr; '  if ($op & 0004); # T3 OSR
+      print '$hlt = 1; '   if ($op & 0002); # T4 HLT
+    } else {
+      #
+      # Group 3 -- Extended Arithmetic Unit
+      # Because the behavior depends on the mode (A or B), we punt these to &emul8.
+      print "&emul8; ";
+      return;
+# Save these as notes for now.
+      print '$lac &= 010000; ' if $op & 0200; # T1 CLA
+      print '$lac |= $sc; ' if $op & 0040; # T2 SCA
+      if (($op & 0120) == 0100) {
+        print '$lac |= $mq; '; # T2 MQA
+      } elsif (($op & 0120) == 0020) {
+        print '$mq = $lac & 07777; $lac &= 010000; '; # T2 MQL
+      } elsif (($op & 0120) == 0120) {
+        print '($lac, $mq) = (($lac&010000)+$mq, $lac & 07777); '; # T2 SWP
+      }
+      if (($op & 016) == 002) { # T3 SCL
+        print '$sc = (~$core[++$loc]) & 037; ';
+      } elsif (($op & 016) == 004) { # T3 MUY
+        ++$loc;
+        print '($lac, $mq) = (($mq*$core[',$loc,']+$lac)>>12, ($mq*$core[',$loc,']+$lac)&07777); ';
+      } elsif (($op & 016) == 006) { # T3 DVI
+        ++$loc;
+        print '$lnktmp = $lac < $core[',$loc,']? 010000 : 0; $lac &= 07777; ';
+        print '($lac, $mq) = (int(($lac<<12+$mq) / $core[',$loc,']), (($lac<<12+$mq) % $core[',$loc,'])); ';
+        print '$lac += $lnktmp; '
+      } elsif (($op & 016) == 010) { # T3 NMI
+      } elsif (($op & 016) == 012) { # T3 SHL
+      } elsif (($op & 016) == 014) { # T3 ASR
+      } elsif (($op & 016) == 016) { # T3 LSR
+      }
+    }
+  }
+}
+
+#
+# Don't compile fpp for now, just use &emul8.
+sub fpp {
+  print "&emul8; ";
+  $fpp = 0 if $core[$loc] == 0000;
+  return;
+# The rest of this is just notes.
+  #
+  # Disassemble as a floating point instruction.
+  if ($op && $op <= 6) {
+    local(@mri) = ("FADD", "FSUB", "FMPY", "FDIV", "FGET", "FPUT");
+    #
+    # Operation refences memory
+    # Note: Direct EA is always in the current field!
+    $ea = $loc & 070000;
+    $ea += $core[$loc] & 0177;
+    $ea += $loc & 07600 if $core[$loc] & 0200; # Page bit set
+    if ((($ea&07777) < 0200) &&  ($core[$loc] & 0200)) {
+      # Assembler never generates on-page references to page 0,
+      # so just output octal.
+      printf "%04o", $core[$loc];
+      return;
+    }
+    $ind = $core[$loc] & 0400; # Indirect reference
+    print $mri[$op-1], " ";
+    print "I " if $ind;
+    $oea = &ref($ea);
+    print $oea if $oea;
+    printf "%04o", $ea&07777 unless $oea;
+  } elsif ($op == 0) {
+    $op = $core[$loc];
+    if (($op & 07760) == 0000) {
+      #
+      # Special functions
+      $fpp = 0      if ($op & 017) == 000;
+      print "FEXT"  if ($op & 017) == 000;
+      print "FSQR"  if ($op & 017) == 001;
+      print "FSQT"  if ($op & 017) == 002;
+      print "FSIN"  if ($op & 017) == 003;
+      print "FCOS"  if ($op & 017) == 004;
+      print "FATN"  if ($op & 017) == 005;
+      print "FEXP"  if ($op & 017) == 006;
+      print "FLOG"  if ($op & 017) == 007;
+      print "FNEG"  if ($op & 017) == 010;
+      print "FINP"  if ($op & 017) == 011;
+      print "FOUT"  if ($op & 017) == 012;
+      print "0013"  if ($op & 017) == 013;
+      print "0014"  if ($op & 017) == 014;
+      print "0015"  if ($op & 017) == 015;
+      print "0016"  if ($op & 017) == 016;
+      print "0017"  if ($op & 017) == 017;
+      return;
+    }
+    printf "%04o", $op;
+    return;
+  } else { # $op == 7
+    $op = $core[$loc];
+    print "FNOR"  if $op == 07000;
+    return if $op == 07000;
+    #
+    # FNOR with operand??
+    printf "%04o", $op;
+  }
+}
+
+print <<'!HERE!';
+# End of compiled code.
+
+#
+# More boilerplate.
+
+#
+# Emulate the hard stuff:
+#   IOT instructions.
+#   Group 3 OPR instructions (dependent on mode A or B).
+#   Code modified at runtime.
+sub emul8 {
+  # $pc has already been incremented by the caller.  Back it
+  # up, and have a look at the instruction that got us here.
+  $inst = $core[$pc-1];
+  $op = $inst >> 9;
+  if ($op < 6) {
+    #
+    # Operation refences memory
+    # Note: Direct EA is always in the current field!
+    $ea = $pc & 070000;
+    $ea += $inst & 0177;
+    $ea += $pc & 07600 if $inst & 0200; # Page bit set
+    if ($inst & 0400) { # Indirect reference
+      if (($ea&07770) == 0010) { # Autoindex
+        $core[$ea] = 0000 if ++$core[$ea] == 010000;
+      }
+      if ($op < 4) {
+        $ea = ($df<<12)+$core[$ea];
+      } else {
+        $ea = ($ib<<12)+$core[$ea];
+      }
+    }
+    if ($op == 0) {
+      $lac &= (010000|$core[$ea]);
+    } elsif ($op == 1) {
+      $lac += $core[$ea];
+    } elsif ($op == 2) {
+      if (++$core[$ea] == 010000) {
+        $core[$ea] = 0; $pc++;
+      }
+      $code[$ea] = *emul8;
+    } elsif ($op == 3) {
+      $core[$ea] = $lac & 07777; $lac &= 010000;
+      $code[$ea] = *emul8;
+    } elsif ($op == 4) {
+      $core[$ea] = $pc; $pc = $ea+1;
+      $code[$ea] = *emul8;
+      $inh = 0;
+    } else { # $op == 5
+      $pc = $ea;
+      $inh = 0;
+    }
+  } elsif ($op == 6) {
+    #
+    # IOT -- hair ensues.
+# BUGBUG: Should do more here.
+    if (($inst&07770) == 06000) { # Interrupt control
+      $pc += $ion, $ion = $ionn = 0 if ($inst&07) == 00; # SKON
+      $ionn = 1 if ($inst&07) == 01; # ION
+      $ion = $ionn = 0 if ($inst&07) == 02; # IOF
+      $pc += $irq if ($inst&07) == 03; # SRQ
+      $lac = ($lac&010000)+(($lac>>1)&04000)+($gt<<10)+($irq<<9)+($inh<<8)+($ion<<7)+$rif if ($inst&07) == 04; # GTF
+      if (($inst&07) == 05) { # RTF
+        # Contrary to documentation, RTF ignores IE and enables interrupts.
+        ($l, $gt, $inh, $ionn, $rif) = ($lac&04000, !!($lac&02000), !!($lac&0400), 1|!!($lac&0200), $lac&0177);
+        $lac = $l<<1 | ($lac&07777);
+      }
+      $pc += $gt if ($inst&07) == 06; # SGT
+      $lac = $ion = $ionn = $ttof = $ttofn = $ttif = 0 if ($inst&07) == 07; # CAF
+    } elsif (($inst&07700) == 06200) { # MMU
+      $fld = ($inst>>3) & 07;
+      if ($inst & 04) { # More decoding based on $fld
+        $lac |= $df<<3 if $fld == 01; # RDF
+        $lac |= $pc>>12 if $fld == 02; # RIF
+        $lac |= $ib if $fld == 03; # RIB
+        ($um, $ib, $df) = ($rif>>6, ($rif>>3)&07, $rif&07)if $fld == 04; # RMF
+      } else { # $fld is new IB, DF, or both
+        $df = $fld if $inst & 01; # CDF
+        if ($inst & 02) { # CIF
+          $ib = $fld; # Save for next JMP, JMS
+          $inh = 1; # CIF sets inhibit to delay interrupts.
+        }
+      }
+    } elsif (($inst&07770) == 06010) { # High spped reader
+    } elsif (($inst&07770) == 06030) { # Keyboard device
+      $ttif = 0 if $inst == 06030; # Clear input flag, no rrun
+      $pc += $ttif if $inst & 01; # Skip if ready
+      $lac &= 010000, $ttif = 0 if $inst & 02; # Clear flag, set rrun
+      $lac |= $ttib if ($inst&05) == 04; # OR in the last character
+      $ttie = $lac & 01 if ($inst&05) == 05; # TTY interrupt enable
+    } elsif (($inst&07770) == 06040) { # Teleprinter device
+      $ttof = $ttofn = 1 if $inst == 06040; # Set printer flag
+      $pc += $ttof if $inst == 06041; # Skip if ready
+      $ttof = $ttofn = 0 if $inst == 06042; # Clear flag
+      if ($inst & 04) { # Output a character
+        print pack("C", $lac&0177);
+        $ttofn = 1;
+      }
+    } elsif (($inst&07770) == 06070) { # VC8/I
+    } elsif (($inst&07770) == 06100) { # Memory Parity, Power Low
+    } elsif (($inst&07740) == 06140) { # 6140-6177 LINC, Type 338 display
+    } elsif (($inst&07770) == 06330) { # LAB-8
+    } elsif (($inst&07770) == 06340) { # LAB-8
+    } elsif (($inst&07760) == 06760) { # 6760-6777 DECTape
+    } else {
+      $inst = sprintf("%05o", $inst);
+      warn "IOT $inst treated as NOP\r\n";
+    }
+  } else { # $op == 7
+    # Must be an OPR.
+    if (($inst & 0400) == 0000) {
+      #
+      # Group 1 -- shifts, clears, complements
+      # These are clearest when printed in chronological order.
+      # The timing is model dependent, with the PDP-8I having the
+      # strictest ordering.
+      $lac &= 010000 if $inst & 0200; # T1 CLA
+      $lac &= 07777  if $inst & 0100; # T1 CLL
+      $lac ^= 010000 if $inst & 0020; # T2 CML
+      $lac ^= 07777  if $inst & 0040; # T2 CMA
+      $lac++  if ($inst & 0001) == 001; # T3 IAC
+      $lac = ($lac<<1) + (($lac>>12)&1) if ($inst & 0006) == 004; # T4 RAL
+      $lac = ($lac<<2) + (($lac>>11)&3) if ($inst & 0006) == 006; # T4 RTL
+      $lac = ($lac&017777>>1) + (($lac&1)<<12) if ($inst & 0012) == 010; # T4 RAR
+      $lac = ($lac&017777>>2) + (($lac&3)<<11) if ($inst & 0012) == 012; # T4 RTR
+      $lac = ($lac&010000) + (($lac&077)<<6) + (($lac>>6)&077) if ($inst & 0016) == 002; # T4 BSW
+    } elsif (($inst & 0401) == 0400) {
+      #
+      # Group 2 -- Skips, hlt, read switches
+      # These are clearest when printed in chronological order.
+      # The timing here is not model dependent.
+      $skp = 0  if ($inst & 0170) != 0000; # T1 may skip
+      $skp = !($lac&07777)  if $inst & 0040; # T1 SZA
+      $skp |= ($lac&04000)  if $inst & 0100; # T1 SMA
+      $skp |= ($lac&010000) if $inst & 0020; # T1 SNL
+      $skp = !$skp  if $inst & 0010; # T1 SKP
+      $pc += $skp  if ($inst & 0170) != 0000; # T1 SKP
+      $lac &= 010000 if $inst & 0200; # T2 CLA
+      $lac |= $swr if ($inst & 0004); # T3 OSR
+      $hlt = 1 if ($inst & 0002); # T4 HLT
+    } else {
+      #
+      # Group 3 -- Extended Arithmetic Unit
+      # Where to find the operand (if any) depends on the mode (A or B).
+      $lac &= 010000 if $inst & 0200; # T1 CLA
+      if (($inst & 0120) == 0100) {
+        $lac |= $mq; # T2 MQA
+      } elsif (($inst & 0120) == 0020) {
+        $mq = $lac & 07777; # T2 MQL
+        $lac &= 010000;
+      } elsif (($inst & 0120) == 0120) {
+        ($lac, $mq) = (($lac&010000)+$mq, $lac & 07777); # T2 SWP
+      }
+      if ($modeb) {
+# BUGBUG: This EAE stuff is basically unimplemented as yet!
+# BUGBUG: Fetch an operand from the instruction stream.
+# Addresses in the next word.
+    $inst = sprintf("%05o", $inst);
+warn "EAE Mode B $inst treated as NOP";
+      } else { # mode A
+# BUGBUG: Fetch an operand from the instruction stream.
+# Operands in the next word.
+        $lac |= $sc if $inst & 0040; # T2 SCA
+        if (($inst & 016) == 002) { # T3 SCL
+          print '$sc = (~$core[++$pc]) & 037; ';
+        } elsif (($inst & 016) == 004) { # T3 MUY
+          ++$pc;
+          print '($lac, $mq) = (($mq*$core[',$pc,']+$lac)>>12, ($mq*$core[',$pc,']+$lac)&07777; ';
+        } elsif (($inst & 016) == 006) { # T3 DVI
+          ++$pc;
+          print '$lnktmp = $lac < $core[',$pc,']? 010000 : 0; $lac &= 07777; ';
+          print '($lac, $mq) = (int(($lac<<12+$mq) / $core[',$pc,']), (($lac<<12+$mq) % $core[',$pc,'])); ';
+          print '$lac += $lnktmp; '
+        } elsif (($inst & 016) == 010) { # T3 NMI
+        } elsif (($inst & 016) == 012) { # T3 SHL
+        } elsif (($inst & 016) == 014) { # T3 ASR
+        } elsif (($inst & 016) == 016) { # T3 LSR
+        }
+      }
+    }
+  }
+  goto &fetch;
+}
+
+#
+# The main execution loop.
+sub fetch {
+  # Return if we are halted
+# $hlt = 1 if ++$vrs > 100000;
+  return $lac if $hlt;
+  # This cruft is here because interrupt based programs don't
+  # necessarily poll the input device.
+  # What we want is to allow (but not encourage) over-run, 
+  # with the new character replacing the old.
+  # Note that we don't get here at all until the program
+  # asks about keyboard ready..
+  $ttit = ReadKey(-1); # Get a character, if any.
+  if (defined $ttit) {
+    $ttib = 0200 | ord($ttit); # Remember the character
+    $ttif = 1; # ... and set the flag.
+    if ($ttib == 0205) { # Type ^E to hlt
+      ReadMode 'normal';
+      $hlt++;
+    }
+  }
+  $irq = ($ttie&$ttof) | ($ttie&$ttif); # TODO: OR in others here too.
+  if ($ion && !$inh) {
+    # Interrupts are allowed, so do them.
+    if ($irq) {
+      # Interrupt does a JMS 00000.
+      # BUGBUG: Should fiddle with extended memory here.
+      $rib = ($um<<6)+($lac>>9)+$df;
+      $core[00000] = $pc& 07777;
+      $pc = 00001;
+      $ion = $ionn = 0;
+    } 
+  } 
+  $ion = $ionn; # Allow one instruction after ION.
+  $ttof = $ttofn; # Allow at least one after TLS, before interrupt.
+  if ($trace) {
+    $txt = sprintf("%05o %04o %02o %05o:%04o\r\n", $lac, $mq, $sc, $pc, $core[$pc]);
+    warn $txt;
+  }
+  *verb = $code[$pc++];
+  goto &verb;
+}
+#
+# Start things up!
+&fetch(); 
+#
+# Return means a HLT was done.
+ReadMode 'normal';
+exit $lac&07777; 
+
+!HERE!
+close(STDOUT);
+chmod(0755, "foo.pl") || die "foo.pl: $!";
+
+__END__
+:endofperl
