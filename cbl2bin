@@ -1,0 +1,169 @@
+#!/usr/bin/perl
+
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Read a file in CBL loader format.
+#
+# CBL is the format used in decus-5,8-26[a-d] to compress binary
+# tapes by approximately 25%.
+#
+# CBL tapes consist of one or more blocks, each marked with an
+# initial NUL byte.  After the NUL byte, an XCB tape has an extra
+# byte which encodes the data field, which is not present in the
+# basic CBL format.
+#
+# Each block consists of a set of frames, each consisting of 3 bytes.
+# The first frame of the block is heraled with with a NUL (possibly
+# followed by the field, if this is XCB format).  Neither the NUL or
+# the field setting is taken to be a part of the frame being assembled.
+# (The field is always implicitly zero in CBL format.)
+# Each frame is assembled into a doubleword thus:
+#   Bytes	Words
+#   --------	------------
+#   abcdefgh	abcdefghmnop
+#   ijklmnop	ijklqrstuvwx
+#   qrstuvwx
+#
+# The two words are then interpreted as:
+# location, length (first frame)
+#   The length is encoded in two's complement form in bits 3-11 of word2.
+#   (Bits 0-2 of word2 are ignored.)  A length of zero indicates the end
+#   of the file.
+# Data1, Data2
+#   One or more data frames, containing data to be loaded into successive
+#   locations starting where specified above.  Odd numbered lengths mean
+#   that word2 is ignored for the last data frame.
+# Checksum1, Checksum2 (last frame)
+#   As words are assembled, they are added to a 12 bit block checksum.
+#   Carries out of this sum are added back in.  This sum is expected to
+#   equal 7777 after the last frame is read if all the data was read
+#   correctly.
+#
+# In practice, only one word of checksum is required, and the second
+# word is set to 0000.
+#
+# While any non-zero byte will do for leader-trailer, in practice 0200
+# was used, and a few (4) frames of leader-trailer seperated each block.
+#
+# Blocks consisting entirely of NUL bytes form blocks that indicate EOF.
+# This means that NUL bytes also made an ideal trailer.
+#
+
+sub punchword {
+  local($word) = @_;
+  # Punch the word
+  print pack("CC", $word>>6, $word&077);
+  # Also, add it to the checksum!
+  $bsum += ($word>>6)+($word&077);
+}
+
+sub readBin {
+  local($file) = @_;
+  #
+  # Open the input file in binary mode and read it in.
+  open(INPUT, $file) || die "$file: $!";
+  binmode(INPUT);
+  $isxcb = $file =~ /[.][xX][cC][bB]$/;
+
+  $loc = $store = undef;
+  # Punch leader on BIN output file
+  for ($i = 0; $i < 100; $i++) { print pack("C", 0200) };
+  # Set BIN checksum to zero
+  $bsum = 0;
+  $field = $length = $sum = undef;
+  while (read(INPUT, $top, 1)) {
+    $top = unpack("C", $top);
+    # Each block starts with a zero byte
+    if (!defined $field) { # Not in a block
+      next if $top;	# Leader or Trailer
+      $sum = $field = 0;
+      if ($isxcb) {
+        # Got block marker, now get field.
+        read(INPUT, $top, 1) || die "Expected field byte is missing";
+        $field = unpack("C", $top) >> 3;
+      }
+      # Punch a field setting on BIN output file
+      print pack("C", 0300+($field<<3));
+      next;
+    }
+    read(INPUT, $mid, 1) || die "Expected middle byte is missing";
+    $mid = unpack("C", $mid);
+    read(INPUT, $bot, 1) || die "Expected bottom byte is missing";
+    $bot = unpack("C", $bot);
+    $word1 = ($top << 4) + ($mid & 017);
+    $sum += $word1;
+    $sum += ($sum >> 12);
+    $sum &= 07777;
+    $word2 = (($mid << 4) & 07400) + $bot;
+    $sum += $word2;
+    $sum += ($sum >> 12);
+    $sum &= 07777;
+    if (!defined $length) { 
+      $length = 0777 & -$word2;
+      $loc = $word1;
+      # Punch a location setting on BIN output file
+      &punchword(010000+$loc);
+#printf STDERR "Block @ %05o, length %d...", $loc, $length;
+#die "$top, $mid, $bot" unless $length;
+#     print STDERR "exiting\n" unless $length;
+      last unless $length;
+      next;
+    }
+#printf STDERR "%04o\n", $sum;
+    if ($length == 0) { # Finished the block
+      # Check parity for the block.
+      printf STDERR "parity error %04o\n", $sum if $sum != 07777;
+#     printf STDERR "Parity OK: %04o\n", $sum if $sum == 07777;
+      $field = $length = $sum = undef;
+      next;
+    }
+    if ($length) {
+      # Punch a data word on BIN output file
+      &punchword($word1);
+#printf STDERR "%04o ", $word1;
+      $loc = ($loc + 1) & 07777;
+      $length--;
+    }
+    if ($length) {
+      # Punch a data word on BIN output file
+      &punchword($word2);
+#printf STDERR "%04o ", $word2;
+      $loc = ($loc + 1) & 07777;
+      $length--;
+    }
+  }
+  close(INPUT);
+  # Punch the checksum for the BIN output file
+  &punchword($bsum);
+  # Punch the trailer for the BIN output file
+  for ($i = 0; $i < 100; $i++) { print pack("C", 0200) };
+}
+
+&readBin($ARGV[0]);
+
