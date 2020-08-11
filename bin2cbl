@@ -1,0 +1,223 @@
+#!/usr/bin/perl
+
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Write a file in CBL loader format.
+#
+# CBL is the format used in decus-5,8-26[a-d] to compress binary
+# tapes by approximately 25%.
+#
+# CBL tapes consist of one or more blocks, each marked with an
+# initial NUL byte.  After the NUL byte, an XCB tape has an extra
+# byte which encodes the data field, which is not present in the
+# basic CBL format.
+#
+# Each block consists of a set of frames, each consisting of 3 bytes.
+# The first frame of the block is heraled with with a NUL (possibly
+# followed by the field, if this is XCB format).  Neither the NUL or
+# the field setting is taken to be a part of the frame being assembled.
+# (The field is always implicitly zero in CBL format.)
+# Each frame is assembled into a doubleword thus:
+#   Bytes	Words
+#   --------	------------
+#   abcdefgh	abcdefghmnop
+#   ijklmnop	ijklqrstuvwx
+#   qrstuvwx
+#
+# The two words are then interpreted as:
+# location, length (first frame)
+#   The length is encoded in two's complement form in bits 3-11 of word2.
+#   (Bits 0-2 of word2 are ignored.)  A length of zero indicates the end
+#   of the file.
+# Data1, Data2
+#   One or more data frames, containing data to be loaded into successive
+#   locations starting where specified above.  Odd numbered lengths mean
+#   that word2 is ignored for the last data frame.
+# Checksum1, Checksum2 (last frame)
+#   As words are assembled, they are added to a 12 bit block checksum.
+#   Carries out of this sum are added back in.  This sum is expected to
+#   equal 7777 after the last frame is read if all the data was read
+#   correctly.
+#
+# In practice, only one word of checksum is required, and the second
+# word is set to 0000.
+#
+# While any non-zero byte will do for leader-trailer, in practice 0200
+# was used, and a few (4) frames of leader-trailer seperated each block.
+#
+# Blocks consisting entirely of NUL bytes form blocks that indicate EOF.
+# This means that NUL bytes also made an ideal trailer.
+#
+
+open(INPUT, "$ARGV[0]") || die "$ARGV[0] open: $!";
+binmode(INPUT);
+
+open(OUTPUT, ">$ARGV[1]") || die "$ARGV[1] open: $!";
+binmode(OUTPUT);
+$isxcb = $ARGV[1] =~ /[.][xX][cC][bB]$/;
+
+#
+# A frame is two 12 bit words, output as 3 bytes in an odd bit order.
+# The frame words are also added to $csum.
+sub oframe {
+  local($w1, $w2) = @_;
+#printf STDERR "%04o %04o ", $w1, $w2;
+  $csum += $w1 + $w2;
+  $csum -= 4095 if $csum > 4095; # Add in first carry, if any
+  $csum -= 4095 if $csum > 4095; # Add in second carry, if any
+  die if $csum > 4095; # How did that happen?
+  print OUTPUT pack("CCC", $w1>>4, (($w2>>4)&0360)+($w1&017), $w2&0377);
+}
+
+#
+# A block of data is ready to be output.  $loc has been set
+# to the starting location of the block, and all the data
+# words have been pushed onto @data.
+# (For the last block, the checksum must be popped from @data
+# before calling here.)
+sub oblock {
+    local(@data) = @_;
+
+    return if $#data < 0; # Nothing to do
+    while ($#data > 128) {
+      # The block is too long.  Split it up.
+      @l = ();
+      # Copy half to @l.
+      $len = 1 + $#data;
+#warn "oblock called for $len words\n";
+      $half = int($len/2);
+      $half++ if $half & 1;
+      for ($i = 0; $i < $half; $i++) {
+        push(@l, shift @data);
+      }
+      # Output @l, leaving second half in @data.
+      &oblock(@l);
+    }
+    # The first frame is preceded by 000, and possibly the field.
+    print OUTPUT pack("C", 0000);
+    print OUTPUT pack("C", $field<<3) if $isxcb;
+    $csum = 0; # Initialize checksum;
+    # The first frame is $loc, followed by 1+$#data.
+    $len = 1 + $#data;
+#warn "oblock called for $len words\n";
+    &oframe($loc, -$len&07777);
+    # Now output the pairs from @data.
+    while (defined ($w1 = shift @data)) {
+      $w2 = shift @data; $w2 = 0 unless defined $w2;
+      &oframe($w1, $w2);
+    }
+    # Move the origin past the data.
+    $loc += $len;
+    # Finally, a checksum pair.
+    &oframe(4095-$csum, 0);
+#print STDERR "\n";
+}
+
+#
+# Get an input character as an integer byte value.
+sub getch {
+    local($c);
+
+    return unpack("C", $c) if read(INPUT,$c,1);
+#warn "$ARGV[0] read: $!";
+    return undef;
+}
+
+#
+# Output leader in the output file.
+for ($i = 0; $i < 100; $i++) { print OUTPUT pack("C", 0200); }
+
+#
+# Ignore leader in the .bin file.
+while (($c1 = getch(INPUT)) == 0200) { }
+$checksum = 0;
+$loc = undef;
+@data = ();
+while (1) {
+#warn "c1 $c1\n";
+    # Is it the start of a comment?
+    if ($c1 == 0377) {
+        # Yes, look for the other end.
+        while (($c1 = getch(INPUT)) != 0377) { }
+        $c1 = getch(INPUT);
+        next;
+    }
+    # Is it a field setting or trailer?
+    if ($c1&0200) {
+	# Neither a field settings or trailer should change $checksum.
+        # Is it a field setting?
+        if ($c1&0100) {
+            # Field setting
+            # End the current block
+            # Die unless output is .xcb
+            # Start a new block in the new field
+	    &oblock(@data); @ data = ();
+            undef @data;
+        } else {
+            # Better be trailer!
+            die "Invalid trailer code" unless $c1 == 0200;
+            # End of file
+            # Check the BIN checksum:
+	    #   ($checksum & 07777) must equal last frame read.
+            #   @data has the checksum as read, which should not
+	    #   have been added in, but was.  Subtract it out.
+            $data = pop @data;
+	    $checksum -= ($data >> 6) + ($data&077);
+            $checksum &= 07777;
+            warn "Checksum error: $checksum\n" unless $data == $checksum;
+            # End the current block
+	    &oblock(@data); @ data = ();
+	    last;
+        }
+    } else {
+	# Location or Data -- get second byte of frame
+	$c2 = getch(INPUT);
+#warn "c2 $c2\n";
+	die "$ARGV[0] low word has extra bits" if $c2 & 0300;
+	# Update the checksum.
+	$checksum = $checksum + $c1 + $c2;
+	# Assemble the word.
+	$c1 = ($c1 << 6) | $c2;
+	# Location setting?
+	if ($c1&010000) {
+            # Location setting
+	    &oblock(@data); @ data = ();
+            $loc = $c1 & 07777; # Remember location
+	} else {
+            # Data: save it up until end of the output block
+            push(@data, $c1);	# Save for end of block
+	}
+    }
+    # Start again with next byte.
+    $c1 = getch(INPUT);
+}
+#
+# Output trailer
+for ($i = 0; $i < 100; $i++) { print OUTPUT pack("C", 0000); }
+exit 0;
