@@ -132,6 +132,7 @@ sub ofile {
     # if the file was an empty area anyway.
     read(INPUT, $buf, $bsize) || die "read($dsk $f offset ". $bsize*($fsbase+$i) ."): $!" unless $f =~ m:/[.][0-9]:;
     @buf = unpack("S512", $buf);
+    grep ($_ = $_ & 07777, @buf);
     # Repack the bits amd write the block.
     while (@buf && !$eof) {
       $chr1 = shift @buf;
@@ -189,6 +190,7 @@ sub os8fs {
     seek(INPUT, $bsize*($fsbase+$link), 0) || die "seek($dsk): $!";
     read(INPUT, $buf, $bsize) || die "read($dsk): $!";
     @blk = unpack("S512", $buf);
+    grep ($_ = $_ & 07777, @blk);
     $nent = shift @blk;
     $sblk = shift @blk;
     # If it has files in the system area, it's not a system device.
