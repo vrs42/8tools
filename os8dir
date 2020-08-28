@@ -53,6 +53,7 @@ while ($link) {
     seek(INPUT, $link*01000, 0) || die "directory seek: $!";
     read(INPUT, $dir, 01000) || die "directory read: $!";
     @dir = unpack("S512", $dir);
+    grep($_ &= 07777, @dir);
     #
     # @dir starts with a directory segment header.
     $count = shift @dir;
