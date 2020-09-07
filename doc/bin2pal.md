@@ -15,3 +15,11 @@ In general, the instructions recognized are the
 "family of eight" subset of instructions which
 are expected to work on all machines except the
 8/S.
+
+Later versuions allow the use of a ".syms" file
+to supply symbol names to be used instead of the
+generated names.  Each line of the .syms file
+should contain a symbol name and an octal value.
+Warnings are issued if multiple symbols with the
+same value are detected (and the last symbol with
+that value is used).

@@ -111,6 +111,23 @@ sub readBin {
 
 &readBin($ARGV[0], *core);
 
+sub readSym {
+  local($f, *syms) =  @_;
+  $f .= ".syms";
+  @syms = ();
+  return unless -f $f;
+  open(INPUT, $f) || die "$f: $!";
+  while (<INPUT>) {
+    next if /^$/;
+    y/a-z/A-Z/;
+    die "Bad symbol definition: $_" unless /^\s*([_A-Z0-9]+)\s+([0-7]+)\s*$/;
+    warn "Warning: replacing symbol $syms[oct($2)] with $1 ($2)\n"
+      if defined $syms[oct($2)];
+    $syms[oct($2)] = $1;
+  }
+}
+&readSym($ARGV[0], *syms);
+
 open(STDOUT, ">foo.pal") || die "foo.pal: $!";
 #
 # Pass 1:
@@ -209,9 +226,12 @@ if ($usedfpp) {
 }
 
 #
-# Use $ref[] flags to compute the label, if any for a given EA.
+# If given a symbol, use it.
+# Otherwise, use $ref[] flags to compute the label, if any for a given EA.
 sub ref {
   local($ea) = @_;
+  # If the user gave a name, use that.
+  return $syms[$ea] if defined $syms[$ea];
   local($oea) = sprintf("%05o", $ea);
   # If it's a target of a JMS and a return, it's a subroutine.
   return "S".$oea if ($ref[$ea] & ($SREF|$RREF)) == ($SREF|$RREF);
