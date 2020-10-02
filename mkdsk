@@ -170,7 +170,7 @@ $foo = ".rsvd";
         }
     }
     # Force binary treatment for un-named files.
-    $mode = 1 if $f =~ /\..../;
+    $mode = 1 if $f =~ /^\..../;
 #warn "$f: mode is $mode\n" if $f =~ /$foo/;
 #warn "$f: obuf is $obuf[0] $obuf[1]\n" if $f =~ /$foo/;
     # We walked the file, so we know if it is truly binary.
