@@ -672,7 +672,7 @@ short int val;
 char lexstart; /* index of start of the current lexeme on line */
 char lexterm;  /* index of character after the current lexeme on line */
 
-#define IsBlank(c) ((c==' ')||(c=='\t')||(c=='\f')||(c=='>'))
+#define IsBlank(c) ((c==' ')||(c=='\t')||(c=='\f')||(c=='>')||(c=='\r'))
 
 void
 nextlex()
