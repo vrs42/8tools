@@ -37,6 +37,8 @@ $max = 0;
 #open(STDERR, ">log") || die "log: $!";
 #
 # Open the first file in binary mode and read it in.
+# Issue: Many of the DEC tapes have the location bit set in
+# their checksums, so we must allow that.
 open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
 binmode(INPUT);
 @core1 = (); $loc = $store = undef;
@@ -52,6 +54,8 @@ while (read(INPUT, $top, 1)) {
     $field = ($top & 070) >> 3;
     next;
   }
+  # We have the top 6 bits.  That implies time to store the previous word
+  # if any.
   if (defined($store)) {
     $core1[$field*4096+$loc] = $store;
     $max = $field*4096+$loc unless $max > $field*4096+$loc;
@@ -60,18 +64,14 @@ while (read(INPUT, $top, 1)) {
     $sum += $add;
     $fortran = 0;
   }
-  if (defined($store)) {
-    $core1[$field*4096+$loc] = $store;
-    $max = $field*4096+$loc unless $max > $field*4096+$loc;
-    $store = undef;
-    $loc = ($loc + 1) & 07777;
-    $sum += $add;
-  }
+  # Read and verify the format of the bottom half.
   read(INPUT, $bot, 1) || die "$ARGV[0] read: $!";
   $bot = unpack("c", $bot);
   die "$ARGV[0]: ".$bot." not in bin format ". tell(INPUT) unless $bot <= 077;
+  # Assemble the word, and figure out the checksum update.
   $word = ($top << 6) + $bot;
   $add = $top + $bot; # Update checksum
+  # If the word has the 010000 bit set, it's a location setting.
   if ($word > 07777) {
     #
     # Change location counter
@@ -87,6 +87,11 @@ close(INPUT);
 if ($fortran) {
   warn "$ARGV[0]: 4K Fortran Binary\n" if $fortran;
   $sum += 0640; # 4K Fortran loader counts 0300 and 0340
+}
+if (!defined($store)) {
+  # This is that weird case where the checksum has location bit set!
+  $store = $loc;
+  $sum -= $add;
 }
 $sum &= 07777;
 printf "$ARGV[0]: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
@@ -136,6 +141,11 @@ close(INPUT);
 if ($fortran) {
   warn "$ARGV[0]: 4K Fortran Binary\n" if $fortran;
   $sum += 0640; # 4K Fortran loader counts 0300 and 0340
+}
+if (!defined($store)) {
+  # This is that weird case where the checksum has location bit set!
+  $store = $loc;
+  $sum -= $add;
 }
 $sum &= 07777;
 printf "$ARGV[1]: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
