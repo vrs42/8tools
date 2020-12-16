@@ -46,15 +46,8 @@ $sum = $add = $field = 0;
 while (read(INPUT, $top, 1)) {
   $top = unpack("C", $top);
   next if $top == 0200;	# Leader or Trailer
-  if ($top & 0200) { # Better be field setting!
-    last if $top == 0232; # End of file
-    die "$ARGV[0]: Invalid field setting" unless $top >= 0300;
-    die "$ARGV[0]: Invalid field setting" if $top & 0007;
-    $fortran = 1 if $top == 0340;
-    $field = ($top & 070) >> 3;
-    next;
-  }
-  # We have the top 6 bits.  That implies time to store the previous word
+  last if $top == 0232; # End of file
+  # It isn't trailer.  That implies time to store the previous word
   # if any.
   if (defined($store)) {
     $core1[$field*4096+$loc] = $store;
@@ -63,6 +56,13 @@ while (read(INPUT, $top, 1)) {
     $loc = ($loc + 1) & 07777;
     $sum += $add;
     $fortran = 0;
+  }
+  if ($top & 0200) { # Better be field setting!
+    die "$ARGV[0]: Invalid field setting" unless $top >= 0300;
+    die "$ARGV[0]: Invalid field setting" if $top & 0007;
+    $fortran = 1 if $top == 0340;
+    $field = ($top & 070) >> 3;
+    next;
   }
   # Read and verify the format of the bottom half.
   read(INPUT, $bot, 1) || die "$ARGV[0] read: $!";
@@ -106,14 +106,7 @@ $sum = $add = $field = 0;
 while (read(INPUT, $top, 1)) {
   $top = unpack("C", $top);
   next if $top == 0200;	# Leader or Trailer
-  if ($top & 0200) { # Better be field setting!
-    last if $top == 0232; # End of file
-    die "$ARGV[1]: Invalid field setting" unless $top >= 0300;
-    die "$ARGV[1]: Invalid field setting" if $top & 0007;
-    $fortran = 1 if $top == 0340;
-    $field = ($top & 070) >> 3;
-    next;
-  }
+  last if $top == 0232; # End of file
   if (defined($store)) {
     $core2[$field*4096+$loc] = $store;
     $max = $field*4096+$loc unless $max > $field*4096+$loc;
@@ -121,6 +114,13 @@ while (read(INPUT, $top, 1)) {
     $loc = ($loc + 1) & 07777;
     $sum += $add;
     $fortran = 0;
+  }
+  if ($top & 0200) { # Better be field setting!
+    die "$ARGV[1]: Invalid field setting" unless $top >= 0300;
+    die "$ARGV[1]: Invalid field setting" if $top & 0007;
+    $fortran = 1 if $top == 0340;
+    $field = ($top & 070) >> 3;
+    next;
   }
   read(INPUT, $bot, 1) || die "$ARGV[1] read: $!";
   $bot = unpack("c", $bot);
