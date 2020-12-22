@@ -196,7 +196,7 @@ $f =~ y/a-z/A-Z/;
 $e =~ y/a-z/A-Z/;
 #warn "Writing $ARGV[0] image with name '$f.$e'\n";
 $size = -s $ARGV[0];
-die "'$size' is not a multiple of the blocksize\n" unless $size % 256*3/2;
+die "'$size' is not a multiple of the blocksize\n" if $size % (256*3/2);
 $size /= (256*3/2);
 #warn "Input file is $size blocks\n";
 
