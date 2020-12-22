@@ -1,0 +1,5 @@
+load d0mb-pb
+break 0-7777;e pc-mq;c
+set log simh.out
+run 00202
+q

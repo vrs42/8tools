@@ -5,11 +5,12 @@ checked for valid EPIC format.
 
 EPIC writes files with a even parity for each word,
 in 8 word segments.  Each pair of words is output
-as three bytes followed by the parity byte.
+as three bytes.  The eight words are followed by
+the parity byte.
 
 This content is prepended by a byte of 0201, followed
-by the file name, extension, block number, size and
-an unknown (date?) word.
+by the EPIC version, file name, extension, block
+number, size and an zero word.
 
 Every 041 segments form a 0400 word OS/8 block, and
 are followed by two bytes of CRC.  The CRC is in

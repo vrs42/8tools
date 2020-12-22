@@ -1,0 +1,368 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+@rem = '
+@echo off
+c:\perl5\bin\perl %0 %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto endofperl
+@rem ' if @rem;
+
+#
+# Make an EPIC format paper tape image of a file.
+#
+# A file is dumped as one or more tape segments.  A tape segment
+# consists of at most 32 blocks (to fit in the tape tray), and
+# begins with two feet of leader, and ends with a 0377 punch to
+# indicate "end of tape", followed by two feet of trailer.
+#
+# Each tape block starts with a 0201 byte, which marks the start
+# of # a block.  This is followed by a header segment, followed
+# by 8 word data segments.
+#
+# Each chunk is 8 words, punched as 12 bytes, followed by a parity
+# byte.  Each pair of words in the 8 word chunk is represented by
+# 3 bytes, concatenated from left to right.  (If the bits of the
+# bytes were; abcdefgh ijklmnop qrstuvwx, the resulting words will
+# be abcdefghijkl mnopqrstuvwx.)  Parity is computed for each word,
+# with a 1 indicating even parity.  A parity byte is constructed
+# from the 8 parity values, then "punched" on the tape image.
+#
+# There is a special initial chunk of 8 words, which contains
+# the file name, block number, and some unknown other stuff.
+#
+# After 041 such chunks, a block of 0400 words has been processed.
+# Blocks end with two CRC bytes and are seperated by 8 inches of
+# leader/trailer.
+#
+# This could be hugely different and more efficient, but for now
+# we mimic the logic of the original.  (In particular, converting
+# from bytes to words to bytes is silly.)
+#
+
+# Update the CRC values.
+# I'm sure this could be cleaned up quite a bit.
+sub docrc {
+  local($tmp0) = @_;
+
+  $ac = $tmp0 ^ $crc2;
+  $ac = int($ac/2) + (($ac&1)<<12); # cll rar
+  $ac = int($ac/2) + (($ac&1)<<12); # rar
+  for ($tmp1 = -7; $tmp1; $tmp1++) {
+    $ac ^= 010000 if $ac & 04000; # spa; cml
+    $ac = int($ac/2) + (($ac&1)<<12); # rar
+  }
+  $tmp1 = $ac & 07777;
+  if ($ac & 04000) {
+    $ac = int((($ac&010000)+$crc1)/2) + (($crc1&1)<<12); # tad crc1; rar
+    $ac = 2*($ac & 07777) + !($ac & 010000); # cml ral
+  } else {
+    $ac = $crc1;
+  }
+  $crc2 = $ac & 07777;
+  $crc1 = 4*($tmp1 & 060);
+  $crc2 ^= $crc1;
+  $crc1 = $tmp1;
+  $crc1 = int($crc1/2); # cll rar
+  $crc1 = int($crc1/2) + (($crc1&1)<<12); # rar
+  $crc1 = int($crc1/2) + (($crc1&1)<<12); # rar
+  $crc1 = int($crc1/2) + (($crc1&1)<<12); # rar
+  $tmp1 = int($crc1 / 4); # tad crc1; cll rar; cll rar; dca tmp1
+  $crc1 ^= $tmp1;
+}
+
+sub sixbit {
+  local($c1, $c2) = @_;
+  return ((077&($c1^000)) <<6) + (077&($c2^000));
+}
+
+#
+# Write leader/trailer, in the style of the original.
+# (This is the "8 inches" referred to in the manual.)
+$ltlen = 0124; # 84, technically 8.4 inches
+sub wlt {
+  for ($i = 0; $i < $ltlen; $i++) {
+    print pack("C", 0200);
+  }
+}
+
+#
+# End of a tape.  Output an EOT followed by a couple feet of trailer.
+sub eot {
+  print pack("C", 0377);
+  &wlt;
+  &wlt;
+  &wlt;
+}
+
+#
+# Block setup.
+sub isetb {
+# $fp = $from; # Only needed for packing?
+# $pp = $parm; # For input parity computation
+  $bp = 0;
+  $crc1 = $crc2 = 0;
+  $chunk = -041; # Header plus 32 data
+}
+
+#
+# Parity of a 12 bit word.
+# (This departs from the PDP-8 implementation.)
+sub doparity {
+  local($word) = @_;
+  # Compute this word's parity.
+  local($even) = 1;
+  while ($word) {
+    $word &= ($word-1); # Remove a bit
+    $even = !$even;
+  }
+  # Add this word's bit to the parity byte.
+  $parity = ($parity << 1) + $even;
+}
+
+#
+# Put a chunk.
+sub putchunk {
+  $parity = 0;
+  for ($pair = 0; $pair < 4; $pair++) {
+#printf STDERR "word %d is %04o\n", $bp, $buf[$bp];
+    &doparity($buf[$bp]);
+    $f1 = $buf[$bp] >> 4;
+    print pack("C", $f1);
+    &docrc($f1);
+    $f2 = (($buf[$bp] & 017) << 4) + ($buf[$bp+1] >> 8);
+    print pack("C", $f2);
+    &docrc($f2);
+    print pack("C", $buf[++$bp]&0377);
+#printf STDERR "word %d is %04o\n", $bp, $buf[$bp];
+    &doparity($buf[$bp]);
+    &docrc($buf[$bp++]&0377);
+  }
+#printf STDERR "Output parity byte %o\n", $parity;
+  print pack("C", $parity);
+  &docrc($parity);
+}
+
+#
+# A tape block: leader, start of block, data, then CRC.
+# This routine is called with buf containing the header
+# and a block of file data:
+# Header:
+#   <1 word: version number (010)>
+#   <4 word: file name and extension in 6bit>
+#   <1 word: block number>
+#   <1 word: file length>
+#   <1 word: zero>
+sub pwrite {
+  &isetb;
+  &wlt; # Seperator, or maybe last of leader
+  print pack("C", 0201);
+  while ($chunk++) {
+    &putchunk;
+  }
+  print pack("C", $crc1);
+  print pack("C", $crc2);
+}
+
+#
+# Check that ARGV[1] is a valid OS/8 filename/extension.
+die "'$ARGV[0]' is not an OS/8 filename\n" unless $ARGV[0] =~ /^(\w{1,6})(.(\w{0,2}))?$/;
+($f, $e) = ($1, $3);
+$f =~ y/a-z/A-Z/;
+$e =~ y/a-z/A-Z/;
+#warn "Writing $ARGV[0] image with name '$f.$e'\n";
+$size = -s $ARGV[0];
+die "'$size' is not a multiple of the blocksize\n" unless $size % 256*3/2;
+$size /= (256*3/2);
+#warn "Input file is $size blocks\n";
+
+#
+# Compose a prototype header array using the filename/extension.
+@f = unpack("C6", "$f@@@@@@"); 
+@e = unpack("C2", "$e@@"); 
+$header[0] = 010; # Version number
+$header[1] = &sixbit($f[0], $f[1]);
+$header[2] = &sixbit($f[2], $f[3]);
+$header[3] = &sixbit($f[4], $f[5]);
+$header[4] = &sixbit($e[0], $e[1]);
+$header[5] = 0; # Replaced with block number
+$header[6] = $size - 1; # Last block number
+$header[7] = 0; # Always zero
+#warn "@header";
+
+#
+# Open the input and output files. a file in EPIC loader format.
+open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
+binmode(INPUT);
+open(STDOUT, ">$ARGV[1]") || die "$ARGV[1]: $!";
+binmode(STDOUT);
+# BUGBUG: Doesn't do multiple tape files yet!!
+{
+  &wlt;
+  &wlt;
+  #
+  # Write a file in EPIC loader format.
+  $blk = 0;
+  while (read(INPUT, $ibuf, 256*3/2)) {
+     #
+     # Prepend the header.
+     @buf = @header;
+     $buf[5] = $blk;
+     #
+     # Convert the block to words, appending to the buffer.
+     @ibuf = unpack("C*", $ibuf);
+     die unless $#ibuf % 3 == 2;
+     while (@ibuf) {
+       $c1 = shift @ibuf;
+       $c2 = shift @ibuf;
+       $c3 = shift @ibuf;
+       $w1 = $c1 + (($c3&036)<<4);
+       $w2 = $c2 + (($c3&017)<<8);
+       push(@buf, $w1, $w2);
+     }
+     #
+     # Output a block.
+     &pwrite;
+     $blk++;
+  }
+}
+&eot;
+
+
+#
+# Read a file in EPIC loader format.
+sub writeEPIC {
+  local($file, *core) = @_;
+  #
+  # The file's basename must be 6.2.
+  $file =~ s:.*/::;;
+  die "Invalid file name $file" unless $file =~ /^(\S+)(.(\S*))$/;
+  ($f, $e) = ($1, $3);
+  die "Invalid file name $file" unless length($f) <= 6;
+  die "Invalid file name $file" unless length($e) <= 2;
+  #
+  # Pack up the sixbit version of the 6.2 file name.
+  @f = unpack("C6", "$f      "); 
+  @e = unpack("C2", "$f  "); 
+  $file  = &sixbit($f[0], $f[1]);
+  $file .= &sixbit($f[2], $f[3]);
+  $file .= &sixbit($f[4], $f[5]);
+  $file .= &sixbit($e[0], $e[1]);
+  #
+  # Open the input file in binary mode.
+  open(INPUT, $file) || die "$file: $!";
+  binmode(INPUT);
+  #
+  # Generate some leader.  May be 0000 or 0200, but we use 0200.
+  # EPIC generates 2 feet of leader/trailer.
+  for ($i = 0; $i < 240; $i++) {
+    print pack("C", 0200);
+  }
+  for ($blk = 0; ; $blk++) {
+    # Read a block.
+    last unless $c = read(INPUT, $top, 512);
+    @top = unpack("C", $top);
+    # Emit a "start of block".
+    print pack("C", 0201);
+    # Init for block
+    $crc1 = $crc2 = 0;
+    # Emit the header chunk.  (EPIC calls them "bytes", not "chunks", 
+    # but that is super confusing.)
+    # @hdr = ($_, $c1c2, $c3c4, $c5c6, $e1e2, $blk, $size, $_);
+    print $_, "$file", $blk, $size, $_;
+
+    # Parse a block, which is a header chunk and 32 data chunks.
+    # NB: We don't check the header for valid content, just for 
+    # parity and CRC.
+    @hdr = ();
+    for ($c = 0; $c < 33; $c++) {
+      # Check a chunk.  Each chunk is 12 bytes followed by parity.
+      $parity = 0;
+      for ($i = 0; $i < 4; $i++) {
+        if (read(INPUT, $top, 3) == 3) {
+          ($c1, $c2, $c3) = unpack("CCC", $top);
+          &docrc($c1);
+          &docrc($c2);
+          &docrc($c3);
+          $c1 = ($c1<<16) | ($c2<<8) | $c3;
+          $c2 = $c1 & 07777;
+          $c1 = $c1 >> 12;
+          #printf("0%04o, 0%04o\n", $c1, $c2);
+          &dopar($c1);
+          &dopar($c2);
+          push(@hdr, $c1, $c2) if $c == 0;
+        } else {
+          die "$file: EOF in block";
+        }
+      }
+      if (read(INPUT, $top, 1)) {
+        $top = unpack("C", $top);
+        $str = sprintf("0%03o vs 0%03o\n", $parity, $top);
+        die "$file: bad parity $str" unless $parity == $top;
+        #warn "$file: OK  parity $str" if $parity == $top;
+        &docrc($top);
+        if ($c == 0) {
+          ($_, $c1c2, $c3c4, $c5c6, $e1e2, $blk, $size, $_) = @hdr;
+          &sixbit($c1c2);
+          &sixbit($c3c4);
+          &sixbit($c5c6);
+          printf(".");
+          &sixbit($e1e2);
+          printf(", block %d\n", $blk);
+        }
+      }
+    }
+
+    # Check block CRC
+    if (read(INPUT, $top, 1)) {
+      $top = unpack("C", $top);
+      $str = sprintf("0%03o vs 0%03o\n", $crc1, $top);
+      warn "$file: crc1: $str" unless $crc1 == $top;
+    }
+    if (read(INPUT, $top, 1)) {
+      $top = unpack("C", $top);
+      $str = sprintf("0%03o vs 0%03o\n", $crc2, $top);
+      die "$file: crc2: $str" unless $crc2 == $top;
+    }
+    
+    # Check if last block
+    if (read(INPUT, $top, 1)) {
+      $top = unpack("C", $top);
+      # NB: We require a frame of L/T between each block.
+      next if $top == 0000;
+      next if $top == 0200;
+      last if $top == 0377;
+      die "$file: junk at 'end of block'";
+    }
+  }
+  close(INPUT);
+}
+
+#&readEPIC($ARGV[0]);
+
+__END__
+:endofperl
