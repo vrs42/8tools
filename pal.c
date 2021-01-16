@@ -1440,6 +1440,13 @@ restart:
 				break;
 			case 023: /* FILENAME */
 				{	int p = lexstart, d;
+					/* VRS: nextlex() probably saw an    */
+					/* identifier, but in the case where */
+					/* it saw a number, fix things up.   */
+					while (isalnum(line[pos])) {
+						pos++; /* keep going */
+					}
+					lexterm = pos;
 					if (p < lexterm)
 						d = line[p++] & 077;
 					else
@@ -1471,6 +1478,13 @@ restart:
 					if (line[lexstart] == '.') {
 						nextlex(); /* skip dot */
 						p = lexstart;
+						/* VRS: probably saw an    */
+						/* identifier, but in case */
+						/* we saw a number, fix up.*/
+						while (isalnum(line[pos])) {
+							pos++; /* keep going */
+						}
+						lexterm = pos;
 						if (p < lexterm)
 							d = line[p++] & 077;
 						else
