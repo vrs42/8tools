@@ -1,0 +1,31 @@
+/Some simple expressions, to see if the assembler does them right.
+/It is a challenge to get both:
+/	SZA CLA^2	/7500, and
+/	TAD FOO+1	/*not* "TAD FOO"+1
+/right.  On the one hand space (OR) is treated like any other operator,
+/and evaluation is strictly left to right.  On the other, the MRI needs
+/a fully evaluated target address expression before correct code can be
+/generated.
+*200
+	TAD FOO		/ Needs a literal
+	TAD FOO+1	/ Needs a *different* literal!
+	TAD (-214+212
+	TAD (-214+212
+	TAD (-212+207
+	4;HLT	/ hmm
+start,	/ begin here
+	1-2-3
+	1^2^3
+	1-2^3
+	1^2-3
+	SZA CLA
+	SZA CLA^2
+	CIF CDF 10
+	JMP 10
+	JMP I .
+*.-1 177+1	/ This one is fun
+	NOP
+	PAGE
+FOO,
+	FIELD
+$

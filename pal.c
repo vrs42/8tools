@@ -498,7 +498,7 @@ dump()
 	if (dosmode)
 		fputc( '\r', lst );
 	fputc( '\n', lst );
-	// Sort the symbol table with a ripple sort
+	/* Sort the symbol table with a ripple sort */
 sort:
 	again = 0;
 	for (i = firstsym; symtab[i+1].sym[0] != '\0'; i++) {
@@ -511,7 +511,7 @@ sort:
 	}
 	if (again)
 		goto sort;
-	// Dump the symbol table
+	/* Dump the symbol table */
 	for (i = firstsym; symtab[i].sym[0] != '\0'; i++) {
 		fprintf( lst, "%-6s  %04o%s",
 			 symtab[i].sym, symtab[i].val,
@@ -674,6 +674,13 @@ char lexterm;  /* index of character after the current lexeme on line */
 
 #define IsBlank(c) ((c==' ')||(c=='\t')||(c=='\f')||(c=='>')||(c=='\r'))
 
+/*
+ * The nextlex() function assumes 'pos' is the beginning of a token,
+ * sets lexstart to that, finds the end of the token, and sets lexterm
+ * and 'pos' to the start of the next token.
+ * The exception is '/' and end-of-line, which are considered to be of
+ * length 1, since their actual length should never be relevant.
+*/
 void
 nextlex()
 /* get the next lexeme into lex */
@@ -842,22 +849,36 @@ nextlexblank()
 	delimiter = line[lexterm];
 }
 
-int eval()
-/* get the value of the current lexeme, set delimiter and advance */
+/*
+ * The current lexeme spans from lexstart to lexterm-1.
+ * Determine a value for it, and return it.
+ * If we are called for something that doesn't have a meaningful
+ * value, report "illegal char".
+ * As side effects, set 'delimiter' to the first character of the
+ * subsequent lexeme, then advance to that lexeme.
+ * Note: This means that on return delimiter should match lexstart,
+ * not lexterm!
+*/
+int
+eval()
 {
 	int val;
 
 	delimiter = line[lexterm];
-	if (isalpha(line[lexstart])) {
+	/* Hacks for unary operators */
+	if (line[lexstart] == '-') {
+		nextlex();
+		return -eval();
+	} else if (line[lexstart] == '+') {
+		nextlex();
+		return eval();
+
+	} else if (isalpha(line[lexstart])) {
 		val = evalsym();
 
 		if (val == -1) {
 			error( "undefined" );
-			nextlex();
-			return 0;
-		} else {
-			nextlex();
-			return val;
+			val = 0;
 		}
 
 	} else if (isdigit(line[lexstart])) {
@@ -872,20 +893,15 @@ int eval()
 				error("d > radix");
 			}
 		}
-		nextlex();
-		return val;
 
 	} else if (line[lexstart] == '"') {
 		val = line[lexstart+1] | 0200;
+		/* lexterm points at lexstart+1, so fix things up. */
 		delimiter = line[lexstart+2];
-		pos = lexstart+2;
-		nextlex();
-		return val;
+		lexterm = pos = lexstart+2;
 
 	} else if (line[lexstart] == '.') {
 		val = lc & 07777;
-		nextlex();
-		return val;
 
 	} else if (line[lexstart] == '[') {
 		int loc;
@@ -897,6 +913,8 @@ int eval()
 		} else {
 			/* error("parens") */;
 		}
+		/* Now rig for caller to see the terminator */
+		pos = lexterm = lexstart;
 
 		loc = 00177;
 		while ((loc > pzlc) && (pz[loc] != val)) {
@@ -906,193 +924,195 @@ int eval()
 			pz[pzlc] = val;
 			pzlc--;
 		}
-		return loc;
+		val = loc;
 
 	} else if (line[lexstart] == '(') {
 		int loc;
+		int *lit = cp;
+		int *plc = &cplc;
 
 		if ((lc & 07600) == 0) {
 			error("page zero"); errors--; /* VRS: warning only */
+			lit = pz;
+			plc = &pzlc;
 		}
 		nextlexblank(); /* skip paren */
 		val = getexprs() & 07777;
 		if (line[lexstart] == ')') {
 			nextlex(); /* skip end paren */
-		} else { /*
-			error("parens") */ ;
+		} else {
+			/* error("parens") */ ;
 		}
+		/* Now rig for caller to see the terminator */
+		pos = lexterm = lexstart;
 
 		loc = 00177;
-		while ((loc > cplc) && (cp[loc] != val)) {
+		while ((loc > *plc) && (lit[loc] != val)) {
 			loc--;
 		}
-		if (loc == cplc) {
-			cp[cplc] = val;
-			cplc--;
+		if (loc == *plc) {
+			lit[*plc] = val;
+			(*plc)--;
 		}
-		return loc + (lc & 07600);
+		val = loc + (lc & 07600);
 
-	}
-	error("illegal char");
-        nextlex();
-	return 0;
-}
-
-int getexpr()
-/* get an expression, from the current lexeme onward, leave the current
-   lexeme as the one after the expression!
-
-   Expressions contain terminal symbols (identifiers) separated by operators
-*/
-{
-	int value;
-
-	delimiter = line[lexterm];
-	if (line[lexstart] == '-') {
-		nextlexblank();
-		value = -eval();
 	} else {
-	        if (line[lexstart] == '+') {/*VRS*/
-	        	nextlexblank();
-		}
-		value = eval();
+fprintf(stderr, "The illegal character is '%c'\n", line[lexstart]);
+		error("illegal char");
+		val = 0;
 	}
-
-more:	/* here, we assume the current lexeme is the operator
-           separating the previous operand from the next, if any */
-
-	if (IsBlank(delimiter)) {
-		return value;
+        if (!IsBlank(delimiter)) {
+		nextlex();
+	} else {
+		lexstart = lexterm;
+		lexterm++;
 	}
-
-	/* assert line[lexstart] == delimiter */
-
-	if (line[lexstart] == '+') { /* add */
-
-		nextlexblank(); /* skip over the operator */
-		value = value + eval();
-		goto more;
-
-	}
-	if (line[lexstart] == '-') { /* subtract */
-
-		nextlexblank(); /* skip over the operator */
-		value = value - eval();
-		goto more;
-
-	}
-	if (line[lexstart] == '^') { /* multiply */
-
-		nextlexblank(); /* skip over the operator */
-		value = value * eval();
-		goto more;
-
-	}
-	if (line[lexstart] == '%') { /* divide */
-
-		nextlexblank(); /* skip over the operator */
-		value = value / eval();
-		goto more;
-
-	}
-	if (line[lexstart] == '&') { /* and */
-
-		nextlexblank(); /* skip over the operator */
-		value = value & eval();
-		goto more;
-
-	}
-	if (line[lexstart] == '!') { /* or */
-
-		nextlexblank(); /* skip over the operator */
-		value = value | eval();
-		/* OPTIONAL PATCH 2 -- change to (value << 6) ! eval() */
-		goto more;
-
-	}
-
-	if (isend(line[lexstart])) { 
-		return value;
-	}
-	if (line[lexstart] == '/') { 
-		return value;
-	}
-	if (line[lexstart] == ';') { 
-		return value;
-	}
-	if (line[lexstart] == ')') { 
-		return value;
-	}
-	if (line[lexstart] == ']') { 
-		return value;
-	}
-	if (line[lexstart] == '<') { 
-		return value;
-	}
-
-	error("expression");
-	return 0;
+	return val;
 }
 
-int getexprs()
-/* or together a list of blank-separated expressions, from the current
-   lexeme onward, leave the current lexeme as the one after the last in
-   the list!
+/* VRS:
+ * Process an expression.  Whitespace is interpreted as an "OR" function,
+ * modified if an MRI has been seen.  Evaluation is strictly left to
+ * right, with no operator having precedence.
+ * We are called with the first lexeme already found, so begin (and loop)
+ * inspecting the operator and combining with the following operand.
+ * Return is with the current lexeme being the terminator.
+ * This replaces the former code, which incorrectly evaluated from
+ * right to left, and also considered "OR" lower precedence than the
+ * rest of the operators..
+ * Currently "!" functions as an OR that pays no attention to MRI'ness.
+ * I gather some assemblers find it useful as a way of forming sibit, instead.
 */
+int
+getexpr()
 {
-	int value;
-	value = getexpr();
+	int value = eval();
+	int op, temp, ostart, oterm;
 
-more:	/* here, we check if we are done */
+	/* We have set 'value' to the current token at entry, aka
+	 * the left operand, and advanced the token to the operator.
+	 * We need to keep things that way every time through the loop.
+        */
+	while (1) {
+		op = delimiter; /* remember the operator */
 
-	if (isdone(line[lexstart])) { /* no operand */
-		return value;
-	}
-	if (line[lexstart] == '<') { /* end of list */
-		return value;
-	}
-	if (line[lexstart] == ')') { /* end of list */
-		return value;
-	}
-	if (line[lexstart] == ']') { /* end of list */
-		return value;
-	}
-
-	{ /* interpret space as logical or */
-		int temp;
-
-		temp = getexpr();
-
-		if (value <= 07777) { /* normal 12 bit value */
-			value = value | temp;
-		} else if (temp > 07777) { /* or together MRI opcodes */
-			value = value | temp;
-		} else if (temp < 0200) { /* page zero MRI */
-			value = value | temp;
-		} else if (   ((lc & 07600) <= temp)
-			   && (temp <= (lc | 00177))
-			  ) {
-			/* current page MRI */
-			value = value | 00200 | (temp & 00177);
-		} else {
-			/* off page MRI */
-			int loc;
-			if (linkmsg) {
-				error("off page"); errors--; /* VRS: warning only */
-			}
-			/* having complained, fix it up */
-			loc = 00177;
-			while ((loc > cplc) && (cp[loc] != temp)) {
-				loc--;
-			}
-			if (loc == cplc) {
-				cp[cplc] = temp;
-				cplc--;
-			}
-			value = value | 00600 | loc;
+		/* End of statement is also end of expression */
+		if (isdone(op)) { /* end of statement/expression */
+			return value;
 		}
-		goto more;
+		/* These next terminate expressions, but not statements */
+		if (op == '<') {  /* end of expression */
+			return value;
+		}
+		if (op == ')') {  /* end of expression */
+			return value;
+		}
+		if (op == ']') {  /* end of expression */
+			return value;
+		}
+
+		/*
+		 * Not done, so interpret the next operand.
+		*/
+		nextlex(); /* advance over the operator */
+		/* We may have advanced over space to the end */
+		if (isdone(line[lexstart])) { /* end of statement/expression */
+			return value;
+		}
+		/* These next terminate expressions, but not statements */
+		if (line[lexstart] == '<') {  /* end of expression */
+			return value;
+		}
+		if (line[lexstart] == ')') {  /* end of expression */
+			return value;
+		}
+		if (line[lexstart] == ']') {  /* end of expression */
+			return value;
+		}
+		ostart = lexstart;
+		oterm = lexterm;
+		temp = eval();	/* Evaluate second operand */
+
+		if (IsBlank(op)) {
+			/* interpret space as logical or */
+			if (value <= 07777) { /* normal 12 bit value */
+				value = value | temp;
+			} else if (temp > 07777) { /* or together MRI opcodes */
+				value = value | temp;
+			} else {
+				/* The left operand is MRI, the right isn't. */
+				/* Rescan the right, as an expression rather */
+				/* than a term. */
+/* BUGBUG: This rescan causes repeated "page zero" errors! */
+				lexstart = ostart;
+				lexterm = pos = oterm;
+				temp = getexpr();
+				/* Now proceed, dealing with offpage, etc. */
+				if (temp < 0200) { /* page zero MRI */
+					value = value | temp;
+				} else if (   ((lc & 07600) <= temp)
+					   && (temp <= (lc | 00177)) ) {
+					/* current page MRI */
+					value = value | 00200 | (temp & 00177);
+				} else {
+					/* off page MRI */
+					int loc;
+					int *lit = cp;
+					int *plc = &cplc;
+
+					if ((lc & 07600) == 0) {
+						lit = pz;
+						plc = &pzlc;
+					}
+					if (linkmsg) {
+						error("off page");
+						errors--; /* VRS: warning only */
+					}
+					/* having complained, fix it up */
+					loc = 00177;
+					while ((loc>*plc) && (lit[loc]!=temp)) {
+						loc--;
+					}
+					if (loc == *plc) {
+						lit[*plc] = temp;
+						(*plc)--;
+					}
+					value = value | 00600 | loc;
+				}
+				pos = lexterm = lexstart;
+				delimiter=line[lexstart];
+			}
+		} else if (op == '+') { /* add */
+			value = value + temp;
+		} else if (op == '-') { /* subtract */
+			value = value - temp;
+		} else if (op == '^') { /* multiply */
+			value = value * temp;
+		} else if (op == '%') { /* divide */
+			if (temp == 0) {
+				error("divide by 0");
+			} else {
+				value = value / temp;
+			}
+		} else if (op == '&') { /* and */
+			value = value & temp;
+		} else if (op == '!') { /* or */
+			/* OPTIONAL PATCH 2
+			 * Change to (value << 6) ! eval()
+			*/
+			value = value | temp;
+		} else {
+			error("expression");
+			return 0;
+		}
 	}
+}
+
+/* BUGBUG: Just punt for now. */
+int
+getexprs()
+{
+	return getexpr();
 }
 
 void
