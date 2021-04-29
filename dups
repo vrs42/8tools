@@ -57,7 +57,7 @@ if (open(INPUT, "dups.db")) {
     while (<INPUT>) {
 	($f, $s) = /(.*) (.*)/;
 # TODO: normalize $f here.
-$f =~ y?/A-Z?\\a-z?;
+$f =~ y?\\?/?;
 	$sum{$f} = $s;
     }
     print STDERR "done\n";
@@ -118,9 +118,10 @@ while (@todo) {
     foreach (readdir(DIR)) {
     	$f = "$dir/$_";
 # TODO: normalize $f here!
-$f =~ y?/A-Z?\\a-z?;
+$f =~ y?\\?/?;
 	next if $_ eq ".";
 	next if $_ eq "..";
+	next if $_ eq ".git";
 	next if $_ eq ".svn";
 	next if $_ eq "backup";
 	next if $_ eq "Camera";
@@ -134,7 +135,9 @@ $f =~ y?/A-Z?\\a-z?;
 	next if /\.lnk$/;
 	next if /\.rdp$/;
 	next if /TaxCut[0-9]/;
-	if (/([ '])/) {
+#BUGBUG: Experimental (April 2021)
+s/([ ])/\\ /g;
+	if (/(['])/) {
 	    print "Skipping $f (imbedded '$1') ...\n";
 	    print STDERR "\nSkipping $f (imbedded '$1') ...";
 	    next;
@@ -143,9 +146,9 @@ $f =~ y?/A-Z?\\a-z?;
 	    push(@todo, $f) if $recursive;
 	    next;
 	}
-	$s = -s _;
+	$s = -s $f;
 	if (defined $files{$s}) {
-	    $files{$s} .= " $f";
+	    $files{$s} .= "'$f";
 	} else {
 	    $files{$s} = $f;
 	}
@@ -160,7 +163,7 @@ $opercent = -1;
 sub byname { $a cmp $b }
 foreach (keys %files) {
     # Get a list of all files of this size
-    @files = sort byname split(/ /, $files{$_});
+    @files = sort byname split(/'/, $files{$_});
     %done = (); # reduce memory usage
     $done++;
     $npercent = int((100*$done) / (0+keys %files));
@@ -188,7 +191,7 @@ foreach (keys %files) {
 	    $done{$i} = 1;
 	    $done{$j} = 1;
 	    $out = "$i $j\n";
-	    $out =~ y:/:\\:;
+	    $out =~ y:\\:\/:;
 	    print $out;
 	}
     }
@@ -206,7 +209,7 @@ if (open(OUTPUT, ">dups.db")) {
 # Save just the stuff in subdirectories
 next unless $f =~ m:[/\\].*[/\\]:;
 	print OUTPUT "$f $sum{$f}\n"
-	    unless $f =~ ?[/\\]windows[/\\]desktop[/\\]?;
+	    unless $f =~ m?[/\\]windows[/\\]desktop[/\\]?;
     }
     print STDERR "done\n";
 }
