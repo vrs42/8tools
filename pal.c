@@ -183,20 +183,20 @@ struct symbol {
 	{ "DATE"  , 040030 }, /* get the low date word */
 	{ "DATEHI", 040031 }, /* get the high date word */
 	{ "DTORG" , 040032 }, /* set the output media block */
-	{ "ENBITS", 040033 }, /* set the output media block */
-	{ "ENDBIN", 040034 }, /* set the output media block */
-	{ "ERROR" , 040035 }, /* set the output media block */
-	{ "EXPUNG", 040036 }, /* set the output media block */
-	{ "IFREF" , 040037 }, /* set the output media block */
-	{ "IFNREF", 040038 }, /* set the output media block */
-	{ "LMODE" , 040039 }, /* set the output media block */
-	{ "NOBITS", 040040 }, /* set the output media block */
-	{ "PMODE" , 040041 }, /* set the output media block */
-	{ "PAUSE" , 040042 }, /* set the output media block */
-	{ "PQS"   , 040043 }, /* set the output media block */
-	{ "SIXBIT", 040044 }, /* set the output media block */
-	{ "SKIP"  , 040045 }, /* set the output media block */
-	{ "TITLE" , 040046 }, /* set the output media block */
+	{ "ENBITS", 040033 }, /* ?? */
+	{ "ENDBIN", 040034 }, /* ?? */
+	{ "ERROR" , 040035 }, /* output an error message */
+	{ "EXPUNG", 040036 }, /* lose the standard symbols */
+	{ "IFREF" , 040037 }, /* ?? */
+	{ "IFNREF", 040038 }, /* ?? */
+	{ "LMODE" , 040039 }, /* set the LINC mode */
+	{ "NOBITS", 040040 }, /* ?? */
+	{ "PMODE" , 040041 }, /* ??
+	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
+	{ "PQS"   , 040043 }, /* ?? */
+	{ "SIXBIT", 040044 }, /* output sixbit character data */
+	{ "SKIP"  , 040045 }, /* ?? */
+	{ "TITLE" , 040046 }, /* set the listing title */
 /* BUGBUG: Messes with value for firstsym! */
 #endif
 
