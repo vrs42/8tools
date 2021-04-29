@@ -108,6 +108,7 @@ sub ofile {
   open(OUTPUT, ">$f") || die "$f: $!";
   binmode(OUTPUT);
   $mask = 0377; $chr1 = "binary";
+  $mask = 0177 if $f =~ /[.]BA$/i; # BASIC Source
   $mask = 0177 if $f =~ /[.]BI$/i; # BATCH Input
   $mask = 0177 if $f =~ /[.]FC$/i; # FOCAL Source
   $mask = 0177 if $f =~ /[.]FT$/i; # FORTRAN Source
