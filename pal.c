@@ -282,9 +282,10 @@ struct symbol {
 	{ "LSR", 007417 },
 	{ "SKON",006000 }, /* IOTs */
 	{ "GTF", 006004 },
+	{ "RTF", 006005 },
 	{ "SGT", 006006 },
 	{ "CAF", 006007 },
-#define pdp8e 14	/* Number of extensions to the symbol table */
+#define pdp8e 15	/* Number of extensions to the symbol table */
 #else
 #define pdp8e 0
 #endif
