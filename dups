@@ -72,6 +72,7 @@ sub cmp {
     # Experiment:  Two identical files is OK if they 
     # have the same basename.
     $basename = $f1; $basename =~ s/.*[\\\/]//;
+$basename =~ s/\[/\\[/g;
     return 1 if $f2 =~ /[\\\/]$basename$/;
     $compares += 1;
     if (defined($sum{$f1}) && defined($sum{$f2})) {
@@ -127,6 +128,8 @@ $f =~ y?\\?/?;
 	next if $_ eq "Camera";
 	next if $_ eq "Casio";
 	next if $_ eq "Tax";
+	next if /\/Android/;
+	next if /\/.android/;
 	next if /\/TaxCut/;
 	next if /\.csv$/;
 	next if /\.htm$/;
@@ -172,7 +175,6 @@ foreach (keys %files) {
 	printf STDERR "%3d%%\r", $npercent;
 	$opercent = $npercent;
     }
-#   %sum = (); # reduce memory usage
     for $i (@files) {
 	for $j (@files) {
 	    next if $i eq $j;
