@@ -1213,7 +1213,7 @@ restart:
 			case 2: /* ZBLOCK */
 				val = getexpr();
 				val &= 07777;
-				if (val+lc-1 > 07777) {
+				if (val+(lc&07777)-1 > 07777) {
 					error("too big");
 				} else {
 					for ( ;val > 0; val--) {
@@ -1392,10 +1392,12 @@ restart:
 				/* NOTE: Combining "*" with RELOC is not advised.  For	*/
 				/* compatibility with existing (PQS8) assemblers, "*"	*/
 				/* does NOT alter the current relocation offset.	*/
+				/* NB: "lc" does not include field, and must wrap.	*/
 
 				if (isdone(line[lexstart])) {
 					/* RELOC without arg */
 					lc += reloc;
+					lc &= 07777;
 					reloc = 0;
 				} else {
 					/* RELOC with an argument */
@@ -1404,6 +1406,7 @@ restart:
 					/* NOTE: Cannot combine with above, since "."	*/
 					/* may have been used in getexr().		*/
 					lc += reloc;
+					lc &= 07777;
 					reloc = 0;
 					/* Implement new RELOC. */
 					reloc = (lc - val) & 07777;
