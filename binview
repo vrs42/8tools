@@ -106,6 +106,7 @@ while (1) {
 	    if (defined $data) {
 		printf "%04o ", $data;
 		$loc++;
+		$loc &= 07777;
 	    }
 	    printf "\n%04o/", $loc if ($loc%16) == 0;
 	    $data = $c1;
