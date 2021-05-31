@@ -6,6 +6,7 @@
             Rich Coon <coon@convexw.convex.com> -- added enough handle OS/278
             Bernhard Baehr <b.baehr@madsack.de> -- patch to correct checksum
             Vincent Slyngstad <vrs@msn.com> -- various fixes and enhancements
+            Vincent Slyngstad <vrs@msn.com> -- added LMODE support (June 2021)
 
    disclaimer:  This assembler accepts a subset of the PAL 8 assembly language.
 	It was written as a quick hack in order to download software into my
@@ -27,7 +28,7 @@
 	This program takes the following command line switches
 
 		-d	dump the symbol table at end of assembly
-		-e	Define Omnibus-era only instructions
+		-e	Define extended (Omnibus-era, EAE) instructions
 		-j	Do not pad TEXT or SIXBIT
 		-l	do not warn about offpage references
 		-r	produce output in rim format (default is bin format)
@@ -116,6 +117,7 @@
 #define isend(c) ((c=='\0')||(c=='\n')||(c=='\r'))
 #define isdone(c) ( (c == '/') || (isend(c)) || (c == ';') )
 
+#define LINC
 #define PDP8E
 /* connections to command line */
 #define NAMELEN 128
@@ -150,7 +152,7 @@ struct symbol {
 	char sym[SYMLEN+1]; /* the textual name of the symbol, zero filled */
 	short int val;	  /* the value associated with the symbol */
 	short int refs;   /* the number of references to the symbol */
-} symtab[SYMBOLS] = {  /* values = 01xxxx indicate MRI */
+} pmode[] = {  /* values = 01xxxx indicate MRI */
 		       /* values = 04xxxx indicate pseudo-ops */
 	{ "DECIMA", 040000 }, /* read literal constants in base 10 */
 	{ "OCTAL" , 040001 }, /* read literal constants in base 8 */
@@ -174,6 +176,13 @@ struct symbol {
 	{ "DEVICE", 040022 }, /* creates sixbit device name */
 	{ "FILENA", 040023 }, /* creates sixbit file name, with extension */
 	{ "FIXTAB", 040024 }, /* Fix symbol table */
+	{ "ERROR" , 040035 }, /* output an error message */
+	{ "EXPUNG", 040036 }, /* lose the standard symbols */
+	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
+#ifdef LINC
+	{ "LMODE" , 040040 }, /* set the LINC mode */
+	{ "PMODE" , 040041 }, /* set the PDP-8 mode */
+#endif
 #ifdef PQS8
 	{ "ASMIFM", 040025 }, /* assemble next if minus */
 	{ "ASMIFN", 040026 }, /* assemble next if nonzero */
@@ -185,20 +194,14 @@ struct symbol {
 	{ "DTORG" , 040032 }, /* set the output media block */
 	{ "ENBITS", 040033 }, /* ?? */
 	{ "ENDBIN", 040034 }, /* ?? */
-	{ "ERROR" , 040035 }, /* output an error message */
-	{ "EXPUNG", 040036 }, /* lose the standard symbols */
 	{ "IFREF" , 040037 }, /* ?? */
 	{ "IFNREF", 040038 }, /* ?? */
-	{ "LMODE" , 040039 }, /* set the LINC mode */
-	{ "NOBITS", 040040 }, /* ?? */
-	{ "PMODE" , 040041 }, /* ??
-	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
-	{ "PQS"   , 040043 }, /* ?? */
-	{ "SIXBIT", 040044 }, /* output sixbit character data */
-	{ "SKIP"  , 040045 }, /* ?? */
-	{ "TITLE" , 040046 }, /* set the listing title */
-/* BUGBUG: Messes with value for firstsym! */
+	{ "NOBITS", 040043 }, /* ?? */
+	{ "PQS"   , 040044 }, /* ?? */
+	{ "SIXBIT", 040045 }, /* output sixbit character data */
+	{ "SKIP"  , 040046 }, /* ?? */
 #endif
+//	{ "TITLE" , 040047 }, /* set the listing title */
 
 	{ "AND", 010000 }, /* mainline instructions */
 	{ "TAD", 011000 },
@@ -227,7 +230,6 @@ struct symbol {
 	{ "STL", 007120 },
 	{ "GLK", 007204 },
 	{ "LAS", 007604 },
-	
 
 	{ "SMA", 007500 }, /* group 2 */
 	{ "SZA", 007440 },
@@ -285,19 +287,135 @@ struct symbol {
 	{ "RTF", 006005 },
 	{ "SGT", 006006 },
 	{ "CAF", 006007 },
-#define pdp8e 15	/* Number of extensions to the symbol table */
+	{ "LINC",006141 },
+	{ "PDP", 050002 }, /* Kludge for PQS8 */
+	{ "COM", 050017 }, /* Kludge for PQS8 */
+#define pdp8e 18	/* Number of extensions to the symbol table */
 #else
 #define pdp8e 0
 #endif
-	{ " ",   000707 }, /* end marker, not counted */
 };
+#define pcount ((sizeof pmode)/(sizeof *pmode))
 
-/* the following define is based on a careful count of the above entries */
-#ifdef PDP8E
-int firstsym = 82+pdp8e;
-#else
-int firstsym = 82;
+#ifdef LINC
+struct symbol lmode[] = {
+		       /* values = 04xxxx indicate pseudo-ops */
+	{ "DECIMA", 040000 }, /* read literal constants in base 10 */
+	{ "OCTAL" , 040001 }, /* read literal constants in base 8 */
+	{ "ZBLOCK", 040002 }, /* zero a block of memory */
+	{ "PAGE"  , 040003 }, /* advance origin to next page or page x (0..37) */
+	{ "TEXT"  , 040004 }, /* pack 6 bit trimmed ASCII into memory */
+	{ "EJECT" , 040005 }, /* eject a page in the listing */
+	{ "FIELD" , 040006 }, /* set origin to memory field */
+	{ "NOPUNC", 040007 }, /* turn off object code generation */
+	{ "ENPUNC", 040010 }, /* turn on object code generation */
+	{ "XLIST" , 040011 }, /* toggle listing generation */
+	{ "IFZERO", 040012 }, /* unsupported */
+	{ "IFNZRO", 040013 }, /* unsupported */
+	{ "IFDEF" , 040014 }, /* unsupported */
+	{ "IFNDEF", 040015 }, /* unsupported */
+	{ "RELOC" , 040016 }, /* assemble for execution at a different address */
+	{ "SEGMNT", 040017 }, /* like page, but with page size = 1K words */
+	{ "BANK"  , 040020 }, /* like field, select a different 32K out of 128K */
+	{ "FIXMRI", 040021 }, /* like =, but creates mem ref instruction */
+
+	{ "DEVICE", 040022 }, /* creates sixbit device name */
+	{ "FILENA", 040023 }, /* creates sixbit file name, with extension */
+	{ "FIXTAB", 040024 }, /* Fix symbol table */
+	{ "ERROR" , 040035 }, /* output an error message */
+	{ "EXPUNG", 040036 }, /* lose the standard symbols */
+	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
+	{ "LMODE" , 040040 }, /* set the LINC mode */
+	{ "PMODE" , 040041 }, /* set the PDP-8 mode */
+//	{ "TITLE" , 040047 }, /* set the listing title */
+
+	{ "U",   000010 }, /* "U" bit */
+	{ "I",   000020 }, /* "I" bit */
+
+	{ "HLT", 050000 }, /* LINC A-class and others */
+	{ "MSC", 050000 },
+	{ "AXO", 050001 },
+	{ "PDP", 050002 },
+	{ "TAC", 050003 },
+	{ "ESF", 050004 },
+	{ "QAC", 050005 },
+	{ "DJR", 050006 },
+	{ "CLR", 050011 },
+	{ "ATR", 050014 },
+	{ "RTA", 050015 },
+	{ "NOP", 050016 },
+	{ "COM", 050017 },
+	{ "XOA", 050021 },
+	{ "TMA", 050023 },
+	{ "SFA", 050024 },
+	{ "SET", 050040 },
+	{ "SAM", 050100 },
+	{ "DIS", 050140 },
+	{ "XSK", 050200 },
+	{ "ROL", 050240 },
+	{ "ROR", 050300 },
+	{ "SCR", 050340 },
+	{ "SXL", 050400 },
+	{ "KST", 050415 },
+	{ "STD", 050416 },
+	{ "TWC", 050417 },
+	{ "SNS", 050440 },
+	{ "AZE", 050450 },
+	{ "APO", 050451 },
+	{ "LZE", 050452 },
+	{ "IBZ", 050453 },
+	{ "FLO", 050454 },
+	{ "QLZ", 050455 },
+	{ "SKP", 050456 },
+	{ "IOB", 050500 },
+	{ "RSW", 050516 },
+	{ "LSW", 050517 },
+	{ "LIF", 050600 },
+	{ "LDF", 050640 },
+	{ "RDC", 050700 },
+	{ "RCG", 050701 },
+	{ "RDE", 050702 },
+	{ "MTB", 050703 },
+	{ "WRC", 050704 },
+	{ "WCG", 050705 },
+	{ "WRI", 050706 },
+	{ "CHK", 050707 },
+
+	{ "LDA", 051000 }, /* LINC B-class */
+	{ "STA", 051040 },
+	{ "ADA", 051100 },
+	{ "ADM", 051140 },
+	{ "LAM", 051200 },
+	{ "MUL", 051240 },
+	{ "LDH", 051300 },
+	{ "STH", 051340 },
+	{ "SHD", 051400 },
+	{ "SAE", 051440 },
+	{ "SRO", 051500 },
+	{ "BCL", 051540 },
+	{ "BSE", 051600 },
+	{ "BCO", 051640 },
+//	{ "???", 051700 }, /* Why is this missing? */
+	{ "DSC", 051740 },
+
+	{ "ADD", 052000 }, /* LINC Direct addressing */
+	{ "STC", 054000 },
+	{ "JMP", 056000 },
+	{ "LINC",006141 }, /* Kludge */
+};
+#define lcount ((sizeof lmode)/(sizeof *lmode))
 #endif
+
+struct symbol *cmode = pmode; /* Start in PMODE */
+/* The nmode normally tracks cmode, except after IOB. */
+struct symbol *nmode = pmode; /* Start in PMODE */
+
+struct symbol symtab[SYMBOLS]; /* User symbols */
+
+
+/* Now the user symbol table starts at entry 0 */
+/* Predefined symbols are in pmode[] and lmode[] */
+#define firstsym 0
 
 /* command line argument processing */
 void
@@ -351,8 +469,7 @@ char *argv[];
 
 #ifdef PDP8E
 	if (!eflag)
-		firstsym -= pdp8e;
-	symtab[firstsym].sym[0] = 0;	/* Truncate the defined symbols */
+		pmode[pcount-pdp8e].sym[0] = 0;
 #endif
 
         if (filename == NULL) { /* no input file specified */
@@ -557,7 +674,8 @@ short int val;
         return old;
 }
 
-short int lookup( sym )
+short int lookup1( symtab, sym )
+struct symbol *symtab;
 char sym[SYMLEN];
 {
 	int i,j;
@@ -577,6 +695,17 @@ char sym[SYMLEN];
 	symtab[i].refs++;
 if (symtab[i].refs == 0) abort();
 	return symtab[i].val;
+}
+
+short int lookup( sym )
+char sym[SYMLEN];
+{
+	short int val;
+	/* Look in fixed symbols first */
+	val = lookup1(nmode, sym);
+        if (val >= 0) return val;
+	/* Look in user symbols */
+	return lookup1(symtab, sym);
 }
 
 int lc; /* the location counter */
@@ -618,7 +747,7 @@ void
 putorg( loc )
 short int loc;
 {
-	/* VRS: Use "reloc" here, as were's setting a load address */
+	/* VRS: Use "reloc" here, as we are setting a load address */
 	puto( (((loc+reloc) >> 6) & 0077) | 0100 );
 	puto( (loc+reloc) & 0077 );
 }
@@ -944,8 +1073,7 @@ eval()
 		} else {
 			/* error("parens") */ ;
 		}
-		/* Now rig for caller to see the terminator */
-		pos = lexterm = lexstart;
+//		pos = lexterm = lexstart;
 
 		loc = 00177;
 		while ((loc > *plc) && (lit[loc] != val)) {
@@ -982,7 +1110,7 @@ fprintf(stderr, "The illegal character is '%c'\n", line[lexstart]);
  * right to left, and also considered "OR" lower precedence than the
  * rest of the operators..
  * Currently "!" functions as an OR that pays no attention to MRI'ness.
- * I gather some assemblers find it useful as a way of forming sibit, instead.
+ * I gather some assemblers find it useful as a way of forming sixbit, instead.
 */
 int
 getexpr()
@@ -1154,6 +1282,8 @@ restart:
 		int newlc;
 		nextlex(); /* skip * (set origin symbol) */
 		newlc = getexpr() & 07777;
+		if (cmode == lmode) /* Adjust if LMODE */
+			newlc = (lc & 06000) + (newlc & 01777);
 		if ((newlc & 07600) != (lc & 07600)) { /* we changed pages */
 			putcp();
 		}
@@ -1200,7 +1330,29 @@ restart:
 	if (isalpha(line[lexstart])) {
 		int val;
 		val = evalsym();
-		if (val > 037777) { /* pseudo op */
+		if (val > 047777) { /* LINC op */
+			nextlex(); /* skip symbol */
+			val = val & 07777;
+			/* Top two bits select instruction format */
+			if (val & 06000) { /* Direct addressing */
+				/* interpret 10 bit address */
+				if (!isdone(line[lexstart]))
+					val += getexprs() & 01777; /* 10 bit address */
+				putout( lc, val );
+				lc = (lc+1) & 07777;
+				goto restart;
+// BUGBUG: remove	} else if (val & 01000) { /* "B" class */
+// Are A and B format instructions actually parsed differently?
+                        } else { /* "A" class */
+				if (!isdone(line[lexstart]))
+					val += getexprs() & 037; /* 4 bit address */
+				putout( lc, val );
+				lc = (lc+1) & 07777;
+				if (val == 00500) /* IOB */
+					nmode = pmode; /* 1-off PMDODE */
+				goto restart;
+			}
+		} else if (val > 037777) { /* pseudo op */
 			nextlex(); /* skip symbol */
 			val = val & 07777;
 			switch (val) {
@@ -1213,6 +1365,8 @@ restart:
 			case 2: /* ZBLOCK */
 				val = getexpr();
 				val &= 07777;
+					val &= 01777;
+				if (cmode == lmode)
 				if (val+(lc&07777)-1 > 07777) {
 					error("too big");
 				} else {
@@ -1438,7 +1592,11 @@ restart:
 					int term = lexterm;
 					nextlex(); /* skip symbol */
 					nextlex(); /* skip trailing = */
-					deflex( start, term, 010000 | getexprs() );
+					if (cmode == lmode) {
+						deflex( start, term, getexprs() );
+					} else {
+						deflex( start, term, 010000 | getexprs() );
+					}
 				} else {
 					error("symbol");
 					nextlex(); /* skip symbol */
@@ -1525,18 +1683,45 @@ restart:
 				}
 				break;
 			case 024: /* FIXTAB */
-				/* BUGBUG: not implemented */
+				/* Not implemented.                        */
+				/* There is an opportunity to move IOTs to */
+				/* symtab, then make EXPUNGE/FIXTAB behave */
+				/* more traditionally.                     */
+				break;
+			case 035: /* ERROR */
+				error("error");
+				break;
+			case 036: /* EXPUNG/E */
+				/* The fixed symbols are fixed. */
+				/* No need to free memory by deleting them. */
+				/* Delete the user symbols, though */
+				symtab[firstsym].sym[0] = 0;
+				break;
+#ifdef LINC
+			case 040: /* LMODE */
+				nmode = cmode = lmode;
+				break;
+			case 041: /* PMODE */
+				nmode = cmode = pmode;
+				break;
+#endif
+			case 042: /* PAUSE */
+				/* Not implemented.                       */
+				/* There is an opportunity to make this   */
+				/* move on to the next source input file. */
+				break;
+			case 046: /* TITLE */
+// BUGBUG: Make this do something, then uncomment in pmode, lmode.
 				break;
 			} /* end switch */
 			goto restart;
-		} /* else */
-			/* identifier is not pseudo op */
-		/* } end if */
-		/* fall through here if ident is not pseudo-op */
+		}
+		/* fall through here if ident is not LINC or pseudo-op */
 	}
 	{ /* default -- interpret line as load value */
 		putout( lc, getexprs() & 07777); /* interpret line load value */
 		lc = (lc+1) & 07777;
+		nmode = cmode; /* Not an IOB while in LMODE */
 		goto restart;
 	}
 }
