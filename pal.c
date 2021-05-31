@@ -701,11 +701,11 @@ short int lookup( sym )
 char sym[SYMLEN];
 {
 	short int val;
-	/* Look in fixed symbols first */
-	val = lookup1(nmode, sym);
+	/* Look in user symbols first */
+	val = lookup1(symtab, sym);
         if (val >= 0) return val;
-	/* Look in user symbols */
-	return lookup1(symtab, sym);
+	/* Look in fixed symbols */
+	return lookup1(nmode, sym);
 }
 
 int lc; /* the location counter */
