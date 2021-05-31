@@ -1,0 +1,3352 @@
+   1               
+   2               
+   3               /MUSIC COMPILER
+   4               /RICH WILSON, 1975
+   5               /FOR CCL USE: SAVE SYS MUSIC;201=400
+   6               
+   7               VERSION=3
+   8               
+   9               /CONFIGURATION SECTION:
+  10               /       THE FOLLOWING MUST BE FILLED IN TO CUSTOMIZE THE
+  11               /       MUSIC COMPILER/PLAYER AS DESIRED.
+  12               /       OF THE MANY POSSIBLE CONFIGURATIONS, ONLY SOME
+  13               /       HAVE BEEN TRIED, AND OTHERS ARE NOT GUARANTEED
+  14               /       TO ASSEMBLE OR FUNCTION PROPERLY.
+  15               
+  16               IFNDEF CPU <CPU=1>
+  17                       /FILL IN 1 FOR PDP-8/E (ALSO 8/F, 8/M)
+  18                       /FILL IN 2 FOR PDP-8/A (WITH CORE MEMORY)
+  19                       /FILL IN 4 FOR PDP-8/I OR OLD PDP-8
+  20               
+  21               IFNDEF OS8 <OS8=10>
+  22                       /FILL IN 10 TO RUN UNDER OS/8
+  23                       /FILL IN 20 FOR PAPER TAPE INPUT ONLY
+  24               
+  25               IFNDEF CORE <CORE=400>
+  26                       /FILL IN 100 FOR 4K SYSTEM (PAPER TAPE ONLY)
+  27                       /FILL IN 200 FOR 8K OR LARGER SYSTEM
+  28                       /FILL IN 400 FOR 12K OR LARGER SYSTEM
+  29                       /(ENABLES SPECIAL PLAYER)
+  30               
+  31               IFNDEF NOISE <NOISE=CAF>
+  32                       /FILL IN THE SINGLE CYCLE INSTRUCTION WHICH IS
+  33                       /TO BE USED TO CREATE NOISE.  FOR 8/E OR 8/A WITHOUT
+  34                       /AN RX01, TRY CAF.  FOR OTHER SYSTEMS, TRY IOF.
+  35                       /DO NOT USE AN INSTRUCTION WHICH TAKES LONGER
+  36                       /THAN 1.5 MICROSECONDS.
+  37               
+  38               IFZERO OS8+CORE-110 <ILLEGAL CONFIGURATION>
+  39               IFNZRO CPU-1<IFNZRO CPU-2<IFNZRO CPU-4<
+  40               ILLEGAL CONFIGURATION>>>
+  41               IFNZRO OS8-10<IFNZRO OS8-20<ILLEGAL CONFIGURATION>>
+  42               IFNZRO CORE-100<IFNZRO CORE-200<IFNZRO CORE-400<
+  43               ILLEGAL CONFIGURATION>>>
+  44               
+  45               IFZERO CORE-400 <
+  46               IFNZRO CPU-4 <WOW=10>>
+  47               
+  48               MARGIN=4        /DO WE CATCH FIELD CHANGES IN TIME?
+  49               AC7776=CLL STA RAL
+  50               AC4000=CLA STL RAR
+  51               AC0002=STL CLA RTL
+  52               BRANCH=JMS I [BRAN0
+  53               IFZERO OS8-10 <
+  54               DECODE=5
+  55               FETCH=1
+  56               >
+  57               
+  58               *20
+  59 000020  0000  WSA,    0
+  60 000021  0000  WSB,    0
+  61 000022  0000  WSC,    0
+  62               
+  63 000023  0000  CHAR,   0
+  64 000024  0000  NOTE,   0       /-1 FOR REST THROUGH 6 FOR G
+  65 000025  0000  NOTEV,  0       /POINTER TO #! TABLE:KEYTAB
+  66 000026  0000  THIRD,  0       /-1 FOR 1/THIRD TIME
+  67 000027  0000  PAREN,  0       /-1 WHEN ( FOUND
+  68 000030  0000  OCTAVE, 0       /REMEMBER + AND -
+  69 000031  0000  THISLE, 0       /LENGTH THIS TIME
+  70 000032  0000  TOTLEN, 0       /LENGTH OF NOTE
+  71 000033  0000  ACC,    0       /REMEMBER ACCIDENTALS
+  72 000034  0000  NOTCNT, 0       /COUNT OF NOTES TO PRODUCE
+  73 000035  7777  OUTBUF, -1
+  74               PROTAB,
+  75 000036  0000  TIMA,   ZBLOCK  3
+     000037  0000  
+     000040  0000  
+  76 000041  0000  TIMB,   ZBLOCK  3
+     000042  0000  
+     000043  0000  
+  77 000044  0000  TIMC,   ZBLOCK  3
+     000045  0000  
+     000046  0000  
+  78 000047  0000  TIMD,   ZBLOCK  3
+     000050  0000  
+     000051  0000  
+  79 000052  0000  Y,      0       /# OF Y'S SO FAR
+  80 000053  0000  L,      0       /# OF LINE FEEDS SINCE Y
+  81 000054  0000  TFLAG,  0       /-1 TO PRINT LINE
+  82 000055  0000  MINFLG, 0       /-1 TO SUBTRACT NOTES
+  83 000056  0000  TRANSP, 0
+  84 000057  0000  RTRAN,  0
+  85 000060  0000  OUTFLG, 0
+  86               PROTND, /THE END OF WORKING LOCATIONS TO BE ZEROED
+  87               IFZERO OS8-10 <
+  88 000061  7777  INCHCT, -1      /-# CHARACTERS IN BLOCK
+  89 000062  0001  INEOF,  1       /NON-ZEOR FOR EOF
+  90 000063  7617  INFPTR, 7617    /PNTR TO INPUT INFO
+  91 000064  0000  INCTR,  0       /-LENGTH IN BLOCKS
+  92 000065  0000  INPTR,  0       /BUFFER POINTER
+  93 000066  0000  INSAVE, 0       /HALF OF CHAR 3
+  94               >
+  95               
+  96               /WORKING STORAGE FOR MUSIC MAKER
+  97               
+  98               DECIMAL
+  99               /THE FOLLOWING NUMBERS ALL REPRESENT TENTHS OF A MICROSECOND
+ 100               IFDEF WOW <
+ 101               IFZERO CPU-1 <
+ 102               JIFFY=50
+ 103               T1=316
+ 104               T2=290
+ 105               T3=3044 /DIVIDE TIME
+ 106               TIM6=7
+ 107               T6A=4
+ 108               >
+ 109               IFZERO CPU-2 <
+ 110               JIFFY=60
+ 111               T1=375
+ 112               T2=330
+ 113               T3=3600
+ 114               TIM6=10
+ 115               T6A=55          /TIM6*64-(DOIT TIME)
+ 116               >>
+ 117               OCTAL
+ 118               IFNDEF WOW <
+ 119               IFZERO CPU-1 <TIM6=26>
+ 120               IFZERO CPU-2 <TIM6=26>
+ 121               IFZERO CPU-4 <TIM6=36>>
+ 122               MDEFAULT=30^74%2        /C=60
+ 123               T64=0
+ 124               IFDEF WOW <T64=1>
+ 125               IFZERO CPU-1 <T64=1>
+ 126               
+ 127               /WORKING LOCATIONS
+ 128               *10
+ 129 000010  0003  AXA,    VERSION
+ 130               LINE=AXB
+ 131 000011  0000  AXB,    0
+ 132 000012  0000  AXC,    0
+ 133 000013  0000  LOWAIT, 0
+ 134 000014  0000  OOPS,   0
+ 135 000015  0000  LIMIT,  0
+ 136 000016  0000  BUFTAB, 0
+ 137               
+ 138               *20
+ 139 000020  0000  WSA,    0
+ 140 000021  0000  WSB,    0
+ 141               
+ 142 000022  0000  SAVE,   0
+ 143 000023  0000  CHAR,   0
+ 144 000024  0000  FLG,    0
+ 145 000025  0000  GETPTR, 0
+ 146 000026  0000  LOSAVE, 0
+ 147 000027  7777  HOSAVE, 7777
+ 148 000030  0000  LOLONG, 0
+ 149 000031  7700  HOLONG, 7700
+ 150 000032  0000  LOTIM,  0
+ 151 000033  0000  HOTIM,  0
+ 152 000034  0000  BUFGET, 0
+ 153 000035  0000  TRAN,   0
+ 154               
+ 155               NOTTAB,
+ 156 000036  0000  AC,     0
+ 157 000037  0000  AR,     0
+ 158 000040  0000  AT,     0
+ 159 000041  0000  RTOT,   0
+ 160 000042  0000  BC,     0
+ 161 000043  0000  BR,     0
+ 162 000044  0000  BT,     0
+ 163 000045  0000  OLDS,   0
+ 164 000046  0000  CC,     0
+ 165 000047  0000  CR,     0
+ 166 000050  0000  CT,     0
+ 167 000051  0000  SAVS,   0
+ 168 000052  0000  DC,     0
+ 169 000053  0000  DR,     0
+ 170 000054  0000  DT,     0
+ 171 000055  0000  OLDE,   0
+ 172               
+ 173               *77
+ 174               
+ 175               /SOME MAGIC NUMBERS
+ 176               /USED TO FIGURE METER: HOW MANY 6.4US UNITS
+ 177               /ARE THERE IN ONE MINUTE DIVIDED BY TWO?
+ 178               IFNZRO T64 <
+ 179 000077  3214  LOFUDG, 3214
+ 180 000100  2170  HOFUDG, 2170
+ 181               >
+ 182               /AND IN 6.0US UNITS?
+ 183               IFZERO T64 <
+ 184               LOFUDG, 5500
+ 185               HOFUDG, 2304
+ 186               >
+ 187               IFDEF WOW <
+ 188               
+ 189               /AND THE MAGIC SUBROUTINE
+ 190 000101  0000  DOIT,   0
+ 191 000102  1501          TAD I   DOIT    /HOW LONG 'TILL NEXT CALL?
+ 192 000103  3015          DCA     LIMIT   /REMEMBER
+ 193 000104  6211          CDF     10
+ 194 000105  1015  DOIT1,  TAD     LIMIT
+ 195 000106  7100          CLL
+ 196 000107  1013          TAD     LOWAIT  /IS THERE ENOUGH TIME TO RETURN
+ 197 000110  7420          SNL             /AND GET BACK IN TIME?
+ 198 000111  5142          JMP     DOIT5   /YES
+ 199 000112  2434          ISZ I   BUFGET  /HOW ABOUT HIGH ORDER TIME?
+ 200 000113  5144          JMP     DOIT6   /YES, TIME
+ 201 000114  7300          CLA CLL         /NOT ENOUGH TIME
+ 202 000115  1013          TAD     LOWAIT  /HOW LONG WE HAVE TO WAIT
+ 203 000116  1014          TAD     OOPS    /ERROR LAST TIME
+ 204 000117  7430          SZL             /HAVE WE WAITED OUR TIME?
+ 205 000120  5123          JMP     .+3     /YES
+ 206                       TAD     (JIFFY  /NO, UPDATE AC
+page zero       	   	^
+page zero       	   	^
+     000121  1176  
+ 207 000122  5117          JMP     .-3     /AND TRY AGAIN
+ 208 000123  3014          DCA     OOPS    /SAVE ERROR
+ 209               IFZERO CPU-1 <
+ 210 000124  2034          ISZ     BUFGET  /NOW HOW MANY SPIKES?
+ 211 000125  5130          JMP     .+3
+ 212 000126  5130          JMP     .+2     /COVER SKIP
+ 213 000127  6007  NOISA,  NOISE           /MAKE A SPIKE
+ 214 000130  2434          ISZ I   BUFGET
+ 215 000131  5127          JMP     .-2     /ANOTHER SPIKE
+ 216 000132  2034          ISZ     BUFGET
+ 217 000133  7410          SKP             /COVER ISZ SKIP
+ 218 000134  7000          NOP             /MAKING UP FOR TIMING ERROR
+ 219               >
+ 220               IFZERO CPU-2 <
+ 221                       ISZ     BUFGET
+ 222                       SKP
+ 223                       NOP
+ 224                       TAD I   BUFGET
+ 225                       DCA     LOWAIT
+ 226                       ISZ     BUFGET
+ 227                       JMP     .+3
+ 228                       JMP     .+2
+ 229               NOISA,  NOISE
+ 230                       ISZ     LOWAIT
+ 231                       JMP     .-2
+ 232               >
+ 233 000135  1434          TAD I   BUFGET  /LOW ORDER TIME
+ 234 000136  3013          DCA     LOWAIT  /SAVE IT
+ 235 000137  2034          ISZ     BUFGET  /POINT TO HO TIME
+ 236 000140  5105          JMP     DOIT1
+ 237 000141  5105          JMP     DOIT1   /COVER ISZ SKIP
+ 238               
+ 239 000142  1175  DOIT5,  TAD     [0      /TIMING CORRECTOR
+ 240 000143  7000          NOP
+ 241 000144  3013  DOIT6,  DCA     LOWAIT
+ 242 000145  6201          CDF
+ 243 000146  2101          ISZ     DOIT
+ 244 000147  5501          JMP I   DOIT
+ 245               >
+ 246               
+ 247               /ALTERNATE RESTART ADDRESS TO BEGIN PLAYING
+ 248               *0
+ 249 000000  7000          NOP
+ 250 000001  5774          JMP     PLAY    /GO PLAY
+ 251 000002  0127          NOISA           /ADDRESS OF NOISE, FOR CONVENIENCE
+ 252 000003  7771  FIX,    -TIM6
+ 253 000004  0411          CPU+OS8+CORE    /FOR CONVENIENCE
+ 254               
+ 255               *200
+ 256               /BEGINNING OF EVERYTHING
+ 257               
+ 258               START,
+ 259               IFZERO OS8-10 <
+ 260 000200  7410  IFDEF WOW <SKP;SKP>     /LEAVE ROOM FOR RESTORE TRAP
+     000201  7410  
+ 261 000202  4777          JMS     OSDEC   /CALL COMMAND DECODER
+ 262               >
+ 263 000203  6046  START1, TLS             /BRING UP PRINTER FLAG
+ 264 000204  4776          JMS     KEYC    /DEFAULT TO KEY OF C
+ 265 000205  1375          TAD     (BUFTBL-1
+ 266 000206  3016          DCA     BUFTAB
+ 267 000207  1416          TAD I   BUFTAB  /AUTO-INDEX
+ 268 000210  3035          DCA     OUTBUF  /BEGINNING OF BUFFER
+ 269 000211  1416          TAD I   BUFTAB
+ 270 000212  3015          DCA     LIMIT   /END OF BUFFER
+ 271               IFNZRO CORE-100 <
+ 272 000213  1416          TAD I   BUFTAB
+ 273 000214  3774          DCA     OUTCDF  /FIELD OF BUFFER
+ 274 000215  4773  CORINI, JMS     INIT    /INITIALIZE CORE SIZE, ETC.
+ 275               >
+ 276 000216  1173          TAD     [LINBUF-1
+ 277 000217  3011          DCA     LINE
+ 278 000220  1372          TAD     (PROTAB-PROTND  /CLEAR OUT ALL THE NOTES
+ 279 000221  3020          DCA     WSA     /AND OTHER THINGS
+ 280 000222  1371          TAD     (PROTAB-1
+ 281 000223  3010          DCA     AXA
+ 282 000224  3410          DCA I   AXA
+ 283 000225  2020          ISZ     WSA
+ 284 000226  5224          JMP     .-2
+ 285               
+ 286               /INITIALIZE AFTER ; OR CR
+ 287               
+ 288 000227  3034  START2, DCA     NOTCNT
+ 289               
+ 290               /INITIALIZE FOR NEXT NOTE
+ 291               
+ 292 000230  3026          DCA     THIRD
+ 293 000231  3027          DCA     PAREN
+ 294 000232  3032          DCA     TOTLEN
+ 295 000233  3055          DCA     MINFLG
+ 296               
+ 297               /INITIALIZE FOR NEXT NOTE IN CHORD
+ 298               
+ 299 000234  4577  START5, BRANCH          /JMP BASED ON NEXT INPUT CHAR
+ 300 000235  2763          BRANA
+ 301               
+ 302 000236  2027  NEXNOT, ISZ     PAREN   /ARE WE IN A CHORD?
+ 303 000237  7410          SKP
+ 304 000240  5770          JMP     DEFCH2  /YES
+ 305 000241  3032          DCA     TOTLEN  /NO-ANOTHER LENGTH
+ 306 000242  4577  TIE,    BRANCH
+ 307 000243  3005          BRANB
+ 308               
+ 309 000244  7240  TRIPLE, STA
+ 310 000245  3026          DCA     THIRD   /REMEMBER IT'S A TRIPLET
+ 311 000246  5242          JMP     TIE
+ 312               
+ 313 000247  7240  MINUS,  STA             /SUBTRACT NOTE DURATIONS
+ 314 000250  3055          DCA     MINFLG
+ 315 000251  5242          JMP     TIE
+ 316               
+ 317 000252  7344  KEYF,   AC7776          /DEFINE FLATS
+ 318 000253  7001  KEYS,   IAC             /DEFINE SHARPS
+ 319 000254  3022          DCA     WSC
+ 320 000255  4767          JMS     GETEQ   /BUMP PAST =
+ 321 000256  5766          JMP     BADLINE
+ 322 000257  4776          JMS     KEYC    /RESET TO KEY OF C
+ 323 000260  4765  KEYL,   JMS     GETNOTE /IS THERE A NOTE?
+ 324 000261  5766          JMP     BADLINE /NO
+ 325 000262  1022          TAD     WSC
+ 326 000263  3425          DCA I   NOTEV   /REMEMBER SHARP/FLAT
+ 327 000264  4764          JMS     IN
+ 328 000265  1363          TAD     (-",
+ 329 000266  7650          SNA CLA         /IS THERE ANOTHER?
+ 330 000267  5260          JMP     KEYL    /YES
+ 331 000270  1023          TAD     CHAR    /NO
+ 332 000271  5234          JMP     START5  /DO SOMETHING ELSE
+ 333               
+ 334 000272  7001  LENG,   IAC             /GRACE NOTE!
+ 335 000273  2026          ISZ     THIRD   /DID HE SAY TRIPLET?
+ 336 000274  5314          JMP     ADDLEN  /NO
+ 337 000275  4762          JMS     BADSTAR /YES-THAT'S NO GOOD
+ 338 000276  5272          JMP     LENG
+ 339               
+ 340 000277  7001  LENB,   IAC             /SEMI-BREVE
+ 341 000300  7001  LENM,   IAC             /MINIM
+ 342 000301  7001  LENC,   IAC             /CROTCHET
+ 343 000302  7001  LENQ,   IAC             /QUAVER
+ 344 000303  7001  LENS,   IAC             /SEMI-QUAVER
+ 345 000304  7040  LEND,   CMA
+ 346 000305  3020          DCA     WSA
+ 347 000306  7124          STL RAL
+ 348 000307  2026          ISZ     THIRD   /THIRD TIME?
+ 349 000310  7120          STL
+ 350 000311  7004          RAL
+ 351 000312  2020          ISZ     WSA
+ 352 000313  5311          JMP     .-2
+ 353 000314  2055  ADDLEN, ISZ     MINFLG  /DO WE SUBTRACT?
+ 354 000315  7410          SKP             /NO
+ 355 000316  7041          CIA             /YES
+ 356 000317  3031          DCA     THISLEN /LENGTH THIS NOTE
+ 357 000320  1031          TAD     THISLEN
+ 358 000321  1032          TAD     TOTLEN
+ 359 000322  7550          SPA SNA         /DID HE SUBTRACT TOO MUCH?
+ 360 000323  5351          JMP     ADDNEG  /YES
+ 361 000324  3032          DCA     TOTLEN          /TOTAL LENGTH
+ 362 000325  4765          JMS     GETNOTE /IS THERE A NOTE YET?
+ 363 000326  5331          JMP     .+3     /NO, SOMETHING ELSE I GUESS
+ 364 000327  4577  NMODS,  BRANCH          /YES, NOW WHAT?
+ 365 000330  3051          BRANE
+ 366 000331  1023          TAD     CHAR
+ 367 000332  4577          BRANCH
+ 368 000333  3035          BRAND
+ 369               
+ 370 000334  4762  PUTNO,  JMS     BADSTA  /OUT OF CORE!
+ 371 000335  4761          JMS     MSG     /PRINT LAST LINE
+ 372 000336  4760          JMS     CRLF
+ 373 000337  1357          TAD     ("$
+ 374 000340  4756          JMS     TYPE
+ 375 000341  4760          JMS     CRLF
+ 376 000342  5755          JMP     ENDM    /NOW PLAY IT
+ 377               
+ 378               /DOTTED NOTES:
+ 379 000343  1031  DOT,    TAD     THISLEN
+ 380 000344  7120          STL
+ 381 000345  7500          SMA             /FIX LINK TO SIGN OF NUMBER
+ 382 000346  7100          CLL
+ 383 000347  7010          RAR             /DIVIDE BY TWO
+ 384 000350  7430          SZL             /VALID?
+ 385 000351  4762  ADDNEG, JMS     BADSTA  /NO
+ 386 000352  5314          JMP     ADDLEN
+ 387               
+ 388 000355  1600  PAGE
+     000356  1141  
+     000357  0244  
+     000360  1133  
+     000361  1642  
+     000362  1526  
+     000363  7524  
+     000364  1466  
+     000365  1442  
+     000366  1524  
+     000367  1423  
+     000370  0433  
+     000371  0035  
+     000372  7755  
+     000373  3600  
+     000374  1671  
+     000375  3130  
+     000376  1431  
+     000377  1213  
+ 389               
+ 390               /DEFINE METER:
+ 391               /METER IS SAVED AS 12 BIT LENGTH*METER/2
+ 392               
+ 393 000400  2027  DEFM,   ISZ     PAREN   /DEFINE METER
+ 394 000401  7410          SKP
+ 395 000402  5777          JMP     BADLINE /OOPS--INSIDE A (?
+ 396 000403  4776          JMS     DECIN   /GET METER
+ 397 000404  7450          SNA
+ 398 000405  5777          JMP     BADLINE /MUST BE VALID
+ 399 000406  3213          DCA     DEFM2
+ 400 000407  1032          TAD     TOTLEN  /LENGTH OF NOTE
+ 401 000410  7110          CLL RAR
+ 402 000411  3021          DCA     WSB
+ 403 000412  4775          JMS     MUL     /MULTIPLY
+ 404 000413  0000  DEFM2,  .-.
+ 405 000414  3021          DCA     WSB
+ 406 000415  1374          TAD     (4      /DEFINE METER CODE
+ 407 000416  4773          JMS     OUT
+ 408 000417  1021          TAD     WSB
+ 409 000420  7012          RTR
+ 410 000421  7012          RTR
+ 411 000422  7012          RTR
+ 412 000423  4773          JMS     OUT     /HIGH ORDER
+ 413 000424  1021          TAD     WSB
+ 414 000425  4773          JMS     OUT     /LOW ORDER
+ 415 000426  4772          JMS     LIMTST  /TEST FOR END OF BUFFER AREA
+ 416 000427  5771          JMP     DEFV
+ 417               
+ 418               /LEFT PAREN FOUND (
+ 419 000430  2027  DEFCHO, ISZ     PAREN
+ 420 000431  7410          SKP
+ 421 000432  4770          JMS     BADSTA  /NESTED ((
+ 422 000433  7240  DEFCH2, STA
+ 423 000434  3027          DCA     PAREN
+ 424 000435  4767          JMS     GETNOTE /WE SHOULD HAVE A NOTE
+ 425 000436  5777          JMP     BADLINE /OOPS
+ 426 000437  5766          JMP     NMODS   /NOW TRY FOR "!+=
+ 427               
+ 428               /ACCIDENTALS
+ 429 000440  7346  ACCF,   CLL STA RTL     /FLAT
+ 430 000441  1365  ACCS,   TAD     (2      /SHARP
+ 431 000442  1033          TAD     ACC
+ 432 000443  3033          DCA     ACC
+ 433 000444  5766          JMP     NMODS
+ 434 000445  7001  ACCN,   IAC             /NATURAL
+ 435 000446  3033          DCA     ACC
+ 436 000447  4577  OCTMOR, BRANCH          /LOOK FOR +-
+ 437 000450  3057          BRANF
+ 438               
+ 439 000451  1364  OCTUP,  TAD     (30     /FOUND +
+ 440 000452  1363  OCTDN,  TAD     (-14    /FOUND -
+ 441 000453  1030          TAD     OCTAVE
+ 442 000454  3030          DCA     OCTAVE
+ 443 000455  5247          JMP     OCTMOR  /ARE THERE MORE?
+ 444               
+ 445 000456  2027  PPRODU, ISZ     PAREN   /WE SHOULD BE INSIDE ) HERE
+ 446 000457  4770          JMS     BADSTA
+ 447 000460  4577          BRANCH
+ 448 000461  3075          BRANG
+ 449               
+ 450 000462  2027  SPRODU, ISZ     PAREN   /WAS THERE A PAREN?
+ 451 000463  5265          JMP     PRODUCE /NO, OK
+ 452 000464  4770          JMS     BADSTA  /YES--NO ) THOUGH
+ 453 000465  1024  PRODUC, TAD     NOTE
+ 454 000466  7710          SPA CLA         /REST?
+ 455 000467  5325          JMP     PRO7    /YES
+ 456 000470  1033          TAD     ACC
+ 457 000471  7500          SMA             /FLAT?
+ 458 000472  7110          CLL RAR         /NO, DIVIDE BY TWO
+ 459 000473  7450          SNA             /MAYBE ZERO IF NATURAL
+ 460 000474  7430          SZL             /NON-ZERO LINK IF NATURAL
+ 461 000475  7410          SKP
+ 462 000476  1425          TAD I   NOTEV   /GET DEFAULT #!"
+ 463 000477  3033          DCA     ACC     /-1 FOR !,1 FOR #
+ 464 000500  1024          TAD     NOTE
+ 465 000501  1362          TAD     (BASTAB
+ 466 000502  3024          DCA     NOTE
+ 467 000503  1424          TAD I   NOTE    /GET NOTE NUMBER
+ 468 000504  1033          TAD     ACC     /#!
+ 469 000505  1030          TAD     OCTAVE  /+-
+ 470 000506  1056          TAD     TRANSPOSE       /DID HE REQUEST TRANSPOSE
+ 471 000507  7500  PRO3,   SMA             /MAKE SURE IT IS WITHIN RANGE
+ 472 000510  5316          JMP     PRO4
+ 473 000511  1361          TAD     (14
+ 474 000512  3021  PRO3A,  DCA     WSB
+ 475 000513  4770          JMS     BADSTA  /OUT OF RANGE
+ 476 000514  1021          TAD     WSB
+ 477 000515  5307          JMP     PRO3
+ 478 000516  1360  PRO4,   TAD     (-117
+ 479 000517  7510          SPA
+ 480 000520  5323          JMP     PRO6
+ 481 000521  1357          TAD     (117-14 /OUT OF RANGE
+ 482 000522  5312          JMP     PRO3A
+ 483 000523  1356  PRO6,   TAD     (117
+ 484 000524  3024          DCA     NOTE
+ 485 000525  1355  PRO7,   TAD     (PROTAB
+ 486 000526  3020          DCA     WSA
+ 487 000527  1354          TAD     (-4
+ 488 000530  3021          DCA     WSB
+ 489 000531  1420  PRO8,   TAD I   WSA
+ 490 000532  7650          SNA CLA         /SPACE IN THE TABLE?
+ 491 000533  5753          JMP     PRO9    /YES
+ 492 000534  2020          ISZ     WSA     /GO TO NEXT ENTRY
+ 493 000535  2020          ISZ     WSA
+ 494 000536  2020          ISZ     WSA
+ 495 000537  2021          ISZ     WSB     /END?
+ 496 000540  5331          JMP     PRO8    /NO
+ 497 000541  4770          JMS     BADSTA  /TRYING TO PLAY 5 NOTES
+ 498 000542  5752          JMP     PROA
+ 499               
+ 500 000552  0612  PAGE
+     000553  0600  
+     000554  7774  
+     000555  0036  
+     000556  0117  
+     000557  0103  
+     000560  7661  
+     000561  0014  
+     000562  3122  
+     000563  7764  
+     000564  0030  
+     000565  0002  
+     000566  0327  
+     000567  1442  
+     000570  1526  
+     000571  1105  
+     000572  0734  
+     000573  1670  
+     000574  0004  
+     000575  1750  
+     000576  1110  
+     000577  1524  
+ 501               
+ 502 000600  2034  PRO9,   ISZ     NOTCNT  /COUNT HOW MANY
+ 503 000601  1032          TAD     TOTLEN
+ 504 000602  3420          DCA I   WSA
+ 505 000603  2020          ISZ     WSA
+ 506 000604  7240          STA
+ 507 000605  3420          DCA I   WSA     /SET FLAG SO WE WILL
+ 508 000606  2020          ISZ     WSA     /PROCESS NOTE LATER
+ 509 000607  1024          TAD     NOTE
+ 510 000610  3420          DCA I   WSA     /REMEMBER PITCH
+ 511 000611  1023          TAD     CHAR
+ 512 000612  1377  PROA,   TAD     (-",
+ 513 000613  7650          SNA CLA         /DO WE EXPECT MORE NOTES?
+ 514 000614  5776          JMP     NEXNOT  /YES
+ 515 000615  1034  PROB,   TAD     NOTCNT
+ 516 000616  7450          SNA
+ 517 000617  5775          JMP     START2  /THERE ARE NO NOTES TO WORRY ABOUT
+ 518 000620  7041          CIA
+ 519 000621  3034          DCA     NOTCNT
+ 520 000622  1374          TAD     (PROTAB
+ 521 000623  3020          DCA     WSA
+ 522 000624  1373          TAD     (-4
+ 523 000625  3021          DCA     WSB
+ 524               
+ 525               /FIRST WORRY ABOUT NOTES WHICH MUST BE CHANGED TO RESTS
+ 526 000626  1420  PUT0,   TAD I   WSA
+ 527 000627  2020          ISZ     WSA
+ 528 000630  2020          ISZ     WSA
+ 529 000631  7640          SZA CLA         /IS THIS A TIMED OUT NOTE?
+ 530 000632  5237          JMP     PUT2    /NO
+ 531 000633  2420          ISZ I   WSA     /IS IT A REST?
+ 532 000634  5260          JMP     PUT3    /NO-BETTER MAKE IT ONE
+ 533 000635  7240  PUT1,   STA
+ 534 000636  3420          DCA I   WSA     /REMEMBER IT IS REST
+ 535 000637  4334  PUT2,   JMS     LIMTST  /TEST FOR END OF BUFFER AREA
+ 536 000640  2020          ISZ     WSA
+ 537 000641  2021          ISZ     WSB
+ 538 000642  5226          JMP     PUT0    /GO FOR MORE
+ 539 000643  1374          TAD     (PROTAB /START OVER AGAIN
+ 540 000644  3020          DCA     WSA
+ 541 000645  1373          TAD     (-4
+ 542 000646  3021          DCA     WSB
+ 543               
+ 544               /NOW WORRY ABOUT OUR NEW NOTES
+ 545 000647  1420  PUT4,   TAD I   WSA
+ 546 000650  2020          ISZ     WSA
+ 547 000651  7640          SZA CLA         /ACTIVE NOTE?
+ 548 000652  5265          JMP     PUT6    /YES
+ 549 000653  2020  PUT5,   ISZ     WSA     /GO TO NEXT ENTRY
+ 550 000654  2020          ISZ     WSA
+ 551 000655  2021          ISZ     WSB
+ 552 000656  5247          JMP     PUT4
+ 553 000657  7402          HLT             /HLT HERE MEANS BUG
+ 554               
+ 555 000660  1372  PUT3,   TAD     (10     /DEFINE A REST
+ 556 000661  1021          TAD     WSB     /NOTE #
+ 557 000662  7124          STL RAL
+ 558 000663  4771          JMS     OUT
+ 559 000664  5235          JMP     PUT1
+ 560               
+ 561 000665  2420  PUT6,   ISZ I   WSA     /FLAG SET?
+ 562 000666  5253          JMP     PUT5    /NO, IGNORE IT
+ 563 000667  4334          JMS     LIMTST  /TEST FOR END OF BUFFER AREA
+ 564 000670  2020          ISZ     WSA
+ 565 000671  1420          TAD I   WSA
+ 566 000672  7710          SPA CLA         /REST?
+ 567 000673  5315          JMP     PUT7    /YES
+ 568 000674  1057          TAD     RTRAN   /GET AUTOMATIC TRANSPOSE
+ 569 000675  1420          TAD I   WSA     /AND NOTE
+ 570               /THERE ARE MORE THAN 64 NOTES, BUT ONLY 6 BITS
+ 571               /TO REMEMBER WITH. SO WE DO THIS:
+ 572 000676  0172          AND     [7700   /IN RANGE?
+ 573 000677  7450          SNA
+ 574 000700  5314          JMP     PUT6A   /NOTHING TO DO
+ 575 000701  7700          SMA CLA
+ 576 000702  1372          TAD     (10
+ 577 000703  1420          TAD I   WSA     /TAD IN PITCH
+ 578 000704  0370          AND     (70     /GET TRANSPOSE AMOUNT
+ 579 000705  3057          DCA     RTRAN   /SAVE IT
+ 580 000706  1057          TAD     RTRAN
+ 581 000707  1367          TAD     (6      /PUT IN FUNCTION CODE
+ 582 000710  4771          JMS     OUT     /STASH IT IN BUFFER
+ 583 000711  1057          TAD     RTRAN
+ 584 000712  7041          CIA
+ 585 000713  3057          DCA     RTRAN
+ 586 000714  1372  PUT6A,  TAD     (10
+ 587 000715  2034  PUT7,   ISZ     NOTCNT  /LAST NOTE?
+ 588 000716  1366          TAD     (4
+ 589 000717  1366          TAD     (4
+ 590 000720  1021          TAD     WSB     /NOTE #
+ 591 000721  7124          STL RAL
+ 592 000722  4771          JMS     OUT
+ 593 000723  1420          TAD I   WSA
+ 594 000724  1057          TAD     RTRAN   /AUTOMATIC TRANSPOSE
+ 595 000725  7500          SMA             /REST?
+ 596 000726  4771          JMS     OUT     /NO, REMEMBER PITCH
+ 597 000727  7300          CLA CLL
+ 598 000730  1034          TAD     NOTCNT
+ 599 000731  7640          SZA CLA         /LAST NOTE?
+ 600 000732  5254          JMP     PUT5+1  /NO, GO FOR MORE
+ 601 000733  5765          JMP     PUT9
+ 602               
+ 603               /CHECK FOR THE END OF THE BUFFER SPACE
+ 604 000734  0000  LIMTST, 0
+ 605 000735  7300          CLA CLL
+ 606 000736  1035          TAD     OUTBUF
+ 607 000737  1015          TAD     LIMIT
+ 608 000740  7620          SNL CLA         /AT OR NEAR END?
+ 609 000741  5734          JMP I   LIMTST  /OK
+ 610               IFNZRO CORE-100 <
+ 611 000742  1416          TAD I   BUFTAB  /AUTO-INDEX
+ 612 000743  7450          SNA             /IS THERE MORE BUFFER AREA?
+ 613 000744  5764          JMP     PUTNO   /NO
+ 614 000745  3015          DCA     LIMIT   /LIMIT OF BUFFER IN THIS FIELD
+ 615 000746  1363          TAD     (14     /CODE FOR FIELD SWITCH
+ 616 000747  4771          JMS     OUT
+ 617 000750  1416          TAD I   BUFTAB  /CDF NEW FIELD
+ 618 000751  3762          DCA     OUTCDF
+ 619 000752  3035          DCA     OUTBUF  /START AT LOCATION ZERO
+ 620 000753  3060          DCA     OUTFLG
+ 621 000754  5734          JMP I   LIMTST
+ 622               >
+ 623               IFZERO CORE-100 <
+ 624                       JMP     PUTNO
+ 625               >
+ 626               
+ 627 000762  1671  PAGE
+     000763  0014  
+     000764  0334  
+     000765  1000  
+     000766  0004  
+     000767  0006  
+     000770  0070  
+     000771  1670  
+     000772  0010  
+     000773  7774  
+     000774  0036  
+     000775  0227  
+     000776  0236  
+     000777  7524  
+ 628               
+ 629 001000  7330  PUT9,   AC4000
+ 630 001001  3031          DCA     THISLEN
+ 631               
+ 632               /NOW FIGURE OUT WHAT THE SHORTEST TIME LEFT
+ 633               /IS OF THE FOUR NOTES, AND SUBTRACT THAT
+ 634               /TIME FROM ALL NOTES
+ 635 001002  1036          TAD     TIMA
+ 636 001003  4777          JMS     SMALL
+ 637 001004  1041          TAD     TIMB
+ 638 001005  4777          JMS     SMALL
+ 639 001006  1044          TAD     TIMC
+ 640 001007  4777          JMS     SMALL
+ 641 001010  1047          TAD     TIMD
+ 642 001011  4777          JMS     SMALL
+ 643 001012  1036          TAD     TIMA
+ 644 001013  7440          SZA
+ 645 001014  1031          TAD     THISLEN
+ 646 001015  3036          DCA     TIMA
+ 647 001016  1041          TAD     TIMB
+ 648 001017  7440          SZA
+ 649 001020  1031          TAD     THISLEN
+ 650 001021  3041          DCA     TIMB
+ 651 001022  1044          TAD     TIMC
+ 652 001023  7440          SZA
+ 653 001024  1031          TAD     THISLEN
+ 654 001025  3044          DCA     TIMC
+ 655 001026  1047          TAD     TIMD
+ 656 001027  7440          SZA
+ 657 001030  1031          TAD     THISLEN
+ 658 001031  3047          DCA     TIMD
+ 659 001032  1031          TAD     THISLEN
+ 660 001033  7041          CIA
+ 661 001034  4776          JMS     OUT     /OUTPUT LENGTH
+ 662               
+ 663               /NOW IF IT WAS LONGER THAN 64, WE NEED TO REMEMBER THAT
+ 664 001035  1031          TAD     THISLEN
+ 665 001036  7012          RTR
+ 666 001037  7012          RTR
+ 667 001040  7012          RTR
+ 668 001041  0171          AND     [77
+ 669 001042  1172          TAD     [7700
+ 670 001043  3020          DCA     WSA
+ 671 001044  4775          JMS     LIMTST  /CHECK FOR END OF BUFFER AREA
+ 672 001045  7326          AC0002
+ 673 001046  2020          ISZ     WSA     /WAS IT TOO LONG?
+ 674 001047  4776          JMS     OUT     /YES--CREATE LONGER NOTE
+ 675 001050  7650          SNA     CLA
+ 676 001051  5244          JMP     .-5
+ 677 001052  5774          JMP     START2  /GO FOR MORE
+ 678               
+ 679 001053  2054  NEXLIN, ISZ     TFLAG   /ERROR?
+ 680 001054  7410          SKP
+ 681 001055  4773          JMS     MSG     /YES-PRINT LINE
+ 682 001056  1173          TAD     [LINBUF-1
+ 683 001057  3011          DCA     LINE    /RESET BUFFER POINTER
+ 684 001060  2053          ISZ     L       /COUNT LINES
+ 685 001061  5772          JMP     START5
+ 686 001062  5772          JMP     START5
+ 687               
+ 688 001063  1036  DEFY,   TAD     TIMA    /WE FOUND A Y
+ 689 001064  1041          TAD     TIMB    /ARE ALL NOTES TIMED OUT?
+ 690 001065  1044          TAD     TIMC
+ 691 001066  1047          TAD     TIMD
+ 692 001067  7640          SZA CLA
+ 693 001070  4771          JMS     BADSTA  /NOTES DID NOT FINISH TOGETHER
+ 694 001071  3036          DCA     TIMA    /WHETHER THEY ARE OR NOT,
+ 695 001072  3041          DCA     TIMB    /WE WILL MAKE THEM SO
+ 696 001073  3044          DCA     TIMC
+ 697 001074  3047          DCA     TIMD
+ 698 001075  2052          ISZ     Y
+ 699 001076  7000          NOP
+ 700 001077  3053          DCA     L
+ 701 001100  4770          JMS     GETEQ   /IS THERE AN =
+ 702 001101  5305          JMP     DEFV    /NO
+ 703 001102  4310          JMS     DECIN   /GET DECIMAL #
+ 704 001103  7440          SZA
+ 705 001104  3052          DCA     Y       /SAVE IT
+ 706               
+ 707 001105  1023  DEFV,   TAD     CHAR
+ 708 001106  4577          BRANCH          /LOOK FOR END OF LINE
+ 709 001107  3027          BRANC
+ 710               
+ 711 001110  0000  DECIN,  0               /DECIMAL INPUT
+ 712 001111  3021  DECIN1, DCA     WSB
+ 713 001112  4767          JMS     IN
+ 714 001113  1366          TAD     (-"9-1
+ 715 001114  7100          CLL
+ 716 001115  1365          TAD     (12
+ 717 001116  3010          DCA     AXA
+ 718 001117  7420          SNL
+ 719 001120  5325          JMP     DECIN2
+ 720 001121  4764          JMS     MUL
+ 721 001122  0012          12
+ 722 001123  1010          TAD     AXA
+ 723 001124  5311          JMP     DECIN1
+ 724 001125  1021  DECIN2, TAD     WSB
+ 725 001126  5710          JMP I   DECIN
+ 726               
+ 727 001127  0000  SPACE,  0
+ 728 001130  1170          TAD     [240
+ 729 001131  4341          JMS     TYPE
+ 730 001132  5727          JMP I   SPACE
+ 731               
+ 732 001133  0000  CRLF,   0
+ 733 001134  1363          TAD     (215
+ 734 001135  4341          JMS     TYPE
+ 735 001136  1362          TAD     (212
+ 736 001137  4341          JMS     TYPE
+ 737 001140  5733          JMP I   CRLF
+ 738               
+ 739 001141  0000  TYPE,   0
+ 740 001142  2360          ISZ     COFLG   /CTRL/O?
+ 741 001143  5347          JMP     TYPENO  /YES-NO PRINTING
+ 742 001144  6041          TSF
+ 743 001145  5344          JMP     .-1
+ 744 001146  6046          TLS             /TYPE CHARACTER
+ 745 001147  7200  TYPENO, CLA
+ 746 001150  6034          KRS             /LASTLY TYPED CHARACTER
+ 747 001151  0167          AND     [177    /REMOVE PARITY
+ 748 001152  1361          TAD     (-"O+300
+ 749 001153  7650          SNA CLA         /IS IT CTRL/O?
+ 750 001154  6031          KSF             /AND IS FLAG SET?
+ 751 001155  7240          STA
+ 752 001156  3360          DCA     COFLG   /REMEMBER FLAG FOR NEXT TIME
+ 753 001157  5741          JMP I   TYPE
+ 754 001160  7777  COFLG,  -1
+ 755               
+ 756 001161  7761  PAGE
+     001162  0212  
+     001163  0215  
+     001164  1750  
+     001165  0012  
+     001166  7506  
+     001167  1466  
+     001170  1423  
+     001171  1526  
+     001172  0234  
+     001173  1642  
+     001174  0227  
+     001175  0734  
+     001176  1670  
+     001177  1200  
+ 757               
+ 758               IFZERO OS8-20 < IFNDEF WOW <
+ 759               REMEM=.
+ 760               *HOFUDG+1
+ 761               >>
+ 762 001200  0000  SMALL,  0       /FIND SMALLEST LENGTH
+ 763 001201  7450          SNA
+ 764 001202  5600          JMP I   SMALL   /IGNORE ZEROES
+ 765 001203  1031          TAD     THISLEN
+ 766 001204  7500          SMA
+ 767 001205  5211          JMP     SMALL2
+ 768 001206  7041          CIA             /FOUND A SMALLER ONE
+ 769 001207  1031          TAD     THISLEN
+ 770 001210  3031          DCA     THISLEN
+ 771 001211  7200  SMALL2, CLA
+ 772 001212  5600          JMP I   SMALL
+ 773               
+ 774               IFZERO OS8-10 <
+ 775 001213  0000  OSDEC,  0               /CALL OS8 COMMAND DECODER
+ 776 001214  6212          CIF     10
+ 777 001215  4661          JMS I   C7700
+ 778 001216  0005          DECODE
+ 779 001217  1525          "M-300^100+"U-300       /.MU DEFAULT
+ 780 001220  7240          STA
+ 781 001221  3061          DCA     INCHCT
+ 782 001222  7001          IAC
+ 783 001223  3062          DCA     INEOF   /CAUSE AN END OF FILE
+ 784 001224  1377          TAD     (7617   /INIT FILE POINTER
+ 785 001225  3063          DCA     INFPTR
+ 786 001226  5613          JMP I   OSDEC
+ 787               
+ 788 001227  0000  OSIN,   0
+ 789 001230  2264  INCHAR, ISZ     INJMP   /UNPACKING SWITCH
+ 790 001231  2061          ISZ     INCHCT  /ANY MORE CHARACTERS?
+ 791 001232  5264  INJMPP, JMP     INJMP   /YES
+ 792 001233  1062          TAD     INEOF
+ 793 001234  7650          SNA CLA         /EOF?
+ 794 001235  5240          JMP     INGBUF  /NO-GO READ
+ 795 001236  4315  GETNEW, JMS     INNEWF  /GO TO NEXT FILE
+ 796 001237  5776          JMP     ENDM    /NO MORE FILES
+ 797 001240  2064  INGBUF, ISZ     INCTR
+ 798 001241  7410          SKP
+ 799 001242  2062          ISZ     INEOF   /WE'RE ON LAST BLOCK
+ 800 001243  4730          JMS I   INHNDL  /READ FROM INPUT
+ 801 001244  0200          200             /ONE BLOCK
+ 802 001245  6600  INBUFP, INBUF
+ 803 001246  0000  INREC,  0
+ 804 001247  5260          JMP     INERRX
+ 805 001250  2246  INBREC, ISZ     INREC   /GO TO NEXT BLOCK
+ 806 001251  1375          TAD     (-600-1
+ 807 001252  3061          DCA     INCHCT
+ 808 001253  1232          TAD     INJMPP
+ 809 001254  3264          DCA     INJMP
+ 810 001255  1245          TAD     INBUFP
+ 811 001256  3065          DCA     INPTR
+ 812 001257  5230          JMP     INCHAR
+ 813 001260  2062  INERRX, ISZ     INEOF
+ 814 001261  7700  C7700,  SMA CLA         /FATAL ERROR?
+ 815 001262  5250          JMP     INBREC  /END OF FILE
+ 816 001263  7402          HLT             /I/O ERROR
+ 817 001264  7402  INJMP,  HLT             /UNPACKING JUMP
+ 818 001265  5306          JMP     ICHAR1
+ 819 001266  5302          JMP     ICHAR2
+ 820 001267  1232          TAD     INJMPP
+ 821 001270  3264          DCA     INJMP
+ 822 001271  1465          TAD I   INPTR
+ 823 001272  0374          AND     (7400
+ 824 001273  7112          CLL RTR
+ 825 001274  7012          RTR
+ 826 001275  1066          TAD     INSAVE
+ 827 001276  7012          RTR
+ 828 001277  7012          RTR
+ 829 001300  2065          ISZ     INPTR
+ 830 001301  5307          JMP     INCOMN
+ 831 001302  1465  ICHAR2, TAD I   INPTR
+ 832 001303  0374          AND     (7400
+ 833 001304  3066          DCA     INSAVE
+ 834 001305  2065          ISZ     INPTR
+ 835 001306  1465  ICHAR1, TAD I   INPTR
+ 836 001307  0167  INCOMN, AND     [177
+ 837 001310  1373          TAD     (-32    /CTRL/Z?
+ 838 001311  7450          SNA
+ 839 001312  5236          JMP     GETNEW  /TIME FOR NEXT FILE
+ 840 001313  1372          TAD     (232
+ 841 001314  5627          JMP I   OSIN
+ 842               
+ 843               /GO TO NEXT INPUT FILE
+ 844 001315  0000  INNEWF, 0
+ 845 001316  1371          TAD     (INDEVH+1
+ 846 001317  3330          DCA     INHNDL
+ 847 001320  6211          CDF     10
+ 848 001321  1463          TAD I   INFPTR
+ 849 001322  6201          CDF
+ 850 001323  7450          SNA
+ 851 001324  5715          JMP I   INNEWF  /NO MORE INPUT FILES
+ 852 001325  6212          CIF     10
+ 853 001326  4661          JMS I   C7700   /FETCH HANDLER
+ 854 001327  0001          FETCH
+ 855 001330  0000  INHNDL, .-.
+ 856 001331  7402          HLT
+ 857 001332  6211          CDF     10
+ 858 001333  1463          TAD I   INFPTR
+ 859 001334  0370          AND     (7760
+ 860 001335  7440          SZA
+ 861 001336  1367          TAD     (17
+ 862 001337  7132          STL RTR
+ 863 001340  7012          RTR
+ 864 001341  3064          DCA     INCTR
+ 865 001342  2063          ISZ     INFPTR
+ 866 001343  1463          TAD I   INFPTR
+ 867 001344  6201          CDF
+ 868 001345  3246          DCA     INREC
+ 869 001346  2063          ISZ     INFPTR
+ 870 001347  3062          DCA     INEOF
+ 871 001350  7240          STA
+ 872 001351  3061          DCA     INCHCT
+ 873 001352  2315          ISZ     INNEWF
+ 874 001353  5715          JMP I   INNEWF
+ 875               IFDEF WOW <
+ 876 001354  0000  RESTR2, 0
+ 877 001355  4566          JMS I   [RESTOR
+ 878 001356  7240          STA
+ 879 001357  1354          TAD     RESTR2
+ 880 001360  3354          DCA     RESTR2
+ 881 001361  5754          JMP I   RESTR2
+ 882               >>
+ 883               IFNZRO OS8-10 <
+ 884               OSIN,   0
+ 885               CH1,    TAD     [-20    /SET FOR DELAY OF A WHILE
+ 886                       DCA     CHAR
+ 887               CH2,    KSF             /ANYTHING AT LOW SPEED?
+ 888                       JMP     CH3     /NO
+ 889                       KRB             /YES-GET IT
+ 890                       JMP I   OSIN    /AND RETURN
+ 891               
+ 892               CH3,    RSF             /ANYTHING AT HIGH SPEED?
+ 893                       JMP     CH4     /NO
+ 894                       RRB RFC         /YES, GET IT
+ 895                       JMP I   OSIN    /AND RETURN
+ 896               
+ 897               CH4,    ISZ     CH5
+ 898                       JMP     CH2
+ 899                       ISZ     CHAR
+ 900                       JMP     CH2
+ 901                       LAS
+ 902                       SNA CLA
+ 903                       RFC             /TRY TO START THE READER
+ 904                       CLA             /IN CASE OF FUNNY INTERFACES
+ 905                       JMP     CH1
+ 906               CH5,    0
+ 907               >
+ 908               
+ 909 001367  0017  PAGE
+     001370  7760  
+     001371  7201  
+     001372  0232  
+     001373  7746  
+     001374  7400  
+     001375  7177  
+     001376  1600  
+     001377  7617  
+ 910               IFZERO OS8-20 < IFNDEF WOW <
+ 911               *REMEM
+ 912               >>
+ 913               
+ 914 001400  0000  BRAN0,  0               /BRANCH BASED ON CHARACTER
+ 915 001401  3023          DCA     CHAR    /MAYBE USE CHAR IN AC
+ 916 001402  7240          STA
+ 917 001403  1600          TAD I   BRAN0
+ 918 001404  3010          DCA     AXA
+ 919 001405  1023          TAD     CHAR
+ 920 001406  7450          SNA
+ 921 001407  4266          JMS     IN
+ 922 001410  7610          CLA SKP
+ 923 001411  2010  BRAN1,  ISZ     AXA
+ 924 001412  1410          TAD I   AXA
+ 925 001413  7500          SMA
+ 926 001414  7610          SKP CLA
+ 927 001415  1023          TAD     CHAR
+ 928 001416  7640          SZA CLA
+ 929 001417  5211          JMP     BRAN1
+ 930 001420  1410          TAD I   AXA
+ 931 001421  3020          DCA     WSA
+ 932 001422  5420          JMP I   WSA     /BRANCH!
+ 933               
+ 934 001423  0000  GETEQ,  0               /SKIP IF NEXT CHAR IS =
+ 935 001424  4266          JMS     IN
+ 936 001425  1377          TAD     (-"=
+ 937 001426  7650          SNA CLA
+ 938 001427  2223          ISZ     GETEQ
+ 939 001430  5623          JMP I   GETEQ
+ 940               
+ 941 001431  0000  KEYC,   0               /SET TO KEY OF C
+ 942 001432  1376          TAD     (KEYTAB-1
+ 943 001433  3010          DCA     AXA
+ 944 001434  1375          TAD     (-10
+ 945 001435  3020          DCA     WSA
+ 946 001436  3410          DCA I   AXA
+ 947 001437  2020          ISZ     WSA
+ 948 001440  5236          JMP     .-2
+ 949 001441  5631          JMP I   KEYC
+ 950               
+ 951 001442  0000  GETNOT, 0               /GET A NOTE
+ 952 001443  4266          JMS     IN
+ 953 001444  1374          TAD     (-"G-1
+ 954 001445  7100          CLL
+ 955 001446  1373          TAD     ("G-"A+1
+ 956 001447  7420          SNL
+ 957 001450  5261          JMP     GETNR
+ 958 001451  3024  GETN2,  DCA     NOTE
+ 959 001452  1024          TAD     NOTE
+ 960 001453  1372          TAD     (KEYTAB+1
+ 961 001454  3025          DCA     NOTEV
+ 962 001455  3030          DCA     OCTAVE  /CLEAR OUT +-
+ 963 001456  3033          DCA     ACC     /CLEAR ACCIDENTALS
+ 964 001457  2242          ISZ     GETNOTE
+ 965 001460  5642          JMP I   GETNOTE
+ 966               
+ 967 001461  1371  GETNR,  TAD     ("A-"R
+ 968 001462  7640          SZA CLA
+ 969 001463  5642          JMP I   GETNOTE /NO NOTE
+ 970 001464  7240          STA
+ 971 001465  5251          JMP     GETN2
+ 972               
+ 973               /GET A CHARACTER, AND REMEMBER IN CASE OF ERROR
+ 974 001466  0000  IN,     0
+ 975 001467  4770          JMS     OSIN
+ 976 001470  0167          AND     [177
+ 977 001471  1165          TAD     [200
+ 978 001472  3023          DCA     CHAR
+ 979 001473  1023          TAD     CHAR
+ 980 001474  1367          TAD     (-212
+ 981 001475  7440          SZA
+ 982 001476  1366          TAD     (-3
+ 983 001477  7450          SNA
+ 984 001500  5306          JMP     IN2     /CR OR LF
+ 985 001501  1365          TAD     (215-340
+ 986 001502  7100          CLL
+ 987 001503  1364          TAD     (340-240
+ 988 001504  7620          SNL CLA
+ 989 001505  5267          JMP     IN+1    /INVALID CHARACTER-IGNORE
+ 990 001506  1011  IN2,    TAD     LINE
+ 991 001507  1363          TAD     (-LINBUF-100+2
+ 992 001510  7710          SPA CLA         /SOMEWHAT LONG?
+ 993 001511  5314          JMP     .+3
+ 994 001512  1173          TAD     [LINBUF-1       /YES, START OVER
+ 995 001513  3011          DCA     LINE
+ 996 001514  1023          TAD     CHAR
+ 997 001515  3411          DCA I   LINE    /SAVE IN LINE BUFFER
+ 998 001516  1023          TAD     CHAR
+ 999 001517  1362          TAD     (-240
+1000 001520  7650          SNA CLA
+1001 001521  5267          JMP     IN+1    /IGNORE(BUT PRINT) SPACES
+1002 001522  1023          TAD     CHAR
+1003 001523  5666          JMP I   IN
+1004               
+1005 001524  4326  BADLIN, JMS     BADSTA  /PRINT "*"
+1006 001525  5761          JMP     DEFV    /FIND NEXT LINE
+1007               
+1008 001526  0000  BADSTA, 0
+1009 001527  7200          CLA
+1010 001530  1011          TAD     LINE
+1011 001531  3020          DCA     WSA
+1012 001532  1420          TAD I   WSA     /GET LAST CHARACTER
+1013 001533  3411          DCA I   LINE    /MOVE IT OVER
+1014 001534  1360          TAD     ("*
+1015 001535  3420          DCA I   WSA     /PUT * IN LINE
+1016 001536  7240          STA
+1017 001537  3054          DCA     TFLAG   /PRINT THIS LINE
+1018 001540  5726          JMP I   BADSTA  /RETURN
+1019               
+1020               /T=  :  TRANSPOSE
+1021 001541  4223  DEFT,   JMS     GETEQ   /BUMP OVER EQUAL
+1022 001542  5324          JMP     BADLINE /OOPS, NONE
+1023 001543  4757          JMS     DECIN   /GET DECIMAL NUMBER
+1024 001544  1356          TAD     (-144   /T=100 IS NO TRANSPOSE
+1025 001545  3056          DCA     TRANSPOSE
+1026 001546  5761          JMP     DEFV    /IGNORE REST OF LINE
+1027               
+1028 001556  7634  PAGE
+     001557  1110  
+     001560  0252  
+     001561  1105  
+     001562  7540  
+     001563  4232  
+     001564  0100  
+     001565  7655  
+     001566  7775  
+     001567  7566  
+     001570  1227  
+     001571  7757  
+     001572  3106  
+     001573  0007  
+     001574  7470  
+     001575  7770  
+     001576  3104  
+     001577  7503  
+1029               
+1030 001600  4270  ENDM,   JMS     OUT     /OUTPUT END CODE (0)
+1031 001601  5574          JMP I   [PLAY   /NOW GO AND PLAY
+1032               IFDEF WOW < IFZERO OS8-10 <
+1033               *.-1                    /UNLESS THIS IS ASSEMBLED
+1034 001601  1164          TAD     [7600   /SINCE WE USE FIELD ONE AS A
+1035 001602  3020          DCA     WSA     /4K BUFFER, WE MUST SAVE THE
+1036 001603  1377          TAD     (SAVBUF-1
+1037 001604  3010          DCA     AXA     /OS/8 STUFF WHICH IS THERE.
+1038 001605  6211  SAVEL,  CDF     10
+1039 001606  1420          TAD I   WSA
+1040 001607  6201          CDF
+1041 001610  3410          DCA I   AXA
+1042 001611  2020          ISZ     WSA
+1043 001612  5205          JMP     SAVEL
+1044 001613  1564          TAD I   [7600
+1045 001614  3242          DCA     MSG
+1046 001615  1376          TAD     (JMS I [RESTR2
+1047 001616  3564          DCA I   [7600   /SET RESTART TRAP
+1048 001617  1376          TAD     (JMS I  [RESTR2
+1049 001620  3565          DCA I   [START
+1050 001621  5574          JMP I   [PLAY   /NOW, WE CAN PLAY MUSIC!
+1051               
+1052 001622  0000  RESTOR, 0               /SUBROUTINE TO RESTORE THE
+1053 001623  1164          TAD     [7600   /TOP PAGE OF FIELD ONE
+1054 001624  3020          DCA     WSA
+1055 001625  1377          TAD     (SAVBUF-1
+1056 001626  3010          DCA     AXA
+1057 001627  1410  RESTOL, TAD I   AXA
+1058 001630  6211          CDF     10
+1059 001631  3420          DCA I   WSA
+1060 001632  6201          CDF
+1061 001633  2020          ISZ     WSA
+1062 001634  5227          JMP     RESTOL
+1063 001635  1242          TAD     MSG     /RESTORE 7600
+1064 001636  3564          DCA I   [7600
+1065 001637  1375          TAD     (SKP
+1066 001640  3565          DCA I   [START
+1067 001641  5622          JMP I   RESTOR
+1068               >>
+1069               
+1070 001642  0000  MSG,    0               /PRINT LINE
+1071 001643  1052          TAD     Y
+1072 001644  4310          JMS     DECOUT  /PRINT Y NUMBER
+1073 001645  4774          JMS     SPACE
+1074 001646  1053          TAD     L
+1075 001647  4310          JMS     DECOUT  /PRINT L NUMBER
+1076 001650  4774          JMS     SPACE
+1077 001651  1173          TAD     [LINBUF-1
+1078 001652  3010          DCA     AXA
+1079 001653  1373  MSG1,   TAD     (-76
+1080 001654  3020          DCA     WSA
+1081 001655  1410  MSG2,   TAD I   AXA
+1082 001656  4772          JMS     TYPE
+1083 001657  1010          TAD     AXA
+1084 001660  7041          CIA
+1085 001661  1011          TAD     LINE
+1086 001662  7650          SNA CLA
+1087 001663  5642          JMP I   MSG
+1088 001664  2020          ISZ     WSA
+1089 001665  5255          JMP     MSG2
+1090 001666  4771          JMS     CRLF
+1091 001667  5253          JMP     MSG1
+1092               
+1093 001670  0000  OUT,    0
+1094               IFNZRO CORE-100 <
+1095 001671  6201  OUTCDF, CDF     00 >
+1096 001672  0171          AND     [77
+1097 001673  2060          ISZ     OUTFLG
+1098 001674  5301          JMP     OUT2
+1099 001675  1435          TAD I   OUTBUF
+1100 001676  3435          DCA I   OUTBUF
+1101 001677  2035          ISZ     OUTBUF
+1102 001700  5302          JMP     OUT3
+1103               OUT2,
+1104 001701  7002  IFNZRO CPU-4 <BSW>
+1105               IFZERO CPU-4 <
+1106                       CLL RTL
+1107                       RTL
+1108                       RTL
+1109               >
+1110 001702  3435  OUT3,   DCA I   OUTBUF
+1111 001703  6201  IFNZRO CORE-100 < CDF >
+1112 001704  1060          TAD     OUTFLG
+1113 001705  7041          CIA
+1114 001706  3060          DCA     OUTFLG
+1115 001707  5670          JMP I   OUT
+1116               
+1117 001710  0000  DECOUT, 0
+1118 001711  7450          SNA
+1119 001712  5325          JMP     DECO2
+1120 001713  3021          DCA     WSB
+1121 001714  1370          TAD     (DECO9
+1122 001715  3020          DCA     WSA
+1123 001716  4330          JMS     DECO6
+1124 001717  7450          SNA
+1125 001720  5316          JMP     .-2
+1126 001721  1367          TAD     ("0
+1127 001722  4772          JMS     TYPE
+1128 001723  4330          JMS     DECO6
+1129 001724  5321          JMP     .-3
+1130 001725  1367  DECO2,  TAD     ("0
+1131 001726  4772          JMS     TYPE
+1132 001727  5710          JMP I   DECOUT
+1133               
+1134 001730  0000  DECO6,  0
+1135 001731  3022          DCA     WSC
+1136 001732  1420  DECO7,  TAD I   WSA
+1137 001733  7450          SNA
+1138 001734  5710          JMP I   DECOUT
+1139 001735  7120          STL
+1140 001736  1021          TAD     WSB
+1141 001737  7430          SZL
+1142 001740  5344          JMP     DECO8
+1143 001741  3021          DCA     WSB
+1144 001742  2022          ISZ     WSC
+1145 001743  5332          JMP     DECO7
+1146 001744  7200  DECO8,  CLA
+1147 001745  2020          ISZ     WSA
+1148 001746  1022          TAD     WSC
+1149 001747  5730          JMP I   DECO6
+1150               
+1151               /MULTIPLY:AC=WSB*(JMS+1)
+1152 001750  0000  MUL,    0
+1153 001751  1366          TAD     (-14
+1154 001752  3020          DCA     WSA
+1155 001753  1750          TAD I   MUL
+1156 001754  2350          ISZ     MUL
+1157 001755  7104  MUL2,   CLL RAL
+1158 001756  7430          SZL
+1159 001757  1021          TAD     WSB
+1160 001760  2020          ISZ     WSA
+1161 001761  5355          JMP     MUL2
+1162 001762  5750          JMP I   MUL
+1163               
+1164 001766  7764  PAGE
+     001767  0260  
+     001770  3115  
+     001771  1133  
+     001772  1141  
+     001773  7702  
+     001774  1127  
+     001775  7410  
+     001776  4563  
+     001777  6577  
+1165               
+1166               /THE START OF THE PLAYING PART OF THE COMPILER
+1167 002000  3024  PLAY,   DCA     FLG     /RESET PACKING FLAG
+1168 002001  1377          TAD     (BFR1
+1169 002002  3035          DCA     TRAN
+1170               IFDEF WOW <
+1171 002003  6211          CDF     10
+1172 002004  3011          DCA     AXB     /START OFF WITH A LONG
+1173 002005  3034          DCA     BUFGET  /PAUSE (.84 SEC)
+1174 002006  7130          STL RAR
+1175 002007  3434          DCA I   BUFGET
+1176 002010  7240          STA
+1177 002011  3411          DCA I   AXB
+1178 002012  6201          CDF
+1179 002013  3014          DCA     OOPS
+1180               >
+1181               IFNDEF WOW <
+1182                       STA
+1183               >
+1184 002014  3051          DCA     SAVS    /DON'T START WITH POP
+1185 002015  1376          TAD     (BUFTBL-1
+1186 002016  3016          DCA     BUFTAB
+1187 002017  1416          TAD I   BUFTAB
+1188 002020  3025          DCA     GETPTR
+1189               IFNZRO CORE-100 <
+1190 002021  2016          ISZ     BUFTAB
+1191 002022  1416          TAD I   BUFTAB
+1192 002023  3775          DCA     GETCDF
+1193               >
+1194 002024  1374          TAD     (MDEFAULT
+1195 002025  5773          JMP     DOM1    /SET METER DEFAULT
+1196               RESTM,
+1197               IFDEF WOW <DECIMAL
+1198 002026  4101          JMS     DOIT    /A REST...
+1199 002027  0732  IFZERO CPU-1 <  T1+158 >
+1200               IFZERO CPU-2 <  T1+180 >
+1201               OCTAL>
+1202 002030  1372          TAD     (2000   /LOW FREQUENCY
+1203 002031  3410          DCA I   AXA
+1204 002032  3410          DCA I   AXA     /NO SPIKES
+1205 002033  7240  NEXT1,  STA
+1206 002034  3410          DCA I   AXA     /KEEP SIMULTANEOUS NOTES
+1207               NEXT,
+1208               IFDEF WOW <DECIMAL
+1209 002035  4101          JMS     DOIT    /IN PHASE
+1210 002036  1434  IFZERO CPU-1 <  T1+T2+190 >
+1211               IFZERO CPU-2 <  T1+T2+225 >
+1212               OCTAL>
+1213 002037  4562          JMS I   [GET    /WHAT DO WE DO?
+1214 002040  7110          CLL RAR
+1215 002041  7420          SNL
+1216 002042  5771          JMP     SPECIAL /SOMETHING SPECIAL
+1217 002043  7012          RTR
+1218 002044  0370          AND     (7      /WHAT DO?
+1219 002045  1367          TAD     (JMPTAB
+1220 002046  3020          DCA     WSA
+1221 002047  1420          TAD I   WSA     /GET DISPATCH ADDRESS
+1222 002050  3020          DCA     WSA
+1223               IFDEF WOW <DECIMAL
+1224 002051  7000          NOP
+1225 002052  4101          JMS     DOIT
+1226 002053  0710  IFZERO CPU-1 <  T1+140 >
+1227               IFZERO CPU-2 <  T1+165 >
+1228               OCTAL >
+1229 002054  1023          TAD     CHAR
+1230 002055  0366          AND     (6      /WHICH NOTE?
+1231 002056  7104          CLL RAL
+1232 002057  1365          TAD     (NOTTAB-1
+1233 002060  3010          DCA     AXA
+1234 002061  5420          JMP I   WSA     /NOW DISPATCH
+1235               
+1236               REST,
+1237               IFDEF WOW <DECIMAL
+1238 002062  4101          JMS     DOIT    /DO A REST
+1239 002063  0732  IFZERO CPU-1 <  T1+158 >
+1240               IFZERO CPU-2 <  T1+180 >
+1241               OCTAL>
+1242 002064  1372          TAD     (2000
+1243 002065  3410          DCA I   AXA     /LOW FREQUENCY
+1244 002066  3410          DCA I   AXA     /NO SPIKES
+1245 002067  7240  NEXT2,  STA
+1246 002070  3410          DCA I   AXA     /KEEP SIMULTANEOUS NOTES
+1247               IFDEF WOW <DECIMAL
+1248 002071  4101          JMS     DOIT    /IN PHASE
+1249 002072  1152  IFZERO CPU-1 <  T1+T2+12 >
+1250               IFZERO CPU-2 <  T1+T2+15 >
+1251               OCTAL>
+1252 002073  4562          JMS I   [GET    /GET DURATION
+1253 002074  7650          SNA CLA
+1254 002075  5343          JMP     NEXHOL  /IT'S A LONG ONE
+1255               IFDEF WOW <DECIMAL
+1256 002076  4101          JMS     DOIT
+1257 002077  5662  IFZERO CPU-1 <  T1+2678 >
+1258               IFZERO CPU-2 <  T1+3135 >
+1259               OCTAL>
+1260 002100  1023          TAD     CHAR    /NOW WE WANT TO MULTIPLY DURATION
+1261 002101  7002  IFNZRO CPU-4 <BSW>
+1262               IFZERO CPU-4 <
+1263                       CLL RTL         /BY LENGTH OF A "G" IN
+1264                       RTL             /HOSAVE,LOSAVE (IN UNITS OF A
+1265                       RTL >           /6.4 MICROSECOND)
+1266 002102  3021          DCA     WSB
+1267 002103  1364          TAD     (-6
+1268 002104  3020          DCA     WSA
+1269 002105  3032          DCA     LOTIM
+1270 002106  3033          DCA     HOTIM
+1271 002107  5316          JMP     NEXLUP
+1272               /NOW WE'RE ALL SET TO MULTIPLY
+1273 002110  1032  NEXSH,  TAD     LOTIM
+1274 002111  7104          CLL RAL
+1275 002112  3032          DCA     LOTIM
+1276 002113  1033          TAD     HOTIM
+1277 002114  7004          RAL
+1278 002115  3033          DCA     HOTIM
+1279 002116  1021  NEXLUP, TAD     WSB
+1280 002117  7004          RAL
+1281 002120  3021          DCA     WSB     /BIT OF MULTIPLIER IN L
+1282 002121  7420          SNL
+1283 002122  5335          JMP     NEXNO2  /NO ADDING TO DO
+1284 002123  1026          TAD     LOSAVE
+1285 002124  1032          TAD     LOTIM
+1286 002125  3032          DCA     LOTIM
+1287 002126  7024          CML RAL         /REMEMBER CARRY!
+1288 002127  1027          TAD     HOSAVE
+1289 002130  1033          TAD     HOTIM
+1290 002131  3033          DCA     HOTIM
+1291               IFNDEF WOW <NEXNO2,>
+1292 002132  2020  NEXNO,  ISZ     WSA
+1293 002133  5310          JMP     NEXSH
+1294 002134  5351          JMP     NEXINI  /DONE MULTIPLYING
+1295               IFDEF WOW <
+1296 002135  1000  NEXNO2, TAD             /WASTE TIME
+1297 002136  3000          DCA
+1298 002137  1000          TAD
+1299 002140  3000          DCA
+1300 002141  0410          AND I   AXA     /NEED AUTO-INDEX FOR EXTRA .2US
+1301 002142  5332          JMP     NEXNO
+1302               >
+1303               
+1304               NEXHOL,
+1305               IFDEF WOW <DECIMAL
+1306 002143  4101          JMS     DOIT    /HOLD FOR 64 "G"S
+1307 002144  1112  IFZERO CPU-1 <  T1+270 >
+1308               IFZERO CPU-2 <  T1+315 >
+1309               OCTAL>
+1310 002145  1030          TAD     LOLONG
+1311 002146  3032          DCA     LOTIM
+1312 002147  1031          TAD     HOLONG
+1313 002150  3033          DCA     HOTIM
+1314 002151  1037  NEXINI, TAD     AR      /REMEMBER HOW MANY
+1315 002152  1043          TAD     BR      /SPIKES IN ALL
+1316 002153  1047          TAD     CR
+1317 002154  1053          TAD     DR
+1318 002155  7041  IFDEF WOW <CIA>
+1319               IFNDEF WOW <CMA>
+1320 002156  3041          DCA     RTOT
+1321               IFNDEF WOW <
+1322                       KRB             /WHAT WAS THE LAST CHARACTER TYPED?
+1323                       AND     (177    /MASK PARITY
+1324                       TAD     (-3     /CHECK FOR CTRL/C
+1325                       SNA             /IS IT?
+1326               IFZERO OS8-10 < JMP I [7600 >   /YES, RETURN TO MONITOR
+1327               IFNZRO OS8-10 < JMP START>      /YES, READ ANOTHER TAPE
+1328                       TAD     ("C-"Q
+1329                       SNA CLA         /IS IT A CTRL/Q?
+1330               IFZERO OS8-10 < JMP DOEND2 >    /YES, GO TO NEXT PIECE
+1331               IFNZRO OS8-10 < JMP START  >    /YES, GO TO READ ANOTHER TAPE
+1332               >
+1333 002157  5763          JMP     PLAY2   /AND GO PLAY!
+1334               
+1335 002163  2506  PAGE
+     002164  7772  
+     002165  0035  
+     002166  0006  
+     002167  3400  
+     002170  0007  
+     002171  2600  
+     002172  2000  
+     002173  2207  
+     002174  1320  
+     002175  2327  
+     002176  3130  
+     002177  3152  
+1336               
+1337               DIVP=LOLONG
+1338               DIVM=HOLONG
+1339               
+1340               /GIVEN THE DESIRED SPEED (12 BITS) AND
+1341               /(HOFUDG,LOFUDG) (24 BITS), CALCULATE
+1342               /HOW LONG A "G" IS (24 BITS) AND PUT
+1343               /IT IN (HOSAVE,LOSAVE)
+1344               DOMETE,
+1345               IFDEF WOW <DECIMAL
+1346 002200  4101          JMS     DOIT
+1347 002201  2150  IFZERO CPU-1 <  T1+T2+T2+232 >
+1348               IFZERO CPU-2 <  T1+T2+T2+270 >
+1349               OCTAL >
+1350 002202  4562          JMS I   [GET
+1351 002203  7002  IFNZRO CPU-4 <BSW>
+1352               IFZERO CPU-4<
+1353                       CLL RTL
+1354                       RTL
+1355                       RTL >
+1356 002204  3030          DCA     DIVP
+1357 002205  4562          JMS I   [GET    /GET RIGHT HALF
+1358 002206  1030          TAD     DIVP
+1359 002207  3030  DOM1,   DCA     DIVP
+1360 002210  1030          TAD     DIVP
+1361 002211  7041          CIA
+1362 002212  3031          DCA     DIVM    /- LENGTH
+1363 002213  1100          TAD     HOFUDG
+1364 002214  3032          DCA     LOTIM
+1365 002215  3033          DCA     HOTIM
+1366               IFDEF WOW <DECIMAL
+1367 002216  4101          JMS     DOIT
+1368 002217  6556  IFZERO CPU-1 <  T1+T3+78 >
+1369               IFZERO CPU-2 <  T1+T3+90 >
+1370               OCTAL >
+1371 002220  4251          JMS     DIV     /DIVIDE
+1372 002221  3027          DCA     HOSAVE
+1373 002222  1077          TAD     LOFUDG
+1374 002223  3032          DCA     LOTIM
+1375               IFDEF WOW <DECIMAL
+1376 002224  4101          JMS     DOIT
+1377 002225  6472  IFZERO CPU-1 <  T1+T3+26 >
+1378               IFZERO CPU-2 <  T1+T3+30 >
+1379               OCTAL>
+1380 002226  4251          JMS     DIV     /DIVIDE LO
+1381 002227  3026          DCA     LOSAVE
+1382               IFDEF WOW <DECIMAL
+1383 002230  4101          JMS     DOIT
+1384 002231  2640  IFZERO CPU-1 <  T1+1124 >
+1385               IFZERO CPU-2 <  T1+1320 >
+1386               OCTAL>
+1387 002232  1377          TAD     (-6
+1388 002233  3020          DCA     WSA     /WE MUST NOW SHIFT IT 6
+1389 002234  1027          TAD     HOSAVE  /PLACES TO THE LEFT
+1390 002235  3031          DCA     HOLONG  /FOR LONG NOTES
+1391 002236  1026          TAD     LOSAVE
+1392 002237  7410          SKP
+1393 002240  1030  DOM2,   TAD     LOLONG
+1394 002241  7104          CLL RAL
+1395 002242  3030          DCA     LOLONG
+1396 002243  1031          TAD     HOLONG
+1397 002244  7004          RAL
+1398 002245  3031          DCA     HOLONG
+1399 002246  2020          ISZ     WSA
+1400 002247  5240          JMP     DOM2
+1401 002250  5561          JMP I   [NEXT
+1402               
+1403               
+1404 002251  0000  DIV,    0               /HOTIM,LOTIM/DIVP(DIVM)
+1405 002252  1376          TAD     (-15    /REM IN HOTIM, QUO IN LOTIM
+1406 002253  3020          DCA     WSA     /SET UP DIVIDE COUNT
+1407 002254  5264          JMP     DIVB    /AND GO DO IT
+1408               
+1409 002255  7004  DIVA,   RAL             /SHIFT DIVIDEND
+1410 002256  7000  IFDEF WOW <     NOP >           /FOR TIMING
+1411 002257  1031          TAD     DIVM    /MINUS DIVISOR
+1412 002260  3033          DCA     HOTIM
+1413 002261  7420          SNL             /DID WE OVER-SUBTRACT?
+1414 002262  5305          JMP     DIVD    /YES, WE'LL START ADDING DIVISOR
+1415 002263  7000  IFDEF WOW <     NOP >           /FOR TIMING
+1416 002264  1032  DIVB,   TAD     LOTIM   /SHIFT DIVIDEND
+1417 002265  7024          CML RAL
+1418 002266  3032          DCA     LOTIM
+1419 002267  1033          TAD     HOTIM
+1420 002270  2020          ISZ     WSA     /ARE WE THROUGH?
+1421 002271  5255          JMP     DIVA    /NO, CONTINUE SUBTRACTING
+1422 002272  3033          DCA     HOTIM   /SAVE REMAINDER
+1423 002273  0000  IFDEF WOW<AND>
+1424 002274  1032          TAD     LOTIM   /GET QUOTIENT
+1425 002275  5651          JMP I   DIV     /AND RETURN
+1426               
+1427 002276  7004  DIVC,   RAL             /SHIFT DIVIDEND
+1428 002277  7020          CML             /MAKE IT WORK
+1429 002300  1030          TAD     DIVP    /POSITIVE DIVISOR
+1430 002301  3033          DCA     HOTIM
+1431 002302  7430          SZL             /HAVE WE ADDED ENOUGH?
+1432 002303  5264          JMP     DIVB    /YES, GO SUBTRACT FOR A WHILE
+1433 002304  7000  IFDEF WOW <     NOP >           /FOR TIMING
+1434 002305  1032  DIVD,   TAD     LOTIM   /SHIFT DIVIDEND
+1435 002306  7024          CML RAL
+1436 002307  3032          DCA     LOTIM
+1437 002310  1033          TAD     HOTIM
+1438 002311  2020          ISZ     WSA     /ARE WE THROUGH?
+1439 002312  5276          JMP     DIVC    /NO, GO ADD SOME MORE
+1440 002313  1030          TAD     DIVP    /YES, CORRECT REMAINDER
+1441 002314  3033          DCA     HOTIM   /AND SAVE IT
+1442 002315  1032          TAD     LOTIM   /GET QUOTIENT
+1443 002316  5651          JMP I   DIV     /AND RETURN
+1444               
+1445               DOTRAN,
+1446               IFDEF WOW <DECIMAL
+1447 002317  4101          JMS     DOIT    /DO TRANSPOSE
+1448 002320  0674  IFZERO CPU-1 <  T1+128 >
+1449               IFZERO CPU-2 <  T1+150 >
+1450               OCTAL>
+1451 002321  1023          TAD     CHAR
+1452 002322  0375          AND     (70
+1453 002323  1374          TAD     (BFR1
+1454 002324  3035          DCA     TRAN
+1455 002325  5561          JMP I   [NEXT
+1456               
+1457               /GET A BYTE FROM THE INFO BUFFER
+1458 002326  0000  GET,    0
+1459               IFNZRO CORE-100 <
+1460 002327  6201  GETCDF, CDF     00      >
+1461 002330  1425          TAD I   GETPTR
+1462 002331  6201  IFNZRO CORE-100 <CDF>
+1463 002332  2024          ISZ     FLG
+1464 002333  5342          JMP     GETL
+1465 002334  2025          ISZ     GETPTR
+1466 002335  0171          AND     [77
+1467 002336  3023          DCA     CHAR
+1468               IFDEF WOW <
+1469 002337  7000          NOP
+1470 002340  7000          NOP
+1471               >
+1472 002341  5347          JMP     GET2
+1473               
+1474               GETL,
+1475 002342  7002  IFNZRO CPU-4<   BSW >
+1476               IFZERO CPU-4 <
+1477                       RTR
+1478                       RTR
+1479                       RTR
+1480               >
+1481 002343  0171          AND     [77
+1482 002344  3023          DCA     CHAR
+1483 002345  7240          STA
+1484 002346  3024          DCA     FLG
+1485 002347  1023  GET2,   TAD     CHAR
+1486 002350  5726          JMP I   GET
+1487               
+1488 002374  3152  PAGE
+     002375  0070  
+     002376  7763  
+     002377  7772  
+1489               
+1490               /THE FIRST TASK IS TO FIGURE OUT WHICH NOTE
+1491               /WILL BE NEXT TO FINISH ONE CYCLE.
+1492               PLAYIT,
+1493               IFDEF WOW <DECIMAL
+1494 002400  4101          JMS     DOIT
+1495 002401  2644  IFZERO CPU-1 <  T1+1128 >
+1496               IFZERO CPU-2 <  T1+1335 >
+1497               OCTAL>
+1498 002402  1040          TAD     AT
+1499 002403  7141          CIA CLL
+1500 002404  1044          TAD     BT
+1501 002405  7430          SZL
+1502 002406  7610          CLA SKP
+1503 002407  7041          CIA
+1504 002410  1044          TAD     BT
+1505 002411  7141          CIA CLL
+1506 002412  1050          TAD     CT
+1507 002413  7430          SZL
+1508 002414  7610          CLA SKP
+1509 002415  7041          CIA
+1510 002416  1050          TAD     CT
+1511 002417  7141          CIA CLL
+1512 002420  1054          TAD     DT
+1513 002421  7430          SZL
+1514 002422  7610          CLA SKP
+1515 002423  7041          CIA
+1516 002424  1054          TAD     DT
+1517 002425  7141          CIA CLL
+1518 002426  3022          DCA     SAVE
+1519               
+1520               /WELL, WE DON'T REALLY KNOW WHICH ONE, BUT
+1521               /WE DO KNOW HOW LONG IT IS.  SO WE MOVE UP
+1522               /ALL FOUR COUNTERS, RESETTING ANY WHICH
+1523               /REACH ZERO, AND REMEMBERING HOW MANY
+1524               /SPIKES WE SHOULD DO.
+1525 002427  1041          TAD     RTOT
+1526               IFZERO CPU-4    <DCA SAVS>
+1527 002430  7421  IFNZRO CPU-4    <MQL>
+1528 002431  1040          TAD     AT
+1529 002432  1022          TAD     SAVE
+1530 002433  7450          SNA
+1531 002434  5355          JMP     DELA
+1532 002435  3040          DCA     AT
+1533               IFNZRO CPU-4 <
+1534 002436  7501          MQA
+1535 002437  1037          TAD     AR
+1536 002440  7421          MQL >
+1537               IFZERO CPU-4 <
+1538                       TAD     SAVS
+1539                       TAD     AR
+1540                       DCA     SAVS >
+1541               
+1542 002441  1044  RA,     TAD     BT
+1543 002442  1022          TAD     SAVE
+1544 002443  7450          SNA
+1545 002444  5360          JMP     DELB
+1546 002445  3044          DCA     BT
+1547               IFNZRO CPU-4 <
+1548 002446  7501          MQA
+1549 002447  1043          TAD     BR
+1550 002450  7421          MQL >
+1551               IFZERO CPU-4 <
+1552                       TAD     SAVS
+1553                       TAD     BR
+1554                       DCA     SAVS >
+1555               
+1556 002451  1050  RB,     TAD     CT
+1557 002452  1022          TAD     SAVE
+1558 002453  7450          SNA
+1559 002454  5363          JMP     DELC
+1560 002455  3050          DCA     CT
+1561               IFNZRO CPU-4 <
+1562 002456  7501          MQA
+1563 002457  1047          TAD     CR
+1564 002460  7421          MQL >
+1565               IFZERO CPU-4 <
+1566                       TAD     SAVS
+1567                       TAD     CR
+1568                       DCA     SAVS>
+1569               
+1570 002461  1054  RC,     TAD     DT
+1571 002462  1022          TAD     SAVE
+1572 002463  7450          SNA
+1573 002464  5366          JMP     DELD
+1574 002465  3054          DCA     DT
+1575               IFNZRO CPU-4 <
+1576 002466  7501          MQA
+1577 002467  1053          TAD     DR
+1578 002470  7421          MQL >
+1579               IFZERO CPU-4 <
+1580                       TAD     SAVS
+1581                       TAD     DR
+1582                       DCA     SAVS >
+1583               RD,     IFNZRO CPU-4 <
+1584 002471  7501          MQA
+1585 002472  3051          DCA     SAVS >
+1586               
+1587               /AND NOW FOR A BUNCH OF FUNNY CALCULATIONS.
+1588               /HOLD ON TO YOUR HAT....
+1589 002473  1022          TAD     SAVE    /HOW MANY SPIKES THIS TIME
+1590 002474  7100          CLL
+1591 002475  1032          TAD     LOTIM
+1592 002476  3032          DCA     LOTIM   /UPDATE NOTE LENGTH
+1593 002477  7420          SNL
+1594 002500  0000          AND             /TIMING CORRECTOR
+1595 002501  7430          SZL
+1596 002502  2033          ISZ     HOTIM   /UPDATE HIGH ORDER
+1597 002503  7410          SKP
+1598 002504  5561          JMP I   [NEXT   /FINISHED WITH THIS NOTE
+1599               IFDEF WOW <DECIMAL
+1600 002505  7000          NOP
+1601 002506  4101  PLAY2,  JMS     DOIT
+1602 002507  1024  IFZERO CPU-1 <  T1+216 >
+1603               IFZERO CPU-2 <  T1+255 >
+1604               OCTAL >
+1605               IFNDEF WOW <
+1606                       IAC
+1607               PLAY2,  >
+1608 002510  1055          TAD     OLDE    /CORRECTION FACTOR FROM LAST TIME
+1609 002511  1003          TAD     FIX     /HOW LONG IT IS THRU "DOIT"
+1610 002512  1051          TAD     SAVS    /AND HOW MANY SPIKES WE HAVE
+1611 002513  7510          SPA
+1612 002514  7120          STL
+1613 002515  7500          SMA             /SET UP LINK FOR +/-
+1614 002516  7100          CLL
+1615 002517  1022          TAD     SAVE
+1616 002520  7430          SZL             /DO WE HAVE TIME?
+1617 002521  5336          JMP     TRYAGN  /NO
+1618               
+1619               IFDEF WOW <
+1620               /WE HAVE BEEN DEALING IN UNITS OF 6.4US.
+1621               /NOW WE CONVERT IT TO UNITS OF .1US
+1622               /BY MULTIPLYING BY 64 (SHIFT 6 PLACES)
+1623 002522  7041          CIA
+1624 002523  1172          TAD     [7700
+1625 002524  3020          DCA     WSA
+1626               DECIMAL
+1627 002525  4101          JMS     DOIT
+1628 002526  1736  IFZERO CPU-1 <  T1+674 >
+1629               IFZERO CPU-2 <  T1+810 >
+1630               OCTAL
+1631 002527  1020          TAD     WSA
+1632 002530  7002          BSW
+1633 002531  7421          MQL
+1634 002532  7501          MQA
+1635 002533  0172          AND     [7700   /JUST LOW ORDER BYTE*64
+1636 002534  3020          DCA     WSA
+1637 002535  5777          JMP     SAVIT
+1638               
+1639               /SINCE THERE ISN'T ENOUGH TIME BETWEEN SETS OF
+1640               /SPIKES TO GET AROUND DOIT, WE CAN'T DO THEM
+1641               /AT THE RIGHT TIME.
+1642 002536  1376  TRYAGN, TAD     (+TIM6
+1643 002537  3055          DCA     OLDE    /SAVE RETRY FUDGE
+1644               DECIMAL
+1645 002540  4101          JMS     DOIT
+1646 002541  1110  IFZERO CPU-1 <  T1+268 >
+1647               IFZERO CPU-2 <  T1+315 >
+1648               OCTAL
+1649               /NOW PUT THE EXTRA SPIKES ALONG WITH
+1650               /THE PREVIOUS BATCH
+1651 002542  1011          TAD     AXB
+1652 002543  3020          DCA     WSA
+1653 002544  1051          TAD     SAVS
+1654 002545  6211          CDF     10
+1655 002546  1420          TAD I   WSA
+1656 002547  3420          DCA I   WSA
+1657 002550  1051          TAD     SAVS
+1658 002551  6201          CDF
+1659 002552  1045          TAD     OLDS
+1660 002553  3045          DCA     OLDS
+1661 002554  5200          JMP     PLAYIT
+1662               >
+1663               IFNDEF WOW <
+1664                       CMA
+1665                       DCA     SAVE
+1666               IFNZRO CPU-1 <NOP>
+1667               IFZERO CPU-1 <AND>
+1668                       ISZ     SAVE
+1669                       JMP     .-2
+1670               TRYAGN, DCA     OLDE
+1671                       SKP
+1672               NOISA,  NOISE
+1673               IFZERO CPU-1 <NOP>
+1674                       ISZ     SAVS
+1675               IFNZRO CPU-1 <JMP .-2>
+1676               IFZERO CPU-1 <JMP .-3>
+1677                       JMP     PLAYIT
+1678               >
+1679               
+1680               
+1681 002555  1036  DELA,   TAD     AC
+1682 002556  3040          DCA     AT
+1683               IFZERO CPU-4 <AND>
+1684 002557  5241          JMP     RA
+1685 002560  1042  DELB,   TAD     BC
+1686 002561  3044          DCA     BT
+1687               IFZERO CPU-4 <AND>
+1688 002562  5251          JMP     RB
+1689 002563  1046  DELC,   TAD     CC
+1690 002564  3050          DCA     CT
+1691               IFZERO CPU-4 <AND>
+1692 002565  5261          JMP     RC
+1693 002566  1052  DELD,   TAD     DC
+1694 002567  3054          DCA     DT
+1695               IFZERO CPU-4 <AND>
+1696 002570  5271          JMP     RD
+1697               
+1698 002576  0007  PAGE
+     002577  2704  
+1699               
+1700 002600  1275  SPECIA, TAD     XJMPT   /JUMP TO SPECIAL ROUTINE
+1701 002601  3010          DCA     AXA
+1702 002602  1410          TAD I   AXA
+1703 002603  3020          DCA     WSA
+1704 002604  5420          JMP I   WSA
+1705               
+1706               SETN,
+1707               IFDEF WOW <DECIMAL
+1708 002605  4101          JMS     DOIT    /SET NOTE
+1709 002606  2106  IFZERO CPU-1 <  T1+T2+488 >
+1710               IFZERO CPU-2 <  T1+T2+570 >
+1711               OCTAL>
+1712 002607  7240          STA             /REMEMBER NO MORE NOTES NOW
+1713               IFNDEF WOW <SETNM, >
+1714 002610  3021  SETN2,  DCA     WSB
+1715 002611  4562          JMS I   [GET    /GET PITCH
+1716 002612  1035          TAD     TRAN
+1717 002613  3020          DCA     WSA
+1718 002614  1420          TAD I   WSA     /PERIOD IN UNITS OF 6.4 US
+1719 002615  3410          DCA I   AXA
+1720 002616  7604          LAS             /CHECK LOUDNESS
+1721 002617  7040          CMA
+1722 002620  0171          AND     [77
+1723 002621  1020          TAD     WSA     /LOWER NOTES NEED EMPHASIS
+1724 002622  7110          CLL RAR
+1725 002623  1274          TAD     XB
+1726 002624  3020          DCA     WSA
+1727 002625  1420          TAD I   WSA     /HOW MANY SPIKES?
+1728 002626  3410          DCA I   AXA
+1729 002627  2021          ISZ     WSB     /CHECK FLAG
+1730 002630  5676          JMP I   XNEXT1
+1731 002631  5677          JMP I   XNEXT2
+1732               
+1733               IFDEF WOW < DECIMAL
+1734 002632  4101  SETNM,  JMS     DOIT
+1735 002633  2106  IFZERO CPU-1 <  T1+T2+488 >
+1736               IFZERO CPU-2 <  T1+T2+570 >
+1737 002634  5210          JMP     SETN2
+1738               OCTAL>
+1739               
+1740               IFZERO CORE-100 <DOFLD, >
+1741 002635  7402  ERR0,   HLT             /PROGRAM BUG
+1742               
+1743               DOEND,
+1744               IFDEF WOW < DECIMAL
+1745 002636  4101          JMS     DOIT    /WE'RE AT THE END!
+1746 002637  0656  IFZERO CPU-1 <  T1+114 >
+1747               IFZERO CPU-2 <  T1+135 >
+1748               OCTAL
+1749 002640  1034          TAD     BUFGET  /WE MUST WAIT FOR THE
+1750 002641  7041          CIA             /END OF THE MUSIC TO PLAY
+1751 002642  1011          TAD     AXB
+1752 002643  0303          AND     X7760
+1753 002644  7640          SZA CLA
+1754 002645  5236          JMP     DOEND
+1755               >
+1756 002646  7604          LAS
+1757 002647  7710          SPA CLA         /REPEAT?
+1758 002650  5574          JMP I   [PLAY   /YES
+1759               DOEND2,
+1760               IFZERO OS8-10 <
+1761               IFDEF WOW <
+1762 002651  4566          JMS I   [RESTOR >       /RESTORE TOP PAGE OF FIELD 1
+1763 002652  4700          JMS I   XINNEWF /IS THERE ANOTHER INPUT FILE?
+1764 002653  7410          SKP
+1765 002654  5701          JMP I   XST1    /YES, PLAY IT
+1766 002655  6211          CDF     10
+1767 002656  1702          TAD I   X7642   /ALT-MODE FLAG?
+1768 002657  6201          CDF
+1769 002660  7710          SPA CLA
+1770 002661  5564          JMP I   [7600   /RETURN TO MONITOR
+1771               >
+1772 002662  5565          JMP I   [START  /RETURN TO COMMAND DECODER
+1773               
+1774               IFNZRO CORE-100 <
+1775               /CHANGE TO A NEW FIELD FOR INPUT INFO
+1776               DOFLD,
+1777               IFDEF WOW < DECIMAL
+1778 002663  4101          JMS     DOIT
+1779 002664  0744  IFZERO CPU-1 <  T1+168 >
+1780               IFZERO CPU-2 <  T1+195 >
+1781               OCTAL >
+1782 002665  2016          ISZ     BUFTAB
+1783 002666  1416          TAD I   BUFTAB  /GET NEW FIELD
+1784 002667  3673          DCA I   XGETCDF /SAVE IT
+1785 002670  3024          DCA     FLG     /RESET PACKING FLAG
+1786 002671  3025          DCA     GETPTR  /START AT ADDRESS 0
+1787 002672  5561          JMP I   [NEXT
+1788 002673  2327  XGETCD, GETCDF
+1789               >
+1790               XA=BFR1%2
+1791 002674  1604  XB,     BFR2-XA
+1792 002675  3407  XJMPT,  JMPTB2-1
+1793 002676  2033  XNEXT1, NEXT1
+1794 002677  2067  XNEXT2, NEXT2
+1795               IFZERO OS8-10 <
+1796 002700  1315  XINNEW, INNEWF
+1797 002701  0203  XST1,   START1
+1798 002702  7642  X7642,  7642
+1799               >
+1800               IFDEF WOW <
+1801 002703  7760  X7760,  7760
+1802 002704  1045  SAVIT,  TAD     OLDS    /CORRECT: SPIKES TAKE
+1803 002705  1051          TAD     SAVS    /6.2US, NOT 6.4 US, AND
+1804               IFZERO CPU-2 <CLL RAL >
+1805 002706  1362          TAD     FUDGE   /DOIT DOESN'T REALLY TAKE
+1806 002707  7104          CLL RAL         /TIM6*6.4US
+1807 002710  1020          TAD     WSA
+1808 002711  6211          CDF     10
+1809 002712  3411          DCA I   AXB     /SAVE LOW ORDER
+1810 002713  1172          TAD     [7700
+1811 002714  7501          MQA             /NOW WE HAVE HIGH ORDER
+1812 002715  7430          SZL             /BYTE ON RIGHT SIDE OF AC
+1813 002716  7000          NOP
+1814 002717  7420          SNL
+1815 002720  7001          IAC             /BORROW FROM LOW ORDER?
+1816 002721  3411          DCA I   AXB     /SAVE AWAY HIGH ORDER
+1817 002722  7240          STA
+1818 002723  1051          TAD     SAVS
+1819 002724  3411          DCA I   AXB     /SAVE NO. OF SPIKES
+1820 002725  6201          CDF
+1821 002726  3045          DCA     OLDS    /RESET RETRY COUNTERS
+1822 002727  3055          DCA     OLDE
+1823 002730  7346  WAIT1,  CLL STA RTL
+1824 002731  1034          TAD     BUFGET
+1825 002732  7041          CIA
+1826 002733  1011          TAD     AXB
+1827 002734  7640          SZA CLA         /BUFFER FULL?
+1828 002735  5560          JMP I   [PLAYIT /NO
+1829 002736  7421          MQL             /ZERO TO MQ FOR SHOW
+1830 002737  7000          NOP
+1831               DECIMAL
+1832 002740  4101          JMS     DOIT
+1833 002741  1052  IFZERO CPU-1 <  T1+238 >
+1834               IFZERO CPU-2 <  T1+285 >
+1835               OCTAL
+1836 002742  6036          KRB             /LAST CHARACTER TYPED?
+1837 002743  0355          AND     C1      /MASK PARITY
+1838 002744  1356          TAD     C2      /CTRL/C?
+1839 002745  7450          SNA
+1840 002746  5353          JMP     WAIT2   /YES
+1841 002747  1360          TAD     C4      /CTRL/Q?
+1842 002750  7650          SNA CLA
+1843 002751  5761          JMP I   C5      /YES, NEXT INPUT
+1844 002752  5330          JMP     WAIT1
+1845               WAIT2,
+1846               IFZERO OS8-10 <
+1847 002753  4566          JMS I   [RESTOR >       /RESTORE TOP OF FIELD 1
+1848 002754  5757          JMP I   C3      /JUMP OUT
+1849               
+1850 002755  0177  C1,     177
+1851 002756  7775  C2,     -"C+300
+1852               C3,
+1853 002757  7600  IFZERO OS8-10 <7600>
+1854               IFNZRO OS8-10 <START>
+1855 002760  7762  C4,     "C-"Q
+1856               C5,
+1857 002761  2651  IFZERO OS8-10 <DOEND2>
+1858               IFNZRO OS8-10 <START>
+1859               IFZERO CPU-1 <
+1860 002762  7776  FUDGE,  -2      /HALF OF 4
+1861               >
+1862               IFZERO CPU-2 <
+1863               FUDGE,  -33     /ABOUT HALF OF 55
+1864               >>
+1865               
+1866 002763  7535  BRANA,  -"#     ;KEYS           /DEFINE SHARP
+     002764  0253  
+1867 002765  7537          -"!     ;KEYF           /DEFINE FLATS
+     002766  0252  
+1868 002767  7452          -"V     ;DEFV
+     002770  1105  
+1869 002771  7447          -"Y     ;DEFY
+     002772  1063  
+1870 002773  7454          -"T     ;DEFT
+     002774  1541  
+1871 002775  7563          -215    ;START2
+     002776  0227  
+1872 002777  7566          -212    ;NEXLIN
+     003000  1053  
+1873 003001  7505          -";     ;START2
+     003002  0227  
+1874 003003  7534          -"$     ;ENDM           /END MUSIC
+     003004  1600  
+1875 003005  7471  BRANB,  -"G     ;LENG
+     003006  0272  
+1876 003007  7474          -"D     ;LEND
+     003010  0304  
+1877 003011  7455          -"S     ;LENS
+     003012  0303  
+1878 003013  7457          -"Q     ;LENQ
+     003014  0302  
+1879 003015  7475          -"C     ;LENC
+     003016  0301  
+1880 003017  7463          -"M     ;LENM
+     003020  0300  
+1881 003021  7476          -"B     ;LENB
+     003022  0277  
+1882 003023  7515          -"3     ;TRIPLET
+     003024  0244  
+1883 003025  0000          0       ;BADLINE
+     003026  1524  
+1884               
+1885 003027  7505  BRANC,  -";     ;PROB
+     003030  0615  
+1886 003031  7563          -215    ;PROB
+     003032  0615  
+1887 003033  0000          0       ;DEFV+1
+     003034  1106  
+1888               
+1889 003035  7503  BRAND,  -"=     ;DEFM
+     003036  0400  
+1890 003037  7530          -"(     ;DEFCHORD
+     003040  0430  
+1891 003041  7454          -"T     ;TIE
+     003042  0242  
+1892 003043  7523          -"-     ;MINUS
+     003044  0247  
+1893 003045  7522          -".     ;DOT
+     003046  0343  
+1894 003047  0000          0       ;BADLINE
+     003050  1524  
+1895               
+1896 003051  7536  BRANE,  -""     ;ACCN
+     003052  0445  
+1897 003053  7535          -"#     ;ACCS
+     003054  0441  
+1898 003055  7537          -"!     ;ACCF
+     003056  0440  
+1899 003057  7525  BRANF,  -"+     ;OCTUP
+     003060  0451  
+1900 003061  7523          -"-     ;OCTDN
+     003062  0452  
+1901 003063  7524          -",     ;PRODUCE
+     003064  0465  
+1902 003065  7505          -";     ;SPRODUCE
+     003066  0462  
+1903 003067  7563          -215    ;SPRODUCE
+     003070  0462  
+1904 003071  7527          -")     ;PPRODUCE
+     003072  0456  
+1905 003073  0000          0       ;BADLINE
+     003074  1524  
+1906               
+1907 003075  7524  BRANG,  -",     ;PRODUCE
+     003076  0465  
+1908 003077  7505          -";     ;PRODUCE
+     003100  0465  
+1909 003101  7563          -215    ;PRODUCE
+     003102  0465  
+1910 003103  0000          0       ;BADLINE
+     003104  1524  
+1911               
+1912               
+1913 003105  0000  KEYTAB, ZBLOCK  10
+     003106  0000  
+     003107  0000  
+     003110  0000  
+     003111  0000  
+     003112  0000  
+     003113  0000  
+     003114  0000  
+1914               
+1915 003115  6030  DECO9,  DECIMAL;-1000;-100;-10;-1;0;OCTAL
+     003116  7634  
+     003117  7766  
+     003120  7777  
+     003121  0000  
+1916               
+1917               /TABLE: WHERE ARE THE WHITE KEYS, A THROUGH G?
+1918 003122  0036  BASTAB, 36;40;41;43;45;46;50
+     003123  0040  
+     003124  0041  
+     003125  0043  
+     003126  0045  
+     003127  0046  
+     003130  0050  
+1919               
+1920               /TABLE OF BUFFER AREAS
+1921 003131  3550  BUFTBL, MUSBUF
+1922 003132  1204  IFZERO OS8-10 < MARGIN-INBUF>
+1923               IFZERO OS8-20 < MARGIN-7600  >
+1924               IFNZRO CORE-100 <
+1925 003133  6201          CDF 00
+1926               IFNDEF WOW<
+1927                       MARGIN-7600
+1928                       CDF     10>
+1929 003134  0204          MARGIN-7600
+1930 003135  6221          CDF     20
+1931               CORTAB=.
+1932 003136  0204          MARGIN-7600
+1933 003137  6231          CDF     30
+1934 003140  0204          MARGIN-7600
+1935 003141  6241          CDF     40
+1936 003142  0204          MARGIN-7600
+1937 003143  6251          CDF     50
+1938 003144  0204          MARGIN-7600
+1939 003145  6261          CDF     60
+1940 003146  0204          MARGIN-7600
+1941 003147  6271          CDF     70
+1942 003150  0000          0
+1943               >
+1944               *.+1&7776
+1945               BFR1,
+1946               DECIMAL
+1947               
+1948               IFNZRO T64 <
+1949               
+1950               /PERIOD OF NOTES IN UNITS OF 6.4US
+1951               /USING EQUAL TEMPERAMENT
+1952 003152  0116  -4018;-3792;-3579;-3378;-3189;-3010
+     003153  0460  
+     003154  1005  
+     003155  1316  
+     003156  1613  
+     003157  2076  
+1953               /A--
+1954 003160  2347  -2841;-2681;-2531;-2389;-2255;-2128
+     003161  2607  
+     003162  3035  
+     003163  3253  
+     003164  3461  
+     003165  3660  
+1955 003166  4047  -2009;-1896;-1790;-1689;-1594;-1505
+     003167  4230  
+     003170  4402  
+     003171  4547  
+     003172  4706  
+     003173  5037  
+1956               /A-
+1957 003174  5164  -1420;-1341;-1265;-1194;-1127;-1064
+     003175  5303  
+     003176  5417  
+     003177  5526  
+     003200  5631  
+     003201  5730  
+1958 003202  6024  -1004;-948;-895;-845;-797;-752
+     003203  6114  
+     003204  6201  
+     003205  6263  
+     003206  6343  
+     003207  6420  
+1959               /A
+1960 003210  6472  -710;-670;-633;-597;-564;-532;-502;-474;-447;-422;-399;-376
+     003211  6542  
+     003212  6607  
+     003213  6653  
+     003214  6714  
+     003215  6754  
+     003216  7012  
+     003217  7046  
+     003220  7101  
+     003221  7132  
+     003222  7161  
+     003223  7210  
+1961               /A+
+1962 003224  7235  -355;-335;-316;-299;-282;-266;-251;-237;-224;-211;-199;-188
+     003225  7261  
+     003226  7304  
+     003227  7325  
+     003230  7346  
+     003231  7366  
+     003232  7405  
+     003233  7423  
+     003234  7440  
+     003235  7455  
+     003236  7471  
+     003237  7504  
+1963               /A++
+1964 003240  7516  -178;-168;-158;-149;-141;-133;-126;-119;-112;-106;-100;-94
+     003241  7530  
+     003242  7542  
+     003243  7553  
+     003244  7563  
+     003245  7573  
+     003246  7602  
+     003247  7611  
+     003250  7620  
+     003251  7626  
+     003252  7634  
+     003253  7642  
+1965               /A+++
+1966 003254  7647  -89;-84;-79;-75;-70;-67;-63;-59;-56;-53;-50;-47
+     003255  7654  
+     003256  7661  
+     003257  7665  
+     003260  7672  
+     003261  7675  
+     003262  7701  
+     003263  7705  
+     003264  7710  
+     003265  7713  
+     003266  7716  
+     003267  7721  
+1967 003270  7724  -44     /A++++!!
+1968               >
+1969               IFZERO T64 <
+1970               /PERIOD OF NOTES IN 6.0 MICROSECOND UNITS
+1971               /USING EQUAL TEMPERAMENT
+1972               
+1973               -2143;-4045;-3818;-3604;-3401;-3210
+1974               /A--
+1975               -3030;-2860;-2700;-2548;-2405;-2270
+1976               -2143;-2022;-1909;-1802;-1701;-1605
+1977               /A-
+1978               -1515;-1430;-1350;-1274;-1203;-1135
+1979               -1071;-1011;-954;-901;-850;-803
+1980               /A
+1981               -758;-715;-675;-637;-601;-568
+1982               -536;-506;-477;-450;-425;-401
+1983               /A+=A440
+1984               -379;-358;-337;-319;-301;-284
+1985               -268;-253;-239;-225;-213;-201
+1986               /A++
+1987               -189;-179;-169;-159;-150;-142
+1988               -134;-126;-119;-113;-106;-100
+1989               /A+++
+1990               -95;-89;-84;-80;-75;-71
+1991               -67;-63;-60;-56;-53;-50
+1992               -47     /A++++!!!
+1993               >
+1994               /NUMBER OF PULSES GENERATED DETERMINE LOUDNESS
+1995               BFR2,
+1996 003271  0150  104;97;91;84;79;74;69
+     003272  0141  
+     003273  0133  
+     003274  0124  
+     003275  0117  
+     003276  0112  
+     003277  0105  
+1997 003300  0100  64;60;56;52;48;45;42;39
+     003301  0074  
+     003302  0070  
+     003303  0064  
+     003304  0060  
+     003305  0055  
+     003306  0052  
+     003307  0047  
+1998 003310  0045  37;34;32;30;28;26;24;23
+     003311  0042  
+     003312  0040  
+     003313  0036  
+     003314  0034  
+     003315  0032  
+     003316  0030  
+     003317  0027  
+1999 003320  0025  21;20;18;17;16;15;14;13
+     003321  0024  
+     003322  0022  
+     003323  0021  
+     003324  0020  
+     003325  0017  
+     003326  0016  
+     003327  0015  
+2000 003330  0014  12;11;10;9;9;8;8;7
+     003331  0013  
+     003332  0012  
+     003333  0011  
+     003334  0011  
+     003335  0010  
+     003336  0010  
+     003337  0007  
+2001 003340  0007  7;6;6;6;5;5;5;4
+     003341  0006  
+     003342  0006  
+     003343  0006  
+     003344  0005  
+     003345  0005  
+     003346  0005  
+     003347  0004  
+2002 003350  0004  4;4;3;3;3;3;3;2
+     003351  0004  
+     003352  0003  
+     003353  0003  
+     003354  0003  
+     003355  0003  
+     003356  0003  
+     003357  0002  
+2003 003360  0002  2;2;2;2;2;2;2;1
+     003361  0002  
+     003362  0002  
+     003363  0002  
+     003364  0002  
+     003365  0002  
+     003366  0002  
+     003367  0001  
+2004 003370  0001  1;1;1;1;1;1;1;1
+     003371  0001  
+     003372  0001  
+     003373  0001  
+     003374  0001  
+     003375  0001  
+     003376  0001  
+     003377  0001  
+2005               OCTAL
+2006               
+2007 003400  2062  JMPTAB, REST
+2008 003401  2026          RESTM
+2009 003402  2605          SETN
+2010 003403  2632          SETNM
+2011 003404  2635          ERR0
+2012 003405  2635          ERR0
+2013 003406  2635          ERR0
+2014 003407  2635          ERR0
+2015               
+2016 003410  2636  JMPTB2, DOEND
+2017 003411  2143          NEXHOL
+2018 003412  2200          DOMETER
+2019 003413  2317          DOTRANSPOSE
+2020 003414  2635          ERR0;ERR0
+     003415  2635  
+2021 003416  2663          DOFLD
+2022 003417  2317          DOTRANSPOSE;
+2023 003420  2635          ERR0;ERR0;ERR0;DOTRANSPOSE
+     003421  2635  
+     003422  2635  
+     003423  2317  
+2024 003424  2635          ERR0;ERR0;ERR0;DOTRANSPOSE
+     003425  2635  
+     003426  2635  
+     003427  2317  
+2025 003430  2635          ERR0;ERR0;ERR0;ERR0;ERR0;ERR0;ERR0;ERR0
+     003431  2635  
+     003432  2635  
+     003433  2635  
+     003434  2635  
+     003435  2635  
+     003436  2635  
+     003437  2635  
+2026 003440  2635          ERR0;ERR0;ERR0;ERR0;ERR0;ERR0;ERR0;ERR0
+     003441  2635  
+     003442  2635  
+     003443  2635  
+     003444  2635  
+     003445  2635  
+     003446  2635  
+     003447  2635  
+2027               NOPUNCH
+2028 003450  0000  LINBUF, ZBLOCK 100      /SAVE INPUT TO PRINT ERROR MESSAGE
+     003451  0000  
+     003452  0000  
+     003453  0000  
+     003454  0000  
+     003455  0000  
+     003456  0000  
+     003457  0000  
+     003460  0000  
+     003461  0000  
+     003462  0000  
+     003463  0000  
+     003464  0000  
+     003465  0000  
+     003466  0000  
+     003467  0000  
+     003470  0000  
+     003471  0000  
+     003472  0000  
+     003473  0000  
+     003474  0000  
+     003475  0000  
+     003476  0000  
+     003477  0000  
+     003500  0000  
+     003501  0000  
+     003502  0000  
+     003503  0000  
+     003504  0000  
+     003505  0000  
+     003506  0000  
+     003507  0000  
+     003510  0000  
+     003511  0000  
+     003512  0000  
+     003513  0000  
+     003514  0000  
+     003515  0000  
+     003516  0000  
+     003517  0000  
+     003520  0000  
+     003521  0000  
+     003522  0000  
+     003523  0000  
+     003524  0000  
+     003525  0000  
+     003526  0000  
+     003527  0000  
+     003530  0000  
+     003531  0000  
+     003532  0000  
+     003533  0000  
+     003534  0000  
+     003535  0000  
+     003536  0000  
+     003537  0000  
+     003540  0000  
+     003541  0000  
+     003542  0000  
+     003543  0000  
+     003544  0000  
+     003545  0000  
+     003546  0000  
+     003547  0000  
+2029               MUSBUF=.                /BEGINNING OF MUSIC BUFFER
+2030               IFZERO OS8-10 <
+2031               *6600
+2032               IFDEF WOW < SAVBUF, >   /SAVE FOR TOP OF FIELD 1
+2033 006600  0000  INBUF,  ZBLOCK 400      /OS/8 I/O BUFFER
+     006601  0000  
+     006602  0000  
+     006603  0000  
+     006604  0000  
+     006605  0000  
+     006606  0000  
+     006607  0000  
+     006610  0000  
+     006611  0000  
+     006612  0000  
+     006613  0000  
+     006614  0000  
+     006615  0000  
+     006616  0000  
+     006617  0000  
+     006620  0000  
+     006621  0000  
+     006622  0000  
+     006623  0000  
+     006624  0000  
+     006625  0000  
+     006626  0000  
+     006627  0000  
+     006630  0000  
+     006631  0000  
+     006632  0000  
+     006633  0000  
+     006634  0000  
+     006635  0000  
+     006636  0000  
+     006637  0000  
+     006640  0000  
+     006641  0000  
+     006642  0000  
+     006643  0000  
+     006644  0000  
+     006645  0000  
+     006646  0000  
+     006647  0000  
+     006650  0000  
+     006651  0000  
+     006652  0000  
+     006653  0000  
+     006654  0000  
+     006655  0000  
+     006656  0000  
+     006657  0000  
+     006660  0000  
+     006661  0000  
+     006662  0000  
+     006663  0000  
+     006664  0000  
+     006665  0000  
+     006666  0000  
+     006667  0000  
+     006670  0000  
+     006671  0000  
+     006672  0000  
+     006673  0000  
+     006674  0000  
+     006675  0000  
+     006676  0000  
+     006677  0000  
+     006700  0000  
+     006701  0000  
+     006702  0000  
+     006703  0000  
+     006704  0000  
+     006705  0000  
+     006706  0000  
+     006707  0000  
+     006710  0000  
+     006711  0000  
+     006712  0000  
+     006713  0000  
+     006714  0000  
+     006715  0000  
+     006716  0000  
+     006717  0000  
+     006720  0000  
+     006721  0000  
+     006722  0000  
+     006723  0000  
+     006724  0000  
+     006725  0000  
+     006726  0000  
+     006727  0000  
+     006730  0000  
+     006731  0000  
+     006732  0000  
+     006733  0000  
+     006734  0000  
+     006735  0000  
+     006736  0000  
+     006737  0000  
+     006740  0000  
+     006741  0000  
+     006742  0000  
+     006743  0000  
+     006744  0000  
+     006745  0000  
+     006746  0000  
+     006747  0000  
+     006750  0000  
+     006751  0000  
+     006752  0000  
+     006753  0000  
+     006754  0000  
+     006755  0000  
+     006756  0000  
+     006757  0000  
+     006760  0000  
+     006761  0000  
+     006762  0000  
+     006763  0000  
+     006764  0000  
+     006765  0000  
+     006766  0000  
+     006767  0000  
+     006770  0000  
+     006771  0000  
+     006772  0000  
+     006773  0000  
+     006774  0000  
+     006775  0000  
+     006776  0000  
+     006777  0000  
+     007000  0000  
+     007001  0000  
+     007002  0000  
+     007003  0000  
+     007004  0000  
+     007005  0000  
+     007006  0000  
+     007007  0000  
+     007010  0000  
+     007011  0000  
+     007012  0000  
+     007013  0000  
+     007014  0000  
+     007015  0000  
+     007016  0000  
+     007017  0000  
+     007020  0000  
+     007021  0000  
+     007022  0000  
+     007023  0000  
+     007024  0000  
+     007025  0000  
+     007026  0000  
+     007027  0000  
+     007030  0000  
+     007031  0000  
+     007032  0000  
+     007033  0000  
+     007034  0000  
+     007035  0000  
+     007036  0000  
+     007037  0000  
+     007040  0000  
+     007041  0000  
+     007042  0000  
+     007043  0000  
+     007044  0000  
+     007045  0000  
+     007046  0000  
+     007047  0000  
+     007050  0000  
+     007051  0000  
+     007052  0000  
+     007053  0000  
+     007054  0000  
+     007055  0000  
+     007056  0000  
+     007057  0000  
+     007060  0000  
+     007061  0000  
+     007062  0000  
+     007063  0000  
+     007064  0000  
+     007065  0000  
+     007066  0000  
+     007067  0000  
+     007070  0000  
+     007071  0000  
+     007072  0000  
+     007073  0000  
+     007074  0000  
+     007075  0000  
+     007076  0000  
+     007077  0000  
+     007100  0000  
+     007101  0000  
+     007102  0000  
+     007103  0000  
+     007104  0000  
+     007105  0000  
+     007106  0000  
+     007107  0000  
+     007110  0000  
+     007111  0000  
+     007112  0000  
+     007113  0000  
+     007114  0000  
+     007115  0000  
+     007116  0000  
+     007117  0000  
+     007120  0000  
+     007121  0000  
+     007122  0000  
+     007123  0000  
+     007124  0000  
+     007125  0000  
+     007126  0000  
+     007127  0000  
+     007130  0000  
+     007131  0000  
+     007132  0000  
+     007133  0000  
+     007134  0000  
+     007135  0000  
+     007136  0000  
+     007137  0000  
+     007140  0000  
+     007141  0000  
+     007142  0000  
+     007143  0000  
+     007144  0000  
+     007145  0000  
+     007146  0000  
+     007147  0000  
+     007150  0000  
+     007151  0000  
+     007152  0000  
+     007153  0000  
+     007154  0000  
+     007155  0000  
+     007156  0000  
+     007157  0000  
+     007160  0000  
+     007161  0000  
+     007162  0000  
+     007163  0000  
+     007164  0000  
+     007165  0000  
+     007166  0000  
+     007167  0000  
+     007170  0000  
+     007171  0000  
+     007172  0000  
+     007173  0000  
+     007174  0000  
+     007175  0000  
+     007176  0000  
+     007177  0000  
+2034 007200  0000  INDEVH, ZBLOCK 400      /OS/8 DEVICE HANDLER SPACE
+     007201  0000  
+     007202  0000  
+     007203  0000  
+     007204  0000  
+     007205  0000  
+     007206  0000  
+     007207  0000  
+     007210  0000  
+     007211  0000  
+     007212  0000  
+     007213  0000  
+     007214  0000  
+     007215  0000  
+     007216  0000  
+     007217  0000  
+     007220  0000  
+     007221  0000  
+     007222  0000  
+     007223  0000  
+     007224  0000  
+     007225  0000  
+     007226  0000  
+     007227  0000  
+     007230  0000  
+     007231  0000  
+     007232  0000  
+     007233  0000  
+     007234  0000  
+     007235  0000  
+     007236  0000  
+     007237  0000  
+     007240  0000  
+     007241  0000  
+     007242  0000  
+     007243  0000  
+     007244  0000  
+     007245  0000  
+     007246  0000  
+     007247  0000  
+     007250  0000  
+     007251  0000  
+     007252  0000  
+     007253  0000  
+     007254  0000  
+     007255  0000  
+     007256  0000  
+     007257  0000  
+     007260  0000  
+     007261  0000  
+     007262  0000  
+     007263  0000  
+     007264  0000  
+     007265  0000  
+     007266  0000  
+     007267  0000  
+     007270  0000  
+     007271  0000  
+     007272  0000  
+     007273  0000  
+     007274  0000  
+     007275  0000  
+     007276  0000  
+     007277  0000  
+     007300  0000  
+     007301  0000  
+     007302  0000  
+     007303  0000  
+     007304  0000  
+     007305  0000  
+     007306  0000  
+     007307  0000  
+     007310  0000  
+     007311  0000  
+     007312  0000  
+     007313  0000  
+     007314  0000  
+     007315  0000  
+     007316  0000  
+     007317  0000  
+     007320  0000  
+     007321  0000  
+     007322  0000  
+     007323  0000  
+     007324  0000  
+     007325  0000  
+     007326  0000  
+     007327  0000  
+     007330  0000  
+     007331  0000  
+     007332  0000  
+     007333  0000  
+     007334  0000  
+     007335  0000  
+     007336  0000  
+     007337  0000  
+     007340  0000  
+     007341  0000  
+     007342  0000  
+     007343  0000  
+     007344  0000  
+     007345  0000  
+     007346  0000  
+     007347  0000  
+     007350  0000  
+     007351  0000  
+     007352  0000  
+     007353  0000  
+     007354  0000  
+     007355  0000  
+     007356  0000  
+     007357  0000  
+     007360  0000  
+     007361  0000  
+     007362  0000  
+     007363  0000  
+     007364  0000  
+     007365  0000  
+     007366  0000  
+     007367  0000  
+     007370  0000  
+     007371  0000  
+     007372  0000  
+     007373  0000  
+     007374  0000  
+     007375  0000  
+     007376  0000  
+     007377  0000  
+     007400  0000  
+     007401  0000  
+     007402  0000  
+     007403  0000  
+     007404  0000  
+     007405  0000  
+     007406  0000  
+     007407  0000  
+     007410  0000  
+     007411  0000  
+     007412  0000  
+     007413  0000  
+     007414  0000  
+     007415  0000  
+     007416  0000  
+     007417  0000  
+     007420  0000  
+     007421  0000  
+     007422  0000  
+     007423  0000  
+     007424  0000  
+     007425  0000  
+     007426  0000  
+     007427  0000  
+     007430  0000  
+     007431  0000  
+     007432  0000  
+     007433  0000  
+     007434  0000  
+     007435  0000  
+     007436  0000  
+     007437  0000  
+     007440  0000  
+     007441  0000  
+     007442  0000  
+     007443  0000  
+     007444  0000  
+     007445  0000  
+     007446  0000  
+     007447  0000  
+     007450  0000  
+     007451  0000  
+     007452  0000  
+     007453  0000  
+     007454  0000  
+     007455  0000  
+     007456  0000  
+     007457  0000  
+     007460  0000  
+     007461  0000  
+     007462  0000  
+     007463  0000  
+     007464  0000  
+     007465  0000  
+     007466  0000  
+     007467  0000  
+     007470  0000  
+     007471  0000  
+     007472  0000  
+     007473  0000  
+     007474  0000  
+     007475  0000  
+     007476  0000  
+     007477  0000  
+     007500  0000  
+     007501  0000  
+     007502  0000  
+     007503  0000  
+     007504  0000  
+     007505  0000  
+     007506  0000  
+     007507  0000  
+     007510  0000  
+     007511  0000  
+     007512  0000  
+     007513  0000  
+     007514  0000  
+     007515  0000  
+     007516  0000  
+     007517  0000  
+     007520  0000  
+     007521  0000  
+     007522  0000  
+     007523  0000  
+     007524  0000  
+     007525  0000  
+     007526  0000  
+     007527  0000  
+     007530  0000  
+     007531  0000  
+     007532  0000  
+     007533  0000  
+     007534  0000  
+     007535  0000  
+     007536  0000  
+     007537  0000  
+     007540  0000  
+     007541  0000  
+     007542  0000  
+     007543  0000  
+     007544  0000  
+     007545  0000  
+     007546  0000  
+     007547  0000  
+     007550  0000  
+     007551  0000  
+     007552  0000  
+     007553  0000  
+     007554  0000  
+     007555  0000  
+     007556  0000  
+     007557  0000  
+     007560  0000  
+     007561  0000  
+     007562  0000  
+     007563  0000  
+     007564  0000  
+     007565  0000  
+     007566  0000  
+     007567  0000  
+     007570  0000  
+     007571  0000  
+     007572  0000  
+     007573  0000  
+     007574  0000  
+     007575  0000  
+     007576  0000  
+     007577  0000  
+2035               >
+2036               ENPUNCH
+2037               
+2038               IFNZRO  CORE-100 <      /INITIALIZATION CODE
+2039               *LINBUF+177&7600
+2040 003600  0000  INIT,   0
+2041 003601  6201  COR0,   CDF     0
+2042 003602  1233          TAD     CORSIZ
+2043 003603  7006          RTL
+2044 003604  7004          RAL
+2045 003605  0216          AND     COR70
+2046 003606  1234          TAD     COREX   /MAKE CDF FOR FIELD
+2047 003607  3210          DCA     .+1     /TO BE TESTED
+2048 003610  4001  COR1,   CDF     .-.
+2049 003611  1631          TAD I   CORLOC
+2050 003612  7000  COR2,   NOP
+2051 003613  3210          DCA     COR1
+2052 003614  1212          TAD     COR2
+2053 003615  3631          DCA I   CORLOC
+2054 003616  0070  COR70,  70
+2055 003617  1631          TAD I   CORLOC
+2056 003620  7400  CORX,   7400
+2057 003621  1220          TAD     CORX
+2058 003622  1232          TAD     CORV
+2059 003623  7640          SZA CLA
+2060 003624  5234          JMP     COREX
+2061 003625  1210          TAD     COR1
+2062 003626  3631          DCA I   CORLOC
+2063 003627  2233          ISZ     CORSIZ
+2064 003630  5201          JMP     COR0
+2065               
+2066 003631  3620  CORLOC, CORX
+2067 003632  1400  CORV,   1400
+2068 003633  0001  CORSIZ, 1
+2069 003634  6201  COREX,  CDF     00
+2070               
+2071               IFZERO OS8-10 <
+2072 003635  1670          TAD I   BATFLG
+2073 003636  0216          AND     COR70   /ARE WE RESTRICTED IN CORE?
+2074 003637  7112          CLL RTR
+2075 003640  7440          SZA
+2076 003641  5245          JMP     .+4>    /YES, IGNORE ACTUAL CORE SIZE
+2077 003642  7240          STA
+2078 003643  1233          TAD     CORSIZ  /TOP FIELD
+2079 003644  7104          CLL RAL
+2080 003645  1271          TAD     CORTBA
+2081 003646  3020          DCA     WSA
+2082               IFZERO OS8-10 <
+2083 003647  1670          TAD I   BATFLG  /ARE WE RUNNING UNDER BATCH?
+2084 003650  7006          RTL
+2085 003651  7620          SNL CLA
+2086 003652  5255          JMP     COR3    /NO, OK
+2087 003653  1272          TAD     BATPRO  /YES, DON'T WIPE OUT MONITOR
+2088 003654  3420          DCA I   WSA
+2089               >
+2090 003655  2020  COR3,   ISZ     WSA
+2091 003656  2020          ISZ     WSA
+2092 003657  3420          DCA I   WSA     /DON'T USE FIRST NONEXISTANT FIELD
+2093 003660  1212          TAD     COR2    /NOP
+2094 003661  3667          DCA I   CORINA  /DON'T RETURN HERE
+2095               IFDEF WOW <
+2096 003662  7240          STA
+2097 003663  1233          TAD     CORSIZ
+2098 003664  7750          SPA SNA CLA
+2099 003665  7402          HLT             /NOT ENOUGH CORE!!
+2100               >
+2101 003666  5600          JMP I   INIT
+2102               
+2103 003667  0215  CORINA, CORINI
+2104 003670  7777  BATFLG, 7777
+2105 003671  3130  CORTBA, CORTAB-6
+2106 003672  3004  BATPRO, MARGIN-5000
+2107               >
+2108 000160  2400  $
+     000161  2035  
+     000162  2326  
+     000163  1354  
+     000164  7600  
+     000165  0200  
+     000166  1622  
+     000167  0177  
+     000170  0240  
+     000171  0077  
+     000172  7700  
+     000173  3447  
+     000174  2000  
+     000175  0000  
+     000176  0062  
+     000177  1400  
+
+AC      0036
+AC0002  7326
+AC4000  7330
+AC7776  7344
+ACC     0033
+ACCF    0440
+ACCN    0445
+ACCS    0441
+ADDLEN  0314
+ADDNEG  0351
+AR      0037
+AT      0040
+AXA     0010
+AXB     0011
+AXC     0012 unreferenced
+BADLIN  1524
+BADSTA  1526
+BASTAB  3122
+BATFLG  3670
+BATPRO  3672
+BC      0042
+BFR1    3152
+BFR2    3271
+BR      0043
+BRAN0   1400
+BRAN1   1411
+BRANA   2763
+BRANB   3005
+BRANC   3027
+BRANCH  4577
+BRAND   3035
+BRANE   3051
+BRANF   3057
+BRANG   3075
+BT      0044
+BUFGET  0034
+BUFTAB  0016
+BUFTBL  3131
+C1      2755
+C2      2756
+C3      2757
+C4      2760
+C5      2761
+C7700   1261
+CC      0046
+CHAR    0023
+COFLG   1160
+COR0    3601
+COR1    3610
+COR2    3612
+COR3    3655
+COR70   3616
+CORE    0400
+COREX   3634
+CORINA  3667
+CORINI  0215
+CORLOC  3631
+CORSIZ  3633
+CORTAB  3136
+CORTBA  3671
+CORV    3632
+CORX    3620
+CPU     0001
+CR      0047
+CRLF    1133
+CT      0050
+DC      0052
+DECIN   1110
+DECIN1  1111
+DECIN2  1125
+DECO2   1725
+DECO6   1730
+DECO7   1732
+DECO8   1744
+DECO9   3115
+DECODE  0005
+DECOUT  1710
+DEFCH2  0433
+DEFCHO  0430
+DEFM    0400
+DEFM2   0413
+DEFT    1541
+DEFV    1105
+DEFY    1063
+DELA    2555
+DELB    2560
+DELC    2563
+DELD    2566
+DIV     2251
+DIVA    2255
+DIVB    2264
+DIVC    2276
+DIVD    2305
+DIVM    0031
+DIVP    0030
+DOEND   2636
+DOEND2  2651
+DOFLD   2663
+DOIT    0101
+DOIT1   0105
+DOIT5   0142
+DOIT6   0144
+DOM1    2207
+DOM2    2240
+DOMETE  2200
+DOT     0343
+DOTRAN  2317
+DR      0053
+DT      0054
+ENDM    1600
+ERR0    2635
+FETCH   0001
+FIX     0003
+FLG     0024
+FUDGE   2762
+GET     2326
+GET2    2347
+GETCDF  2327
+GETEQ   1423
+GETL    2342
+GETN2   1451
+GETNEW  1236
+GETNOT  1442
+GETNR   1461
+GETPTR  0025
+HOFUDG  0100
+HOLONG  0031
+HOSAVE  0027
+HOTIM   0033
+ICHAR1  1306
+ICHAR2  1302
+IN      1466
+IN2     1506
+INBREC  1250
+INBUF   6600
+INBUFP  1245
+INCHAR  1230
+INCHCT  0061
+INCOMN  1307
+INCTR   0064
+INDEVH  7200
+INEOF   0062
+INERRX  1260
+INFPTR  0063
+INGBUF  1240
+INHNDL  1330
+INIT    3600
+INJMP   1264
+INJMPP  1232
+INNEWF  1315
+INPTR   0065
+INREC   1246
+INSAVE  0066
+JIFFY   0062
+JMPTAB  3400
+JMPTB2  3410
+KEYC    1431
+KEYF    0252
+KEYL    0260
+KEYS    0253
+KEYTAB  3105
+L       0053
+LENB    0277
+LENC    0301
+LEND    0304
+LENG    0272
+LENM    0300
+LENQ    0302
+LENS    0303
+LIMIT   0015
+LIMTST  0734
+LINBUF  3450
+LINE    0011
+LOFUDG  0077
+LOLONG  0030
+LOSAVE  0026
+LOTIM   0032
+LOWAIT  0013
+MARGIN  0004
+MDEFAU  1320
+MINFLG  0055
+MINUS   0247
+MSG     1642
+MSG1    1653
+MSG2    1655
+MUL     1750
+MUL2    1755
+MUSBUF  3550
+NEXHOL  2143
+NEXINI  2151
+NEXLIN  1053
+NEXLUP  2116
+NEXNO   2132
+NEXNO2  2135
+NEXNOT  0236
+NEXSH   2110
+NEXT    2035
+NEXT1   2033
+NEXT2   2067
+NMODS   0327
+NOISA   0127
+NOISE   6007
+NOTCNT  0034
+NOTE    0024
+NOTEV   0025
+NOTTAB  0036
+OCTAVE  0030
+OCTDN   0452
+OCTMOR  0447
+OCTUP   0451
+OLDE    0055
+OLDS    0045
+OOPS    0014
+OS8     0010
+OSDEC   1213
+OSIN    1227
+OUT     1670
+OUT2    1701
+OUT3    1702
+OUTBUF  0035
+OUTCDF  1671
+OUTFLG  0060
+PAREN   0027
+PLAY    2000
+PLAY2   2506
+PLAYIT  2400
+PPRODU  0456
+PRO3    0507
+PRO3A   0512
+PRO4    0516
+PRO6    0523
+PRO7    0525
+PRO8    0531
+PRO9    0600
+PROA    0612
+PROB    0615
+PRODUC  0465
+PROTAB  0036
+PROTND  0061
+PUT0    0626
+PUT1    0635
+PUT2    0637
+PUT3    0660
+PUT4    0647
+PUT5    0653
+PUT6    0665
+PUT6A   0714
+PUT7    0715
+PUT9    1000
+PUTNO   0334
+RA      2441
+RB      2451
+RC      2461
+RD      2471
+REST    2062
+RESTM   2026
+RESTOL  1627
+RESTOR  1622
+RESTR2  1354
+RTOT    0041
+RTRAN   0057
+SAVBUF  6600
+SAVE    0022
+SAVEL   1605
+SAVIT   2704
+SAVS    0051
+SETN    2605
+SETN2   2610
+SETNM   2632
+SMALL   1200
+SMALL2  1211
+SPACE   1127
+SPECIA  2600
+SPRODU  0462
+START   0200
+START1  0203
+START2  0227
+START5  0234
+T1      0474
+T2      0442
+T3      5744
+T64     0001
+T6A     0004 unreferenced
+TFLAG   0054
+THIRD   0026
+THISLE  0031
+TIE     0242
+TIM6    0007
+TIMA    0036
+TIMB    0041
+TIMC    0044
+TIMD    0047
+TOTLEN  0032
+TRAN    0035
+TRANSP  0056
+TRIPLE  0244
+TRYAGN  2536
+TYPE    1141
+TYPENO  1147
+VERSIO  0003
+WAIT1   2730
+WAIT2   2753
+WOW     0010
+WSA     0020
+WSB     0021
+WSC     0022
+X7642   2702
+X7760   2703
+XA      1465
+XB      2674
+XGETCD  2673
+XINNEW  2700
+XJMPT   2675
+XNEXT1  2676
+XNEXT2  2677
+XST1    2701
+Y       0052

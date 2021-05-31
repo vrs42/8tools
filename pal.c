@@ -275,6 +275,7 @@ struct symbol {
 	{ "MQA", 007501 }, /* group 3 */
 	{ "SCA", 007441 },
 	{ "MQL", 007421 },
+	{ "SWP", 007521 },
 	{ "SCL", 007403 },
 	{ "MUY", 007405 },
 	{ "DVI", 007407 },
@@ -287,10 +288,12 @@ struct symbol {
 	{ "RTF", 006005 },
 	{ "SGT", 006006 },
 	{ "CAF", 006007 },
+	{ "KCF", 006030 },
+	{ "KIE", 006035 },
 	{ "LINC",006141 },
 	{ "PDP", 050002 }, /* Kludge for PQS8 */
 	{ "COM", 050017 }, /* Kludge for PQS8 */
-#define pdp8e 18	/* Number of extensions to the symbol table */
+#define pdp8e 21	/* Number of extensions to the symbol table */
 #else
 #define pdp8e 0
 #endif
@@ -1073,7 +1076,9 @@ eval()
 		} else {
 			/* error("parens") */ ;
 		}
-//		pos = lexterm = lexstart;
+//BUGBUG; This didn't work in PDP-12 code??
+		/* Now rig for caller to see the terminator */
+		pos = lexterm = lexstart;
 
 		loc = 00177;
 		while ((loc > *plc) && (lit[loc] != val)) {
@@ -1175,7 +1180,7 @@ getexpr()
 /* BUGBUG: This rescan causes repeated "page zero" errors! */
 				lexstart = ostart;
 				lexterm = pos = oterm;
-				temp = getexpr();
+				temp = getexpr() & 07777;
 				/* Now proceed, dealing with offpage, etc. */
 				if (temp < 0200) { /* page zero MRI */
 					value = value | temp;
@@ -1694,8 +1699,8 @@ restart:
 			case 036: /* EXPUNG/E */
 				/* The fixed symbols are fixed. */
 				/* No need to free memory by deleting them. */
-				/* Delete the user symbols, though */
-				symtab[firstsym].sym[0] = 0;
+//BUGBUG				/* Delete the user symbols, though */
+//BUGBUG				symtab[firstsym].sym[0] = 0;
 				break;
 #ifdef LINC
 			case 040: /* LMODE */

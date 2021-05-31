@@ -1,0 +1,187 @@
+   1               /BOOTSTRAP AND I/O FOR EDUSYSTEM-30
+   2               
+   3                       EDITOR=1        /INTERACTIVE EDITOR BLOCK
+   4                       FILEREC=EDITOR+10       /(=11-1 FOR CCB)
+   5                       BPASS1=FILEREC+17       /(=16+1 FOR CCB)
+   6                       SYMPRT=BPASS1+5         /USED BY PASS 2
+   7                       SCRATCH=BPASS1+11       /(=12-1 FOR CCB)
+   8                       BPASS2=SCRATCH+17       /(=16+1 FOR CCB)
+   9                       BPASS3=BPASS2+7
+  10                       IORTNS=BPASS3+6
+  11                       FUNCS=BPASS3+10
+  12                       ERREC=BPASS3+12
+  13                       RDREDT=BPASS3+14
+  14                       BATLOG=RDREDT+5
+  15                       SHNDLR=7607
+  16                       HELLO=1000      /EDITOR ENTRY POINT
+  17               
+  18                       IFDEF READ <NOPUNCH>    /FOR REFERENCE ONLY
+  19               
+  20                       *7400           /THIS PAGE STAYS IN CORE ALWAYS
+  21               
+  22 007400  4205  BOOT,   JMS DREAD       /LOAD THE INTERACTIVE (OR BATCH) EDITOR
+  23 007401  0000          0000            /CORE
+  24 007402  7761          -17             / -PAGES
+  25 007403  0001  REC,    EDITOR          /BLOCK (RELATIVE TO EDU30.SV)
+  26 007404  5777          JMP I (HELLO    /START UP EDITOR
+  27               
+  28 007405  0000  DREAD,  0               /SYSTEM READ ROUTINE
+  29 007406  7300          CLA CLL         /IN CASE OF NON-ZERO AC
+  30 007407  1205          TAD DREAD       /MOVE ARG POINTER
+  31 007410  3212          DCA DWRITE
+  32 007411  5214          JMP DWRITE+2    /CALL WRITE (LINK = 0)
+  33               
+  34 007412  0000  DWRITE, 0               /SYSTEM WRITE ROUTINE
+  35 007413  7320          CLA CLL CML
+  36 007414  7010          RAR             /SHIFT INTO POSITION
+  37 007415  6214          RDF             /GET TRANSFER FIELD
+  38 007416  3250          DCA DFUN
+  39 007417  6201          CDF
+  40 007420  1612          TAD I DWRITE    /GET CORE ADDRESS
+  41 007421  2212          ISZ DWRITE
+  42 007422  3251          DCA DCORE
+  43 007423  1612          TAD I DWRITE    /GET - # OF PAGES
+  44 007424  2212          ISZ DWRITE
+  45 007425  7141          CLL CIA         /MAKE POSITIVE
+  46 007426  3205          DCA DREAD       /SAVE FOR LATER
+  47 007427  1205          TAD DREAD       /AND FOR NOW
+  48 007430  7006          RTL             /MOVE TO PROPER PLACE
+  49 007431  7006          RTL
+  50 007432  7006          RTL
+  51 007433  1250          TAD DFUN        /ADD FIELD, WRITE BITS
+  52 007434  3250          DCA DFUN
+  53 007435  1612          TAD I DWRITE    /STARTING BLOCK
+  54 007436  2212          ISZ DWRITE
+  55 007437  1263          TAD DOFFSET     /(ALL THINGS ARE RELATIVE, OF COURSE)
+  56 007440  3252          DCA DBLOCK
+  57 007441  1262          TAD DLAST       /IF LAST TRANSFER WAS >= 5 BLOCKS
+  58 007442  1376          TAD (5          /BEFORE THIS ONE, START SEARCHING
+  59 007443  7141          CLL CIA         /FORWARD (SAVE DECTAPE TIME)
+  60 007444  1252          TAD DBLOCK
+  61 007445  7630          SZL CLA
+  62 007446  2250          ISZ DFUN        /(OH, GOODY!)
+  63 007447  4775          JMS I (SHNDLR   /CALL THE HANDLER (RESIDENT)
+  64 007450  0000  DFUN,   0
+  65 007451  0000  DCORE,  0
+  66 007452  0000  DBLOCK, 0
+  67 007453  5264          JMP DERROR      /OH-OH, AN I/O ERROR
+  68 007454  1205          TAD DREAD       /SAVED PAGES
+  69 007455  7001          IAC             /MAKE BLOCKS
+  70 007456  7110          CLL RAR
+  71 007457  1252          TAD DBLOCK      /FIND LAST TRANSFER BLOCK
+  72 007460  3262          DCA DLAST       /SAVE FOR NEXT CALL
+  73 007461  5612          JMP I DWRITE    /ALL DONE (AHHHH)
+  74               
+  75 007462  0000  DLAST,  0               /LAST BLOCK TRANSFERRED
+  76 007463  0000  DOFFSET,0               /OFFSET OF 'EDU30.SV'
+  77               
+  78 007464  7340  DERROR, CLA CLL CMA     /SET I/O ERROR FLAG
+  79 007465  3267          DCA SYSIO
+  80 007466  5200          JMP BOOT        /LOAD THE EDITOR
+  81               
+  82               /SYSTEM COMMUNICATIONS TABLES
+  83               
+  84 007467  0000  SYSIO,  0               /DEVICE ERROR
+  85 007470  0000  MAXINS, 0               /MAXIMUM RUNTIME
+  86 007471  0000  RDTIM,  0               /READER TIMEOUT
+  87 007472  0000  LPTFLG, 0               /OUTPUT TO LINE PRINTER
+  88 007473  0000  DEBNOL, 0               /'DEBUG' AND 'NOLINE'
+  89 007474  0000  KFLG,   0               /KEYBOARD BATCH
+  90 007475  0000  RUNCNT, 0               /TIMES THIS JOB HAS RUN?
+  91 007476  0000  RUNNO,  0               /TIMES THIS JOB SHOULD RUN?
+  92 007477  0000  PFLG,   0               /0 -> NOT PRIVLEGED
+  93 007500  0000  TXTLEN, 0               /LENGTH OF TEXT
+  94 007501  0000  CHAIN,  0               /CHAIN FLAG
+  95 007502  0000  BREAK,  0               /?
+  96               
+  97               /PROGRAM NAME AND HEADER LINE ARE HERE TOO
+  98               
+  99 007503  5216  HEADLINE,       TEXT /*NONE*  EDUSYSTEM-30__/
+     007504  1716  
+     007505  0552  
+     007506  4040  
+     007507  0504  
+     007510  2523  
+     007511  3123  
+     007512  2405  
+     007513  1555  
+     007514  6360  
+     007515  3737  
+     007516  0000  
+ 100               
+ 101 007517  1617  PSNAME, FILENAME NONE.30        /PS/8 FORMAT NAME
+     007520  1605  
+     007521  0000  
+     007522  6360  
+ 102               
+ 103               /** THIS SECTION IS ONCE-ONLY CODE TO FIND THE OFFSET
+ 104               /** FOR ALL BLOCKS.  IT IS THEN USED FOR TEMPORARY
+ 105               /** COMMUNICATION BETWEEN SECTIONS OF EDUSYSTEM-30.
+ 106               /**
+ 107               /** EDUSYSTEM-30 STARTS HERE!
+ 108               
+ 109 007523  7201  SYSCOM, CLA IAC         /LOOKUP 'EDU30.SV' ON THE SYSTEM
+ 110 007524  6212          CIF 10
+ 111 007525  4774          JMS I (200      /OF COURSE THE USR IS IN CORE!
+ 112 007526  0002          2
+ 113 007527  7536          DBASIC
+ 114 007530  0000          0
+ 115 007531  5773          JMP I (7600     /NOT FOUND - WE CAN'T DO ANYTHING
+ 116 007532  7326          CLA CLL CML RTL /ADD 2 TO SKIP OVER CCB AND THIS PAGE
+ 117 007533  1327          TAD .-4         /STARTING BLOCK
+ 118 007534  3263          DCA DOFFSET
+ 119 007535  5200          JMP BOOT        /START UP
+ 120               
+ 121 007536  0504  DBASIC, FILENAME EDU30.SV
+     007537  2563  
+     007540  6000  
+     007541  2326  
+ 122               
+ 123 007573  7600          PAGE
+     007574  0200  
+     007575  7607  
+     007576  0005  
+     007577  1000  
+ 124                       ENPUNCH
+ 125                       $
+
+BATLOG  0110 unreferenced
+BOOT    7400
+BPASS1  0030
+BPASS2  0060
+BPASS3  0067
+BREAK   7502 unreferenced
+CHAIN   7501 unreferenced
+DBASIC  7536
+DBLOCK  7452
+DCORE   7451
+DEBNOL  7473 unreferenced
+DERROR  7464
+DFUN    7450
+DLAST   7462
+DOFFSE  7463
+DREAD   7405
+DWRITE  7412
+EDITOR  0001
+ERREC   0101 unreferenced
+FILERE  0011
+FUNCS   0077 unreferenced
+HEADLI  7503 unreferenced
+HELLO   1000
+IORTNS  0075 unreferenced
+KFLG    7474 unreferenced
+LPTFLG  7472 unreferenced
+MAXINS  7470 unreferenced
+PFLG    7477 unreferenced
+PSNAME  7517 unreferenced
+RDREDT  0103
+RDTIM   7471 unreferenced
+REC     7403 unreferenced
+RUNCNT  7475 unreferenced
+RUNNO   7476 unreferenced
+SCRATC  0041
+SHNDLR  7607
+SYMPRT  0035 unreferenced
+SYSCOM  7523 unreferenced
+SYSIO   7467
+TXTLEN  7500 unreferenced

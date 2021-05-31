@@ -7,12 +7,8 @@
    7               /a fully evaluated target address expression before correct code can be
    8               /generated.
    9               *200
-  10                       TAD FOO         / Needs a literal
-off page        	       	^
-     000200  1777  
-  11                       TAD FOO+1       / Needs a *different* literal!
-off page        	         ^
-     000201  1776  
+  10 000200  1777          TAD FOO         / Needs a literal
+  11 000201  1776          TAD FOO+1       / Needs a *different* literal!
   12 000202  1375          TAD (-214+212
   13 000203  1375          TAD (-214+212
   14 000204  1374          TAD (-212+207
@@ -37,3 +33,6 @@ off page        	         ^
   29               FOO,
   30                       FIELD
   31               $
+
+FOO     0600
+START   0207 unreferenced
