@@ -1,0 +1,31 @@
+	/ Test various indirect handling
+*200
+	TAD [1
+	TAD (2
+	TAD 1234
+	PAGE
+	TAD [2
+	TAD (3
+	TAD 2234
+	*1200
+	TAD [3
+	TAD (4
+	TAD 3234
+	*410
+	TAD (10
+
+	FIELD 4
+	TAD [4
+	TAD (5
+	TAD 4234
+	*2222
+	TAD [5
+	TAD (6
+	TAD 5234
+	*220
+	TAD (11
+
+	FIELD 0
+	*420
+	TAD (12
+	$

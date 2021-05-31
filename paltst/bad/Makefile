@@ -1,5 +1,6 @@
 PAL	= $(shell which pal)
 SRC	= $(wildcard *.pa)
+#SRC	= indirect_test.pa
 BIN	= $(SRC:.pa=.bin)
 
 all:	$(BIN)

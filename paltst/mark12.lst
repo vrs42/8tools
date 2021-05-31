@@ -1,0 +1,1871 @@
+   1               /       MARK PROGRAM FOR PDP-12
+   2               
+   3               /       LAST EDIT:      08-APR-1986     05:00:00        CJL
+   4               
+   5               /       ORIGINALLY WRITTEN BY RICHARD J. CLAYTON: 30-MAY-1969
+   6               
+   7               /       COPYRIGHT 1969, DIGITAL EQUIPMENT CORP, MAYNARD MASS.
+   8                
+   9               /       VERSION MARK12-1, 1970
+  10               
+  11               /       RE-EDITED AND ENHANCED BY CHARLES J. LASNER: 15-JAN-1983
+  12               
+  13               /       NOW P?S/8 PAL AND OS/8 PAL12 COMPATIBLE.
+  14               
+  15               /       MUST BE ASSEMBLED WITH '/J' AND '/9' SWITCHES SET.
+  16               
+  17               /       EQUATED SYMBOLS.
+  18               
+  19                       LMODE                   /JUST IN CASE
+  20               
+  21                       D=      2000            /DATA FIELD BIT
+  22                       FIXMRI  JSR=    6000    /LINC MODE SUBROUTINE CALL
+  23               
+  24                       PMODE                   /GOODY MODE SYMBOLS
+  25               
+  26               /       P?S/8 DEFINITIONS.
+  27               
+  28                       INCON=  0031            /EQUATED FROM CONSOLE!
+  29                       OUTCON= 0033            /EQUATED FROM CONSOLE!
+  30                       SBOOT=  7600            /SYSTEM EXIT HERE
+  31                       SCRSIZE=7611            /SOFTWARE CORE SIZE WORD
+  32                       SYSIO=  7640            /ENTER I/O ROUTINES HERE
+  33               
+  34               /       OTHER DEFINITIONS.
+  35               
+  36                       JMSC=   JMS     .&7600  /CURRENT PAGE JMS INSTRUCTION
+  37                       JMSSYSI=SYSIO&177+JMSC  /CALL TO SYSIO ON ITS PAGE
+  38                       LMR=    6151            /LOAD MAINTENANCE REGISTER
+  39                       NL0002= CLA CLL CML RTL /LOAD AC WITH 0002
+  40                       NL0003= CLA STL IAC RAL /LOAD AC WITH 0003
+  41                       NL7775= CLA CLL CMA RTL /LOAD AC WITH 7775
+  42                       NL7777= CLA CMA         /LOAD AC WITH 7777
+  43                       TRC=    6152            /TAPE REGISTER CLOCK
+  44                       TTY=    0003            /CONSOLE DEVICE CODE
+  45                       XFR=    6154            /TAPE REGISTER TRANSFER
+  46               
+  47               /       CONSOLE IOT DEFINITIONS.
+  48               
+  49                       KCCIOT= TTY^10+6002     /CLEAR KEYBOARD FLAG
+  50                       KRSIOT= TTY^10+6004     /READ KEYBOARD BUFFER
+  51                       KSFIOT= TTY^10+6001     /SKIP ON KEYBOARD FLAG
+  52                       TLSIOT= TTY+1^10+6006   /OUTPUT TO TELEPRINTER
+  53                       TSFIOT= TTY+1^10+6001   /SKIP ON TELEPRINTER FLAG
+  54                      LMODE                   /GOTO L...MODE
+  55               
+  56                       SEGMNT  2               /PROGRAM LOADING STARTS HERE
+  57               
+  58                       *0                      /ON TOP OF ALPHA, BETA REGISTERS
+  59               
+  60                       PMODE                   /PROGRAM STARTS IN GOODY MODE
+  61               
+  62                       MARK12= .               /START OF MARK12 SYSTEM PROGRAM
+  63               
+  64                       IFNZRO  .&177   <ERROR  .>
+  65 004000  7000  MARK12, NOP                     /HERE IN CASE WE'RE CHAINED TO
+  66 004001  4611          JMS I   MACHECK/(ISIT12)/ENSURE WE REALLY ARE ON A PDP-12!
+  67 004002  6141          LINC                    /GOTO L...MODE
+  68               
+  69                       LMODE                   /TELL ASSEMBLER ABOUT IT
+  70               
+  71 004003  1020          LDA I;  20              /SET THE CLEAR BIT
+     004004  0020  
+  72 004005  0004          ESF                     /DO A POWER CLEAR
+  73 004006  0602          LIF     2               /SET OUR FIELD
+  74 004007  0643          LDF     3               /SET OUR DATA FIELD
+  75 004010  6037          JMP     DSP1            /GO START IT UP
+  76               
+  77                       PMODE                   /BACK TO GOODY MODE
+  78               
+  79 004011  5666  MACHECK,ISIT12                  /POINTER TO MACHINE CHECK ROUTINE
+  80               
+  81                       LMODE                   /GOTO L...MODE
+  82               
+  83 004012  0000          ZBLOCK  20-.            /REST OF BETA REGISTERS FOR RUNNING PROGRAM
+     004013  0000  
+     004014  0000  
+     004015  0000  
+     004016  0000  
+     004017  0000  
+  84               
+  85               /       MANUAL RESTART ADDRESS.
+  86               
+  87 004020  6037  MARKAGN,JMP     DSP1            /CONTINUE THERE
+  88 004021  1000  EXAMANS,LDA;   ANS             /GET ANSWER VALUE
+     004022  4762  
+  89 004023  1420          SHD I;  0               /COMPARE TO EMPTY VALUE
+     004024  0000  
+  90 004025  7053          JMP     QARFSH          /JUMP IF ANSWER EMPTY (A VALID CASE)
+  91 004026  1420          SHD I;  "1^100          /COMPARE TO "1"
+     004027  6100  
+  92 004030  7053          JMP     QARFSH          /JUMP IF ANSWER IS TENTATIVELY "1"
+  93 004031  1420          SHD I;  "P^100          /COMPARE TO "P"
+     004032  2000  
+  94 004033  7053          JMP     QARFSH          /JUMP IF ANSWER IS TENTATIVELY "P"
+  95 004034  1420          SHD I;  "B^100          /COMPARE TO "B"
+     004035  0200  
+  96 004036  7053          JMP     QARFSH          /JUMP IF ANSWER IS TENTATIVELY "B"
+  97               
+  98               /       THIS IS THE RESTART POINT OF THE MARK12 PROGRAM. DSP1 CREATES THE
+  99               /       FIRST DISPLAY WHERE THE USER PICKS THE TYPE OF TAPE TO FORMAT.
+ 100                
+ 101 004037  0643  DSP1,   LDF     3               /JUST IN CASE
+ 102 004040  7000          JSR     QAINIT          /CALL QANDA
+ 103 004041  6001          DS1!D                   /FRAME ADDRESS
+ 104 004042  4762          ANS                     /ANSWER BUFFER
+ 105 004043  6021          JMP     EXAMANS         /CHECK THERE IF NO <LF> YET
+ 106               
+ 107               /       COMES HERE IF <LF> IS HIT.
+ 108               
+ 109 004044  1000          LDA;    ANS             /GET ANSWER VALUE
+     004045  4762  
+ 110 004046  1420          SHD I;  "1^100          /COMPARE TO "1"
+     004047  6100  
+ 111 004050  6400          JMP     LTAPE           /JUMP IF IT MATCHES
+ 112 004051  1420          SHD I;  "P^100          /COMPARE TO "P"
+     004052  2000  
+ 113 004053  6420          JMP     PTAPE           /JUMP IF IT MATCHES
+ 114 004054  1420          SHD I;  "B^100          /COMPARE TO "B"
+     004055  0200  
+ 115 004056  6440          JMP     BIGTAPE         /JUMP IF IT MATCHES
+ 116 004057  6037          JMP     DSP1            /GO BACK IF BAD RESPONSE
+ 117               
+ 118                       PMODE                   /WHAT FOLLOWS IS IN GOODY MODE
+ 119               /      SUBROUTINE TO TEST TAPE TRANSPORTS AND MARK SWITCH TO DETERMINE
+ 120               /       THAT IT IS OK TO MARK TAPE. MUST HAVE UNIT 1 SELECTED, WRITE ENABLED.
+ 121               /       MUST THEN PRESS MARK SWITCH. THIS WILL PREVENT BASHING TAPE ON UNIT 0.
+ 122               
+ 123 004060  0000  ONMARK, .-.                     /ONLINE, WRITE-ENABLED AND MARK SWITCH ROUTINE
+ 124 004061  6141          LINC                    /GOTO L...MODE
+ 125               
+ 126                       LMODE                   /TELL ASSEMBLER ALSO
+ 127               
+ 128 004062  7000  DSP2,   JSR     QAINIT          /CALL QANDA
+ 129 004063  6202          DS2A!D                  /FIRST HALF-FRAME DISPLAYED DURING REVERSE MOTION
+ 130 004064  4762          ANS                     /ANSWER BUFFER (UNUSED)
+ 131 004065  0016          NOP                     /DON'T CARE IF ANY REPLY
+ 132 004066  1020          LDA I;  0144            /SETUP FOR UNIT ONE
+     004067  0144  
+ 133 004070  0500          IOB;    TRC             /AND FORWARD MOTION
+     004071  6152  
+ 134 004072  7000          JSR     QAINIT          /CALL QANDA
+ 135 004073  6256          DS2B!D                  /SECOND HALF-FRAME DISPLAYED DURING FORWARD MOTION
+ 136 004074  4762          ANS                     /ANSWER BUFFER (UNUSED)
+ 137 004075  0016          NOP                     /DON'T CARE IF ANY REPLY
+ 138 004076  0064          SET I   4;      -100    /SETUP TIMED LOOP
+     004077  7700  
+ 139 004100  0224          XSK I   4               /THIS EQUALIZES
+ 140 004101  6100          JMP     .-1             /FORWARD AND BACKWARD MOTION TIMES
+ 141 004102  1020          LDA I;  5000            /LOAD UNITS AND MOTION VALUE
+     004103  5000  
+ 142 004104  0500          IOB;    LMR             /SELECT MAINTENANCE REGISTER
+     004105  6151  
+ 143 004106  0011          CLR                     /CLEAN UP
+ 144 004107  0500          IOB;    XFR             /GET THE VALUE
+     004110  6154  
+ 145 004111  1460          SAE I;  5777            /SHOULD HAVE UNIT 1, WRITE ENABLE, AND FORWARD MOTION
+     004112  5777  
+ 146 004113  6130          JMP     OMKST           /NOT YET
+ 147 004114  1020  MARKSW, LDA I;  0200            /GET MARK VALUE
+     004115  0200  
+ 148 004116  0001          AXO                     /TRY TO SET MARK FLIP-FLOP
+ 149 004117  0011          CLR                     /CLEAN UP
+ 150 004120  0021          XOA                     /READ IT BACK
+ 151 004121  0265          ROL I   5               /MOVE MARK BIT TO LINK
+ 152 004122  0472          LZE I                   /SKIP IF IT TOOK
+ 153 004123  6130          JMP     OMKST           /JUMP IF NOT YET PRESSED
+ 154 004124  0002          PDP                     /BACK TO GOODY MODE
+ 155               
+ 156                       PMODE                   /TELL ASSEMBLER ABOUT IT
+ 157               
+ 158               /       MARK FLIP-FLOP IS ON WITH TAPE IN FORWARD MOTION.
+ 159               
+ 160 004125  7200          CLA                     /CLEAN UP
+ 161 004126  6151          LMR                     /SET TAPE MAINTENANCE REGISTER SO XFR
+ 162                                               /WILL TRANSFER AC TO TAPE BUFFER
+ 163 004127  5660          JMP I   ONMARK          /RETURN
+ 164                      LMODE                   /GOTO L...MODE
+ 165               
+ 166 004130  1020  OMKST,  LDA I;  0024            /SETUP REVERSE MOTION
+     004131  0024  
+ 167 004132  0500          IOB;    TRC             /START IT UP
+     004133  6152  
+ 168 004134  6062          JMP     DSP2            /GO BACK AND TRY IT AGAIN
+ 169               
+ 170               /       TABLE USED TO FORM BACKWARD BLOCK NUMBER.
+ 171               
+ 172 004135  0400  B1TAB,  0400                    /\
+ 173 004136  1000          1000                    / \
+ 174 004137  2000          2000                    /  \
+ 175 004140  4000          4000                    /   \
+ 176 004141  0020          0020                    /    \
+ 177 004142  0040          0040                    /     \USED WHILE WRITING THE
+ 178 004143  0100          0100                    /     /FIRST TWELVE DATA WORDS
+ 179 004144  0200          0200                    /    /
+ 180 004145  0001          0001                    /   /
+ 181 004146  0002          0002                    /  /
+ 182 004147  0004          0004                    / /
+ 183 004150  0010          0010                    //
+ 184               
+ 185               /       COMES HERE IF USER WANTS TO EXIT.
+ 186               
+ 187 004151  0002  BUTIT,  PDP                     /GOTO GOODY MODE
+ 188               
+ 189                       PMODE                   /ALSO TELL ASSEMBLER
+ 190               
+ 191 004152  5777          JMP I   (SBOOT)         /GOODBYE!
+ 192               
+ 193 004153  0000  P7CH,   .-.                     /SEVEN-BIT PRINT ROUTINE
+ 194 004154  3364          DCA     P7TEMP          /STASH PASSED VALUE
+ 195 004155  4776  P7AGN,  JMS I   (CHKUP)         /CHECK FOR <^C>, ETC.
+ 196 004156  1364          TAD     P7TEMP          /GET THE VALUE
+ 197 004157  6041  P7TSF,  TSFIOT                  /**** CONSOLE **** CIF MCS+10
+ 198 004160  5355  P7JMP,  JMP     P7AGN           /**** CONSOLE **** JMS OUTCON
+ 199 004161  6046  P7TLS,  TLSIOT                  /**** CONSOLE **** JMP P7AGN
+ 200 004162  4776          JMS I   (CHKUP)         /CHECK FOR <^C>, ETC.
+ 201 004163  5753          JMP I   P7CH            /RETURN
+ 202               
+ 203 004164  0000  P7TEMP, .-.                     /TEMPORARY
+ 204               
+ 205 004176  6543          PAGE
+     004177  7600  
+ 206                      LMODE                   /GOTO L...MODE
+ 207               
+ 208               /       THIS ROUTINE IS USED AFTER CHECKING A TAPE THAT THIS PROGRAM MARKED.
+ 209               /       FROM HERE THE USER RELOADS THE OPERATING SYSTEM OR MARKS ANOTHER TAPE.
+ 210               
+ 211 004200  7000  DSP3,   JSR     QAINIT          /CALL QANDA
+ 212 004201  6330  DS3OR4, DS3!D                   /**** DS3!D OR DS4!D ****
+ 213 004202  4762          ANS                     /ANSWER BUFFER
+ 214 004203  6215          JMP     DSP3R           /NO ANSWER YET, CHECK BUFFER
+ 215 004204  1000          LDA;    ANS             /GET ANSWER VALUE
+     004205  4762  
+ 216 004206  1420          SHD I;  "1^100          /COMPARE TO "1"
+     004207  6100  
+ 217 004210  6037          JMP     DSP1            /RESTART IF IT MATCHES
+ 218 004211  1420          SHD I;  "2^100          /COMPARE TO "2"
+     004212  6200  
+ 219 004213  6151          JMP     BUTIT           /BOOTSTRAP IF IT MATCHES
+ 220 004214  6200          JMP     DSP3            /BAD RESPONSE, TRY AGAIN
+ 221               
+ 222 004215  1000  DSP3R,  LDA;    ANS             /GET ANSWER BUFFER SO FAR
+     004216  4762  
+ 223 004217  1420          SHD I;  "1^100          /COMPARE TO "1"
+     004220  6100  
+ 224 004221  7053          JMP     QARFSH          /JUMP IF IT MATCHES
+ 225 004222  1420          SHD I;  "2^100          /COMPARE TO "2"
+     004223  6200  
+ 226 004224  7053          JMP     QARFSH          /JUMP IF IT MATCHES
+ 227 004225  1420          SHD I;  0000            /COMPARE TO EMPTY VALUE
+     004226  0000  
+ 228 004227  7053          JMP     QARFSH          /JUMP IF IT MATCHES
+ 229 004230  6200          JMP     DSP3            /REJECT BAD ANSWERS
+ 230               
+ 231                       PMODE                   /WHAT FOLLOWS IS IN GOODY MODE
+ 232               /      TAPE WRITE SUBROUTINE.
+ 233               
+ 234               /       CALLING SEQUENCE:
+ 235               
+ 236               /       JMS I   (WRTAP)         /CALL TAPE WRITE ROUTINE
+ 237               /       XX                      /NUMBER OF BEGINNING END MARKS
+ 238               /       XX                      /NUMBER OF BEGINNING INTERMEDIATE MARKS
+ 239               /       XX                      /NUMBER OF WORDS OF DATA/BLOCK
+ 240               /       XX                      /FIRST FORWARD BLOCK NUMBER
+ 241               /       XX                      /FIRST BACKWARD BLOCK NUMBER
+ 242               /       XX                      /NUMBER OF BLOCKS
+ 243               /       XX                      /NUMBER OF INTERMEDIATE WORDS BETWEEN BLOCKS
+ 244               /       XX                      /NUMBER OF FINAL INTERMEDIATE MARKS
+ 245               /       XX                      /NUMBER OF FINAL END MARKS
+ 246               /       RETURNS HERE WITH CLEAR AC.
+ 247               
+ 248 004231  0000  WRTAP,  .-.                     /WRITE TAPE ROUTINE
+ 249 004232  7200          CLA                     /CLEAN UP
+ 250 004233  1631          TAD I   WRTAP           /GET BEGINNING END MARKS COUNT
+ 251 004234  2231          ISZ     WRTAP           /BUMP TO NEXT
+ 252 004235  3345          DCA     KIEM            /STORE THE COUNT
+ 253 004236  1631          TAD I   WRTAP           /GET BEGINNING INTERMEDIATE MARKS COUNT
+ 254 004237  2231          ISZ     WRTAP           /BUMP TO NEXT
+ 255 004240  3346          DCA     KIIM            /STORE THE COUNT
+ 256 004241  1631          TAD I   WRTAP           /GET DATA WORD COUNT
+ 257 004242  2231          ISZ     WRTAP           /BUMP TO NEXT
+ 258 004243  3274          DCA     WRLUP2          /STORE IN-LINE
+ 259 004244  1631          TAD I   WRTAP           /GET FIRST FORWARD BLOCK NUMBER
+ 260 004245  2231          ISZ     WRTAP           /BUMP TO NEXT
+ 261 004246  3344          DCA     FBLK            /STASH IT
+ 262 004247  1631          TAD I   WRTAP           /GET FIRST BACKWARD BLOCK NUMBER
+ 263 004250  2231          ISZ     WRTAP           /BUMP TO NEXT
+ 264 004251  3275          DCA     WRLUP3          /STORE IN-LINE
+ 265 004252  1631          TAD I   WRTAP           /GET BLOCK COUNT
+ 266 004253  2231          ISZ     WRTAP           /BUMP TO NEXT
+ 267 004254  7040          CMA                     /WANT ONE'S COMPLEMENT FORM
+ 268 004255  3343          DCA     BLKCNT          /STORE IT
+ 269 004256  1377          TAD     (HERE-1)        /SETUP THE
+ 270 004257  3776          DCA I   (WAIT)          /WAIT ROUTINE
+ 271 004260  1375          TAD     (0200)          /GET CLEAR VALUE
+ 272 004261  6152          TRC                     /CLEAR TAPE WORD FLAG NOW
+ 273 004262  6141          LINC                    /GOTO L...MODE
+ 274               
+ 275                       LMODE                   /TELL ASSEMBLER ABOUT IT
+ 276               
+ 277 004263  6607          JMP     FRSTGO          /GO DO FIRST WORD AND COME BACK TO HERE
+ 278               
+ 279                       PMODE                   /BACK TO GOODY MODE
+ 280 004264  1345  HERE,  TAD     KIEM            /GET FIRST END MARKS COUNT
+ 281 004265  4774          JMS I   (WMKWD)         /ACTUALLY GO WRITE IT
+ 282 004266  0000          0000                    /THIS IS THE EM CODE
+ 283 004267  1346          TAD     KIIM            /GET FIRST INTERMEDIATE MARKS COUNT
+ 284 004270  4774          JMS I   (WMKWD)         /WRITE IT OUT
+ 285 004271  0017          0017                    /THIS IS THE IM CODE
+ 286 004272  1344  WRLOOP, TAD     FBLK            /GET FORWARD BLOCK NUMBER
+ 287 004273  4773          JMS I   (BLOCK)         /GO WRITE IT
+ 288 004274  0000  WRLUP2, .-.                     /NUMBER OF WORDS FILLED IN
+ 289 004275  0000  WRLUP3, .-.                     /BACKWARD BLOCK NUMBER FILLED IN
+ 290 004276  1631          TAD I   WRTAP           /GET IM COUNT BETWEEN BLOCKS
+ 291 004277  4774          JMS I   (WMKWD)         /WRITE IT OUT
+ 292 004300  0017          0017                    /IM CODE VALUE
+ 293 004301  2344          ISZ     FBLK            /BUMP FORWARD BLOCK NUMBER
+ 294 004302  7000          NOP                     /JUST IN CASE
+ 295 004303  2275          ISZ     WRLUP3          /BUMP BACKWARD BLOCK NUMBER
+ 296 004304  7000          NOP                     /JUST IN CASE
+ 297 004305  2343          ISZ     BLKCNT          /DONE ALL BLOCKS YET?
+ 298 004306  5272          JMP     WRLOOP          /NO, KEEP GOING
+ 299               
+ 300               /       TO PREVENT TIMING PROBLEMS, NOW WRITE OUT ONE FINAL IM THE EASY WAY.
+ 301               
+ 302 004307  4776          JMS I   (WAIT)          /GO WRITE IT OUT
+ 303 004310  0017          0017                    /EM VALUE
+ 304 004311  2231          ISZ     WRTAP           /BUMP TO FINAL IM COUNT
+ 305 004312  7240          NL7777                  /BACKUP
+ 306 004313  1631          TAD I   WRTAP           /GET CORRECTED COUNT OF FINAL IM MARKS
+ 307 004314  2231          ISZ     WRTAP           /BUMP TO NEXT
+ 308 004315  4774          JMS I   (WMKWD)         /WRITE IT OUT
+ 309 004316  0017          0017                    /IM MARK CODE
+ 310 004317  1631          TAD I   WRTAP           /GET FINAL END MARKS COUNT
+ 311 004320  2231          ISZ     WRTAP           /BUMP PAST LAST ARGUMENT
+ 312 004321  4774          JMS I   (WMKWD)         /WRITE IT OUT
+ 313 004322  0000          0000                    /EM CODE
+ 314 004323  6141          LINC                    /GOTO L...MODE
+ 315               
+ 316                       LMODE                   /TELL ASSEMBLER ALSO
+ 317 004324  0011         CLR                     /CLEAN UP
+ 318 004325  0001          AXO                     /CLEAR MARK FLIP-FLOP
+ 319 004326  0064          SET I   4;      -50     /SETUP TIME DELAY
+     004327  7730  
+ 320 004330  1020          LDA I;  0024            /GET REVERSE MOTION VALUE
+     004331  0024  
+ 321 004332  0500          IOB;    TRC             /BACK UP THE TAPE
+     004333  6152  
+ 322 004334  0225          XSK I   5               /DONE ENOUGH?
+ 323 004335  6330          JMP     .-5             /NO, GO DO IT AGAIN
+ 324 004336  0224          XSK I   4               /DONE THIS ENOUGH TIMES?
+ 325 004337  6330          JMP     .-7             /NO, GO DO IT AGAIN
+ 326 004340  0002          PDP                     /YES, BACK TO GOODY MODE
+ 327               
+ 328                       PMODE                   /TELL ASSEMBLER ABOUT IT
+ 329               
+ 330 004341  7200          CLA                     /CLEAN UP
+ 331 004342  5631          JMP I   WRTAP           /RETURN TO CALLER
+ 332               
+ 333 004343  0000  BLKCNT, .-.                     /BLOCK COUNTER
+ 334 004344  0000  FBLK,   .-.                     /FORWARD BLOCK NUMBER
+ 335 004345  0000  KIEM,   .-.                     /FORWARD EM COUNTER
+ 336 004346  0000  KIIM,   .-.                     /FORWARD IM COUNTER
+ 337               
+ 338 004373  4460          PAGE
+     004374  4620  
+     004375  0200  
+     004376  4600  
+     004377  4263  
+ 339                      LMODE                   /GOTO L...MODE
+ 340               
+ 341               /       ROUTINE TO WRITE A STANDARD LINC FORMAT TAPE.
+ 342               
+ 343 004400  0002  LTAPE,  PDP                     /GOTO GOODY MODE
+ 344               
+ 345                       PMODE                   /TELL ASSEMBLER ALSO
+ 346               
+ 347 004401  4777          JMS I   (ONMARK)        /GET MARK FLIP-FLOP TURNED ON
+ 348 004402  4776          JMS I   (WRTAP)         /GO WRITE THE TAPE
+ 349 004403  2000          2000                    /BEGINNING EM
+ 350 004404  7777          7777                    /BEGINNING IM
+ 351 004405  0400          0400                    /256 WORDS/BLOCK
+ 352 004406  7770          -10                     /FIRST FORWARD BLOCK NUMBER
+ 353 004407  7770          -10                     /FIRST BACKWARD BLOCK NUMBER
+ 354 004410  1024          1024                    /TOTAL NUMBER OF BLOCKS INCLUDING A FEW EXTRA FOR TURNAROUND
+ 355 004411  0005          5                       /IM BETWEEN BLOCKS
+ 356 004412  0010          10                      /NUMBER OF FINAL IM CODES
+ 357 004413  4000          4000                    /NUMBER OF FINAL EM CODES
+ 358 004414  6141          LINC                    /GOTO L...MODE
+ 359               
+ 360                       LMODE                   /TELL ASSEMBLER ALSO
+ 361               
+ 362 004415  1020          LDA I;  1000            /LOAD DATA BLOCK COUNT
+     004416  1000  
+ 363 004417  6635          JMP     CHECK           /FINISH THE JOB THERE
+ 364               
+ 365               /       ROUTINE TO WRITE 128 WORD LINCTAPES.
+ 366               
+ 367 004420  0002  PTAPE,  PDP                     /GOTO GOODY MODE
+ 368               
+ 369                       PMODE                   /ALSO TELL ASSEMBLER
+ 370               
+ 371 004421  4777          JMS I   (ONMARK)        /GET MARK FLIP-FLOP TURNED ON
+ 372 004422  4776          JMS I   (WRTAP)         /GO WRITE THE TAPE
+ 373 004423  2000          2000                    /BEGINNING EM
+ 374 004424  7777          7777                    /BEGINNING IM
+ 375 004425  0200          0200                    /128 WORDS/BLOCK
+ 376 004426  7760          -20                     /FIRST FORWARD BLOCK NUMBER
+ 377 004427  7763          -15                     /FIRST BACKWARD BLOCK NUMBER (NOTE OFFSET!)
+ 378 004430  3340          3340                    /TOTAL NUMBER OF BLOCKS INCLUDING A FEW FOR TURNAROUND
+ 379 004431  0005          5                       /IM BETWEEN BLOCKS
+ 380 004432  1777          1777                    /NUMBER OF FINAL IM CODES
+ 381 004433  2000          2000                    /NUMBER OF FINAL EM CODES
+ 382 004434  6141          LINC                    /GOTO L...MODE
+ 383               
+ 384                       LMODE                   /ALSO TELL ASSEMBLER
+ 385               
+ 386 004435  1020          LDA I;  3300            /GET DATA BLOCK COUNT
+     004436  3300  
+ 387 004437  6635          JMP     CHECK           /FINISH THE JOB THERE
+ 388               /      ROUTINE TO WRITE OUT 1600 BLOCK STANDARD LENGTH TAPES.
+ 389               
+ 390 004440  0002  BIGTAP, PDP                     /GOTO GOODY MODE
+ 391               
+ 392                       PMODE                   /ALSO TELL ASSEMBLER
+ 393               
+ 394 004441  4777          JMS I   (ONMARK)        /GET MARK FLIP-FLOP TURNED ON
+ 395 004442  4776          JMS I   (WRTAP)         /GO WRITE THE TAPE
+ 396 004443  1000          1000                    /BEGINNING EM
+ 397 004444  7777          7777                    /BEGINNING IM
+ 398 004445  0400          0400                    /256 WORDS/BLOCK
+ 399 004446  7770          -10                     /FIRST FORWARD BLOCK NUMBER
+ 400 004447  7770          -10                     /FIRST BACKWARD BLOCK NUMBER
+ 401 004450  1624          1624                    /TOTAL NUMBER OF BLOCKS INCLUDING A FEW FOR TURNAROUND
+ 402 004451  0005          5                       /IM BETWEEN BLOCKS
+ 403 004452  0010          10                      /NUMBER OF FINAL IM CODES
+ 404 004453  0400          0400                    /NUMBER OF FINAL EM CODES
+ 405 004454  6141          LINC                    /GOTO L...MODE
+ 406               
+ 407                       LMODE                   /ALSO TELL ASSEMBLER
+ 408               
+ 409 004455  1020          LDA I;  1600            /GET DATA BLOCK COUNT
+     004456  1600  
+ 410 004457  6635          JMP     CHECK           /FINISH THE JOB THERE
+ 411               
+ 412                       PMODE                   /WHAT FOLLOWS IS IN GOODY MODE
+ 413               /      ROUTINE TO WRITE A BLOCK OF TAPE.
+ 414               
+ 415               /       CALLING SEQUENCE:
+ 416               
+ 417               /       TAD     (FORWARD BLOCK) /AC CONTAINS FORWARD BLOCK NUMBER
+ 418               /       JMS I   (BLOCK)         /CALL BLOCK WRITE ROUTINE
+ 419               /       DATA WORD COUNT         /COUNT OF DATA WORDS IN BLOCK
+ 420               /       REVERSE BLOCK           /REVERSE BLOCK NUMBER
+ 421               
+ 422               /       THIS ROUTINE WILL WRITE:
+ 423               
+ 424               /       BM  (FORWARD)
+ 425               /       GM
+ 426               /       DM  (MINIMUM 14, MAXIMUM 4096)
+ 427               /       FM
+ 428               /       CM  (THREE WORDS)
+ 429               /       GM
+ 430               /       BM  (BACKWARD)
+ 431               
+ 432 004460  0000  BLOCK,  .-.                     /WRITE A BLOCK ROUTINE
+ 433 004461  7040          CMA                     /NEED COMPLEMENT FORM
+ 434 004462  4775          JMS I   (WAIT)          /WRITE FORWARD BM
+ 435 004463  0016          0016                    /BLOCK NUMBER CODE WORD
+ 436 004464  1660          TAD I   BLOCK           /GET NUMBER OF DATA WORDS
+ 437 004465  7140          CLL CMA                 /INVERT FOR TEST
+ 438 004466  1374          TAD     (16)            /ADD ON LIMITING VALUE
+ 439 004467  7430          SZL                     /SKIP IF MORE THAN 14 WORDS
+ 440 004470  7402          HLT                     /ELSE BARF
+ 441 004471  7450          SNA                     /SKIP IF NOT EXACTLY 14 WORDS
+ 442 004472  7402          HLT                     /ELSE BARF
+ 443 004473  3345          DCA     COUNTA          /SAVE CORRECTED NUMBER OF WORDS
+ 444 004474  2260          ISZ     BLOCK           /BUMP TO NEXT ARGUMENT
+ 445 004475  1660          TAD I   BLOCK           /GET BACKWARD BLOCK NUMBER
+ 446 004476  3351          DCA     BKBNS           /SAVE IT
+ 447 004477  3350          DCA     BKBNA           /CLEAR BACKWARD BLOCK ASSEMBLY REGISTER
+ 448 004500  4775          JMS I   (WAIT)          /WRITE GUARD WORD
+ 449 004501  0002          0002                    /GUARD MARK CODE
+ 450 004502  1373          TAD     (-14)           /SETUP
+ 451 004503  3346          DCA     COUNTB          /BIT COUNTER
+ 452 004504  1372          TAD     (B1TAB)         /SETUP THE
+ 453 004505  3347          DCA     TEMPA           /BIT TABLE POINTER
+ 454 004506  1371  BLKLP1, TAD     (5252)          /GET DATA PATTERN
+ 455 004507  4775          JMS I   (WAIT)          /WRITE OUT A DATA WORD
+ 456 004510  0011          0011                    /DATA MARK CODE
+ 457 004511  1351          TAD     BKBNS           /GET BACKWARDS BLOCK NUMBER
+ 458 004512  7004          RAL                     /SHIFT IT OVER
+ 459 004513  3351          DCA     BKBNS           /SAVE IT BACK
+ 460 004514  7430          SZL                     /SKIP IF LATEST IS OFF
+ 461 004515  1747          TAD I   TEMPA           /ELSE USE TRANSLATED BIT
+ 462 004516  1350          TAD     BKBNA           /ADD ONTO ACCUMULATION
+ 463 004517  3350          DCA     BKBNA           /SAVE IT BACK
+ 464 004520  2347          ISZ     TEMPA           /BUMP TO NEXT BIT VALUE
+ 465 004521  2346          ISZ     COUNTB          /DONE 12 YET?
+ 466 004522  5306          JMP     BLKLP1          /NO, GO BACK
+ 467 004523  1371  BLKLP2,        TAD     (5252)          /GET DATA PATTERN
+ 468 004524  4775          JMS I   (WAIT)          /WRITE OUT A DATA WORD
+ 469 004525  0011          0011                    /DATA MARK CODE
+ 470 004526  2345          ISZ     COUNTA          /DONE ALL ADDITIONAL DATA WORDS YET?
+ 471 004527  5323          JMP     BLKLP2          /NO, GO BACK
+ 472 004530  1371          TAD     (5252)          /GET DATA PATTERN
+ 473 004531  4775          JMS I   (WAIT)          /WRITE OUT
+ 474 004532  0013          0013                    /FINAL MARK CODE
+ 475 004533  7325          NL0003                  /SETUP THE COUNT
+ 476 004534  4770          JMS I   (WMKWD)         /WRITE OUT THREE WORDS OF
+ 477 004535  0001          0001                    /CHECK MARK CODE
+ 478 004536  4775          JMS I   (WAIT)          /WRITE OUT
+ 479 004537  0002          0002                    /GUARD MARK CODE
+ 480 004540  1350          TAD     BKBNA           /GET BACKWARD BLOCK NUMBER
+ 481 004541  4775          JMS I   (WAIT)          /WRITE OUT
+ 482 004542  0007          0007                    /BACKWARD BLOCK NUMBER CODE
+ 483 004543  2260          ISZ     BLOCK           /BUMP PAST LAST ARGUMENT
+ 484 004544  5660          JMP I   BLOCK           /RETURN
+ 485               
+ 486 004545  0000  COUNTA, .-.                     /NUMBER OF DATA WORDS COUNTER
+ 487 004546  0000  COUNTB, .-.                     /COUNTER FOR FIRST 12 DATA WORDS
+ 488 004547  0000  TEMPA,  .-.                     /TEMPORARY
+ 489 004550  0000  BKBNA,  .-.                     /FORM BACKWARD BLOCK NUMBER IN COMPLEMENT OBVERSE FORM
+ 490 004551  0000  BKBNS,  .-.                     /BACKWARD BLOCK NUMBER IN BINARY FORM
+ 491               
+ 492 004570  4620          PAGE
+     004571  5252  
+     004572  4135  
+     004573  7764  
+     004574  0016  
+     004575  4600  
+     004576  4231  
+     004577  4060  
+ 493               /      ROUTINE TO WAIT FOR COMPLETION OF CURRENT TAPE WORD AND THEN
+ 494               /       TRANSFER DATA TO TAPE CONTROL FOR THE NEXT WORD (4 LINES).
+ 495                
+ 496               /       CALLING SEQUENCE:
+ 497               
+ 498               /       TAD     (DATA WORD)     /AC CONTAINS DATA WORD TO BE WRITTEN
+ 499               /       JMS I   (WAIT)          /CALL WAIT ROUTINE
+ 500               /       MARK CODE               /MARK CODE TO BEW WRITTEN WITH DATA WORD
+ 501               
+ 502               /       PROGRAM MUST RETURN WITH THE NEXT WORD TO BE WRITTEN WITHIN 42
+ 503               /       MICROSECONDS. THIS SUBROUTINE TAKES UP TO 52 MICROSECONDS IF SYSTEM
+ 504               /       CYCLE TIME WERE TO GET AS SLOW AS 1.9 MICROSECONDS.
+ 505               
+ 506 004600  0000  WAIT,   .-.                     /WAIT ROUTINE
+ 507 004601  6154          XFR                     /COMPLEMENT OF TAPE BUFFER WILL BE WRITTEN ON THE TAPE
+ 508 004602  7300          CLA CLL                 /CLEAN UP
+ 509 004603  1600          TAD I   WAIT            /GET MARK CODE
+ 510 004604  6141          LINC                    /GOTO L...MODE
+ 511               
+ 512                       LMODE                   /TELL ASSEMBLER ALSO
+ 513               
+ 514 004605  0437          TWC I                   /FLAG UP ALREADY?
+ 515 004606  0000          HLT                     /YES, BARF
+ 516 004607  0417  FRSTGO, TWC                     /NO, WAIT FOR IT
+ 517 004610  6607          JMP     FRSTGO          /TO COME UP
+ 518 004611  1020          LDA I;  0200            /GET CLEAR VALUE
+     004612  0200  
+ 519 004613  0002          PDP                     /GOTO GOODY MODE
+ 520               
+ 521                       PMODE                   /TELL ASSEMBLER ALSO
+ 522               
+ 523 004614  6152          TRC                     /CLEAR TAPE FLAG
+ 524 004615  2200          ISZ     WAIT            /BUMP PAST MARK CODE
+ 525 004616  7200          CLA                     /CLEAN UP
+ 526 004617  5600          JMP I   WAIT            /RETURN
+ 527               /      ROUTINE TO WRITE A NUMBER OF WORDS OF A GIVEN MARK CODE.
+ 528               
+ 529               /       CALLING SEQUENCE:
+ 530               
+ 531               /       TAD     (WORD COUNT)    /AC CONTAINS NUMBER OF WORDS TO BE WRITTEN
+ 532               /       JMS I   (WMKWD)         /CALL ROUTINE
+ 533               /       RETURNS WTH CLEAR AC.
+ 534               
+ 535               /       THIS SUBROUTINE ADDS 17 CYCLES TO THE WAIT ROUTINE AND MUST BE CALLED
+ 536               /       WITHIN 20 MICROSECONDS OF THE LAST WAIT EXIT. THIS ADDS 10 MICROSECONDS
+ 537               /       TO THE WAIT EXIT TIME.
+ 538               
+ 539 004620  0000  WMKWD,  .-.                     /MARK WRITE ROUTINE
+ 540 004621  7041          CIA                     /INVERT WORD COUNT
+ 541 004622  3234          DCA     WMCNT           /STASH THE COUNT
+ 542 004623  1620          TAD I   WMKWD           /GET THE MARK CODE
+ 543 004624  3226          DCA     WMCODE          /STASH IT
+ 544 004625  4200          JMS     WAIT            /GO WRITE A WORD
+ 545 004626  0000  WMCODE, .-.                     /MARK CODE HERE
+ 546 004627  2234          ISZ     WMCNT           /DONE YET?
+ 547 004630  5225          JMP     .-3             /NO, GO DO IT AGAIN
+ 548 004631  7200          CLA                     /YES, CLEAN UP
+ 549 004632  2220          ISZ     WMKWD           /BUMP PAST ARGUMENT
+ 550 004633  5620          JMP I   WMKWD           /RETURN
+ 551               
+ 552 004634  0000  WMCNT,  .-.                     /WORD COUNTER
+ 553               
+ 554                       LMODE                   /L...MODE CODE FOLLOWS
+ 555               /      ROUTINE TO CHECK THE JUST-WRITTEN TAPE. AC SHOULD CONTAIN TOTAL
+ 556               /       NUMBER OF POSITIVE DATA BLOCKS. THE ROUTINE WILL WRITE A PATTERN OF
+ 557               /       11+11+11 ETC. IN EACH BLOCK, THEN BACKWARD BLOCK NUMBERS ARE CHECKED,
+ 558               /       THEN ALL BLOCKS ARE READ INTO CORE AND THEIR CHECKSUMS VERIFIED;
+ 559               /       THEN THE LAST DATA BLOCK IS CHECKED TO BE SURE ALL DATA IS CORRECT.
+ 560               
+ 561               /       ROUTINE EXITS TO DSP3 ROUTINE WHICH INFORMS THE USER OF TAPE VIABILITY.
+ 562               /       USER CAN OPT TO MARK MORE TAPES OR RESTART THE OPERATION SYSTEM.
+ 563               
+ 564 004635  4666  CHECK,  STC     CFBLK           /SAVE NUMBER OF BLOCKS
+ 565 004636  0640          LDF     0               /SETUP DATA BUFFER FIELD
+ 566 004637  0061          SET I   1;      3777    /SETUP DATA POINTER
+     004640  3777  
+ 567 004641  1020          LDA I;  11              /GET DATA INCREMENT
+     004642  0011  
+ 568 004643  1061          STA I   1               /STORE A VALUE
+ 569 004644  2642          ADD     .-2             /ADD ON DATA INCREMENT
+ 570 004645  0201          XSK     1               /DONE YET?
+ 571 004646  6643          JMP     .-3             /NO, KEEP GOING
+ 572 004647  0011          CLR                     /CLEAN UP
+ 573 004650  4660          STC     WBLKNO          /INITIALIZE BLOCK NUMBER
+ 574 004651  1020          LDA I;  0020            /SETUP EXTENDED ADDRESSING MODE
+     004652  0020  
+ 575 004653  0001          AXO                     /FOR TAPE TRANSFER
+ 576 004654  1020  WLOOP,  LDA I;  0               /GET TRANSFER ADDRESS
+     004655  0000  
+ 577 004656  0023          TMA                     /LOAD TMA SETUP REGISTER
+ 578 004657  0736          WRI I   U               /WRITE ON TAPE ONE
+ 579 004660  0000  WBLKNO, .-.                     /BLOCK NUMBER WILL BE INCRMENTED
+ 580 004661  1020          LDA I;  1               /GET BLOCK INCREMENT
+     004662  0001  
+ 581 004663  1140          ADM;    WBLKNO          /INCREMENT BLOCK NUMBER
+     004664  4660  
+ 582 004665  1460          SAE I                   /COMPARE LATEST TO
+ 583 004666  0000  CFBLK,  .-.                     /FINAL BLOCK NUMBER
+ 584 004667  6654          JMP     WLOOP           /KEEP GOING IF NOT THERE YET
+ 585 004670  0733          MTB I   U;      0000    /START TAPE MOVING BACKWARDS
+     004671  0000  
+ 586 004672  0733          MTB I   U;      0000    /JUST IN CASE, DO IT AGAIN
+     004673  0000  
+ 587 004674  1120  BTSTLP, ADA I;  0001            /ADD ON INCREMENT
+     004675  0001  
+ 588 004676  1060          STA I                   /STORE RESULTANT
+ 589 004677  0000  BTEST,  .-.                     /HERE FOR TEST
+ 590 004700  0733          MTB I   U;      0       /MOVE TOWARDS BLOCK ZERO
+     004701  0000  
+ 591 004702  1440          SAE;    BTEST           /SKIP IF BLOCK MATCHES INTENDED
+     004703  4677  
+ 592 004704  6747          JMP     RERROR          /JUMP IF BACKWARD BLOCK NUMBER WRONG
+ 593 004705  0450          AZE                     /AT BEGINNING OF TAPE?
+ 594 004706  6674          JMP     BTSTLP          /NO, KEEP GOING
+ 595               /      NOW READ CHECK THE TAPE.
+ 596               
+ 597 004707  1020          LDA I;  0020            /GET EXTENDED ADDRESSING BIT
+     004710  0020  
+ 598 004711  0001          AXO                     /LOAD IT
+ 599 004712  0011          CLR                     /CLEAN UP
+ 600 004713  4720          STC     RBLKNO          /INITIALIZE TO BLOCK ZERO
+ 601 004714  1020  RLOOP,  LDA I;  0000            /GET TRANSFER ADDRESS
+     004715  0000  
+ 602 004716  0023          TMA                     /LOAD TMA SETUP REGISTER
+ 603 004717  0732          RDE I   U               /READ IN
+ 604 004720  0000  RBLKNO, .-.                     /LATEST BLOCK
+ 605 004721  1460          SAE I;  7777            /COMPARE CHECKSUM TO DESIRED
+     004722  7777  
+ 606 004723  6747          JMP     RERROR          /JUMP IF BAD
+ 607 004724  1020          LDA I;  0001            /GET BLOCK INCREMENT
+     004725  0001  
+ 608 004726  1140          ADM;    RBLKNO          /BUMP THE BLOCK NUMBER
+     004727  4720  
+ 609 004730  1440          SAE;    CFBLK           /AT HIGHEST BLOCK YET?
+     004731  4666  
+ 610 004732  6714          JMP     RLOOP           /NO, KEEP READING
+ 611 004733  0061          SET I   1;      3777    /SETUP DATA POINTER
+     004734  3777  
+ 612 004735  1020          LDA I;  11              /GET INITIAL DATA VALUE
+     004736  0011  
+ 613 004737  1461  DLOOP,  SAE I   1               /VALUE CORRECT?
+ 614 004740  6747          JMP     RERROR          /NO, BARF
+ 615 004741  2736          ADD     .-3             /ADD ON DATA INCREMENT
+ 616 004742  0201          XSK     1               /DONE YET?
+ 617 004743  6737          JMP     DLOOP           /NO, KEEP GOING
+ 618 004744  1020          LDA I;  DS3!D           /SETUP FOR GOOD TAPE FRAME
+     004745  6330  
+ 619 004746  6751          JMP     .+3             /DON'T USE BAD FRAME
+ 620               
+ 621 004747  1020  RERROR, LDA I;  DS4!D           /SETUP ERROR FRAME
+     004750  6463  
+ 622 004751  4201          STC     DS3OR4          /STORE PROPER FRAME ADDRESS
+ 623 004752  0643          LDF     3               /SETUP DATA FIELD
+ 624 004753  0011          CLR                     /CLEAN UP
+ 625 004754  0001          AXO                     /CLEAR EXTENDED ADDRESSING MODE
+ 626 004755  0733          MTB I   U;      0000    /START THE TAPE
+     004756  0000  
+ 627 004757  0733          MTB I   U;      0000    /MOVING BACKWARDS
+     004760  0000  
+ 628 004761  6200          JMP     DSP3            /NOW GO TELL THEM THE NEWS
+ 629               
+ 630 004762  0000  ANS,    ZBLOCK  2               /ANSWER BUFFER FOR QANDA CALLS
+     004763  0000  
+ 631                      PAGE
+ 632               
+ 633               /       QANDA SUBROUTINE FOR THE PDP-12.
+ 634               
+ 635               /       COMES HERE TO INITIALIZE THE ROUTINE.
+ 636               
+ 637 005000  1020  QAINIT, LDA I;  2               /SET SKIP RETURN VALUE
+     005001  0002  
+ 638 005002  2000          ADD     0               /GET CALLER
+ 639 005003  1060          STA I                   /STORE RETURN
+ 640 005004  0000  QAB,    .-.                     /HERE FOR EXIT LATER
+ 641 005005  3200          ADD     QAL+3
+ 642 005006  4001          STC     1               /PTR TO FIRST PARAM
+ 643 005007  1001          LDA     1               /GET FIRST PARAM
+ 644 005010  3264          ADD     QAQ+1           /PTR TO HALFWORD-1
+ 645 005011  5057          STC     QAG-3
+ 646 005012  1021          LDA I   1
+ 647 005013  5052          STC     QARFSH-1
+ 648 005014  4006          STC     6               /XR6=0 IF NO ANSWER FIELD, XR6=1777 IF YES
+ 649 005015  0043  QACA,   SET     3;      QARFSH-1/POINT XR3 TO ANSWERS
+     005016  5052  
+ 650 005017  0044          SET     4;      QAG-3   /POINT XR4 TO QUESTIONS
+     005020  5057  
+ 651               
+ 652               /       COMES HERE IF FIRST TIME THROUGH OR FOLLOWING A <CR>.
+ 653               
+ 654 005021  0041          SET     1;      4
+     005022  0004  
+ 655 005023  7270          JMP     QAT
+ 656 005024  0016          NOP                     /F
+ 657 005025  1324          LDH I   4               /H. BUMP PTR IF H OR F
+ 658 005026  7231  QAD,    JMP     QAO
+ 659 005027  7035          JMP     .+6             /74
+ 660 005030  7050          JMP     QAE             /34
+ 661 005031  1460          SAE I;  43              /<CR>?
+     005032  0043  
+ 662 005033  7026          JMP     QAD             /NO
+ 663 005034  7021          JMP     QACA+4          /EXAMINE NEXT CHAR
+ 664                                               /INITIALIZE ANSWER BUFR
+ 665 005035  1343          STH     3               /74 TO ANSWERS
+ 666 005036  1324          LDH I   4               /NEXT HALFWORD
+ 667 005037  1120          ADA I;  -60
+     005040  7720  
+ 668 005041  0017          COM
+ 669 005042  4006          STC     6
+ 670 005043  1363          STH I   3               /0 IN AC
+ 671 005044  0226          XSK I   6
+ 672 005045  7043          JMP     .-2
+ 673 005046  1323          LDH I   3               /BUMP PTR TO ANSWERS
+ 674 005047  7026          JMP     QAD
+ 675               /      ANSWER BUFFER IS INITIATED.
+ 676               
+ 677 005050  1343  QAE,    STH     3
+ 678 005051  0064          SET I   4;      0       /XR4 TO PTR TO LAST TYPED CHAR IN ANSWER BUFR
+     005052  0000  
+ 679               
+ 680               /       ----RE-ENTER HERE TO REFRESH----
+ 681               
+ 682 005053  1020  QARFSH, LDA I;  377             /SET INITIAL Y POSITION HIGH
+     005054  0377  
+ 683 005055  5113          STC     QAH-1
+ 684 005056  0063          SET I   3;      0       /XR3 TO PTR TO HALFWORD QUESTIONS-1
+     005057  0000  
+ 685 005060  0045          SET     5;      QARFSH-1/XR5 TO PTR TO LAST DISPLAYED CHAR IN ANSWER BUFR
+     005061  5052  
+ 686 005062  0041  QAG,    SET     1;      3
+     005063  0003  
+ 687 005064  7270          JMP     QAT
+ 688 005065  7074          JMP     .+7             /F
+ 689 005066  1323          LDH I   3               /H. BUMP PTR
+ 690 005067  1020          LDA I;  BCL I           /NEITHER. ASSUME HALF SIZE
+     005070  1560  
+ 691 005071  5103          STC     QAM+2           /SET INSTR TO CLEAR FF FOR HALF SIZE
+ 692 005072  3512          ADD     QAW             /NOP IN AC
+ 693 005073  7101          JMP     QAM
+ 694 005074  1323          LDH I   3               /BUMP PTR
+ 695 005075  1020          LDA I;  BSE I
+     005076  1620  
+ 696 005077  5103          STC     QAM+2           /SET INSTR TO SET FF FOR FULL SIZE
+ 697 005100  3513          ADD     QAW+1           /ADD 9U IN AC
+ 698 005101  5245  QAM,    STC     QAP+3
+ 699 005102  0024          MSC I   4               /READ CONTROL REGISTER
+ 700 005103  1620          BSE I;  200             /THIS INSTR CHANGES. EITHER BSE I OR BCL I
+     005104  0200  
+ 701 005105  0004          MSC      4              /AC TO CONTROL REGISTER
+ 702 005106  0061          SET I   1;      100     /XR1 TO INITIAL X POSITION
+     005107  0100  
+ 703 005110  1020          LDA I;  -40             /Y COORDINATE MULTIPLE
+     005111  7740  
+ 704 005112  1160          ADM I;  0               /Y COORDINATE
+     005113  0000  
+ 705 005114  1323  QAH,    LDH I   3
+ 706 005115  7232          JMP     QAO+1
+ 707 005116  7301          JMP     QAZ             /74 BUMP PTR TO NEXT CHAR, PUT 40 IN AC
+ 708 005117  7136          JMP     QAJ             /34
+ 709 005120  1420          SHD I;  "#^100          /NEITHER
+     005121  4300  
+ 710 005122  7062          JMP     QAG             /CR. MOVE X AND Y COORDINATE
+ 711 005123  7242          JMP     QAP             /DISPLAY CHAR
+ 712 005124  7114          JMP     QAH             /PICK UP NEXT CHAR
+ 713 005125  7242          JMP     QAP             /TO HERE IF DISPLAYING ANSWER BUFR
+ 714 005126  1520          SRO I;                  /SWITCH TO DISPLAY CURSOR. EITHER 0000 OR 7777
+ 715 005127  0000          0                       /IF XR4=XR5, THEN SWITCH=7777
+ 716 005130  7516          JMP     QAF
+ 717               /      QUESTION MODE.
+ 718               
+ 719 005131  1325  QAI,    LDH I   5
+ 720 005132  7232          JMP     QAO+1
+ 721 005133  7114          JMP     QAH             /74
+ 722 005134  7114          JMP     QAH             /34
+ 723 005135  7125          JMP     QAI-4           /NEITHER. DISPLAY IT
+ 724 005136  7521  QAJ,    JMP     GETKBD          /TO HERE IF DISPLAYED BUFFER
+ 725 005137  0470          AZE I
+ 726 005140  7004          JMP     QAB             /NOTHING TYPED . EXIT
+ 727 005141  0062          SET I   2;      QAY
+     005142  5412  
+ 728 005143  1402          SHD     2               /LF?
+ 729 005144  7311          JMP     QAK+4           /YES. EXIT
+ 730 005145  1422          SHD I   2               /CR?
+ 731 005146  7223          JMP     QAN
+ 732 005147  0206          XSK     6               /IS THERE AN ANSWER FIELD?
+ 733 005150  7053          JMP     QARFSH
+ 734 005151  1422          SHD I   2               /<?
+ 735 005152  7175          JMP     QAL
+ 736 005153  1422          SHD I   2               />?
+ 737 005154  7305          JMP     QAK
+ 738 005155  1422          SHD I   2               /ALT?
+ 739 005156  7015          JMP     QACA            /REINITIALIZE
+ 740 005157  1422          SHD I   2               /BACK SLASH?
+ 741 005160  7053          JMP     QARFSH          /IGNORE
+ 742 005161  1422          SHD I   2               /RUBOUT?
+ 743 005162  7175          JMP     QAL             /IGNORE
+ 744 005163  1422          SHD I   2               /TAB?
+ 745 005164  7053          JMP     QARFSH          /IGNORE
+ 746 005165  5172          STC     .+5             /ACCEPTABLE CHAR
+ 747 005166  7231          JMP     QAO             /TEST NEXT CHAR
+ 748 005167  7263          JMP     QAQ             /74 BACK PTR UP BY 1
+ 749 005170  7263          JMP     QAQ             /34 ^
+ 750 005171  1020          LDA I;  0               /OK. STORE IT
+     005172  0000  
+ 751 005173  1344          STH     4
+ 752 005174  7053          JMP     QARFSH          /REDISPLAY
+ 753               
+ 754 005175  1304  QAL,    LDH     4               /TO HERE IF RUBOUT OR <
+ 755 005176  7232          JMP     QAO+1
+ 756 005177  7053          JMP     QARFSH          /74 IGNORE
+ 757 005200  1776          -6002
+ 758 005201  1302          LDH     2               /TEST THE CHAR
+ 759 005202  1460          SAE I;  37              /RUBOUT?
+     005203  0037  
+ 760 005204  7263          JMP     QAQ             /NO. BACK PTR UP BY 1
+ 761 005205  0045          SET     5;      4
+     005206  0004  
+ 762 005207  0043          SET     3;      4
+     005210  0004  
+ 763 005211  7213          JMP     .+2
+ 764 005212  1325         LDH I   5               /BUMP PTR
+ 765 005213  1323          LDH I   3               /GET NEXT CHAR
+ 766 005214  7232          JMP     QAO+1
+ 767 005215  0016          NOP                     /IF 74 OR 34, REPLACE CURRENT CHAR WITH 0
+ 768 005216  0011          CLR
+ 769 005217  1345          STH     5
+ 770 005220  0450          AZE                     /WAS IT 74 OR 34?
+ 771 005221  7212          JMP     .-7             /NO. CONTINUE
+ 772 005222  7263          JMP     QAQ             /BACK PTR UP BY 1
+ 773               
+ 774               /       TO HERE IF CR.
+ 775               
+ 776 005223  0206  QAN,    XSK      6      
+ 777 005224  7311          JMP     QAK+4           /EXIT ROUTINE IF NO ANSWER FIELD
+ 778 005225  7231          JMP     QAO
+ 779 005226  7053          JMP     QARFSH          /74 MOVE PTR TO NEXT QUESTION FIELD
+ 780 005227  7051          JMP     QAE+1           /34 END OF BUFR. MOVE PTR TO FIRST QUESTION FIELD
+ 781 005230  7225          JMP     QAN+2
+ 782                       
+ 783 005231  1324  QAO,    LDH I   4               /S\R
+ 784 005232  1420          SHD I;  7400            /+1 74 BEGIN FIELD
+     005233  7400  
+ 785 005234  6000          JMP     0               /+3 NEITHER 74 NOR 34
+ 786 005235  1460          SAE I;  34
+     005236  0034  
+ 787 005237  0220          XSK I   0
+ 788 005240  0220          XSK I   0
+ 789 005241  6000          JMP     0
+ 790               
+ 791               /       S\R TO DISP LINC CHAR IN AC.
+ 792               
+ 793 005242  0241  QAP,    ROL     1               /MULT BY 2 FOR INDEX TO ADDRESS OF TABLE
+ 794 005243  3430          ADD     QAX+4
+ 795 005244  4002          STC     2               /ADDRESS OF CHAR TO DISP IN XR2
+ 796 005245  3506          ADD     QAU             /THIS INSTR CHANGES. EITHER OP OR ADD 9U
+ 797 005246  3506          ADD     QAU
+ 798 005247  2001          ADD     1               /ADD 4 TO XR1 TO SPACE CHAR
+ 799 005250  4001          STC     1
+ 800 005251  2005          ADD     5               /GET ADDRESS OF ANSWER BUFR
+ 801 005252  0017          COM
+ 802 005253  2004          ADD     4
+ 803 005254  0450          AZE
+ 804 005255  0011          CLR
+ 805 005256  5127          STC     QAI-2           /SWITCH=0 OR 7777
+ 806 005257  3113          ADD     QAH-1           /Y COORDINATE IN AC
+ 807 005260  1742          DSC     2
+ 808 005261  1762          DSC I   2               /DISPLAY CHAR
+ 809 005262  6000          JMP     0
+ 810               
+ 811 005263  1020  QAQ,    LDA I;  -4000           /BACK UP PTR BY 1
+     005264  4000  
+ 812 005265  1140          ADM;    4
+     005266  0004  
+ 813 005267  7053          JMP     QARFSH          /REDISPLAY
+ 814 005270  1321  QAT,   LDH I   1               /S\R
+ 815 005271  1420          SHD I;  "F^100          /+1 F
+     005272  0600  
+ 816 005273  6000          JMP     0               /+3 NEITHER
+ 817 005274  1460          SAE I;  10
+     005275  0010  
+ 818 005276  0220          XSK I   0
+ 819 005277  0220          XSK I   0
+ 820 005300  6000          JMP     0
+ 821               
+ 822 005301  1323  QAZ,    LDH I   3
+ 823 005302  1020          LDA I;  40
+     005303  0040  
+ 824 005304  7125          JMP     QAI-4
+ 825               
+ 826               /       TO HERE IF >.
+ 827               
+ 828 005305  1324  QAK,    LDH I   4
+ 829 005306  0470          AZE I                   /IS CURRENT CHAR BLANK?
+ 830 005307  7263          JMP     QAQ             /YES. IGNORE
+ 831 005310  7424          JMP     QAX             /MOVE DOT FORWARD
+ 832               
+ 833               /       TO HERE TO EXIT WITH SKIP.
+ 834               
+ 835 005311  1020          LDA I;  1
+     005312  0001  
+ 836 005313  1140          ADM;    QAB
+     005314  5004  
+ 837 005315  7004          JMP     QAB
+ 838               /      CHARACTER PATTERNS.
+ 839               
+ 840 005316  0101  QAV,    0101                    /KBD 0, ILLEGAL. USED AS MARKER
+ 841 005317  0101          0101
+ 842 005320  4477          4477                    /1:A
+ 843 005321  7744          7744
+ 844 005322  5177          5177                    /2:B
+ 845 005323  2651          2651
+ 846 005324  4136          4136                    /3:C
+ 847 005325  2241          2241
+ 848 005326  4177          4177                    /4:D
+ 849 005327  3641          3641
+ 850 005330  4577          4577                    /5:E
+ 851 005331  4145          4145
+ 852 005332  4477          4477                    /6:F
+ 853 005333  4044          4044
+ 854 005334  4136          4136                    /7:G
+ 855 005335  2645          2645
+ 856 005336  1077          1077                    /10:H
+ 857 005337  7710          7710
+ 858 005340  7741          7741                    /11:I
+ 859 005341  0041          0041
+ 860 005342  4142          4142                    /12:J
+ 861 005343  4076          4076
+ 862 005344  1077          1077                    /13:K
+ 863 005345  4324          4324
+ 864 005346  0177          0177                    /14:L
+ 865 005347  0301          0301
+ 866 005350  3077          3077                    /15:M
+ 867 005351  7730          7730    
+ 868 005352  3077          3077                    /16:N
+ 869 005353  7706          7706    
+ 870 005354  4177          4177                    /17:O
+ 871 005355  7741          7741
+ 872 005356  4477          4477                    /20:P
+ 873 005357  3044          3044
+ 874 005360  4276          4276                    /21:Q
+ 875 005361  0376          0376
+ 876 005362  4477          4477                    /22:R
+ 877 005363  3146          3146
+ 878 005364  5121          5121                    /23:S
+ 879 005365  4651          4651
+ 880 005366  4040          4040                    /24:T
+ 881 005367  4077          4077
+ 882 005370  0177          0177                    /25:U
+ 883 005371  7701          7701    
+ 884 005372  0176          0176                    /26:V
+ 885 005373  7402          7402
+ 886 005374  0677          0677                    /27:W
+ 887 005375  7701          7701
+ 888 005376  1463         1463                    /30:X
+ 889 005377  6314          6314
+ 890 005400  0770          0770                    /31:Y
+ 891 005401  7007          7007
+ 892 005402  4543          4543                    /32:Z
+ 893 005403  6151          6151
+ 894 005404  4177          4177                    /33:/
+ 895 005405  0000          0000
+ 896                                               /34:BACKSLASH IGNORED ON INPUT
+ 897 005406  0000          0                       /NOT USED
+ 898 005407  0000          0                       /NOT USED
+ 899 005410  0000          0000                    /35:]
+ 900 005411  7741          7741
+ 901                                               /CODES 36:ALT, 37:RUBOUT NOT DISPLAYED
+ 902 005412  4543  QAY,    4543                    /LF,CR
+ 903 005413  7476          7476                    /<,>
+ 904 005414  3634          3634                    /ALT, BACKSLASH
+ 905 005415  3747          3747                    /RUBOUT, TAB
+ 906 005416  0000          0000                    /40:SPACE
+ 907 005417  0000          0000
+ 908 005420  7500          7500                    /41:X!
+ 909 005421  0000          0000
+ 910 005422  7000          7000                    /42:"
+ 911 005423  0070          0070
+ 912                                               /CODES 43:, 44:, 45:LF NOT DISPLAYED
+ 913 005424  7232  QAX,    JMP     QAO+1
+ 914 005425  7263          JMP     QAQ
+ 915 005426  7263          JMP     QAQ
+ 916 005427  7053          JMP     QARFSH
+ 917 005430  5316          QAV
+ 918 005431  0000          0                       /NOT USED
+ 919 005432  5166          5166                    /46: &
+ 920 005433  0526          0526
+ 921                                               /CODE 47:TAB NOT DISPLAYED
+ 922 005434  0000          0                       /NOT USED
+ 923 005435  0000          0                       /NOT USED
+ 924 005436  3600          3600                    /50:(
+ 925 005437  0041          0041
+ 926 005440  4100          4100                    /51:)
+ 927 005441  0036          0036
+ 928 005442  2050          2050                    /52:*
+ 929 005443  0050          0050
+ 930 005444  0404          0404                    /53:+
+ 931 005445  0437          0437
+ 932 005446  0500          0500                    /54:,
+ 933 005447  0006          0006
+ 934 005450  0404          0404                    /55:-
+ 935 005451  0404          0404
+ 936 005452  0001          0001                    /56:.
+ 937 005453  0000          0000
+ 938 005454  0601          0601                    /57:\
+ 939 005455  4030          4030
+ 940 005456  4536         4536                    /60:0
+ 941 005457  3651          3651
+ 942 005460  2101          2101                    /61:1
+ 943 005461  0177          0177
+ 944 005462  4523          4523                    /62:2
+ 945 005463  2151          2151
+ 946 005464  4122          4122                    /63:3
+ 947 005465  2651          2651
+ 948 005466  2414          2414                    /64:4
+ 949 005467  0477          0477
+ 950 005470  5172          5172                    /65:5
+ 951 005471  0651          0651
+ 952 005472  1506          1506                    /66:6
+ 953 005473  4225          4225
+ 954 005474  4443          4443                    /67:7
+ 955 005475  6050          6050
+ 956 005476  5126          5126                    /70:8
+ 957 005477  2651          2651
+ 958 005500  5122          5122                    /71:9
+ 959 005501  3651          3651
+ 960 005502  2200          2200                    /72::
+ 961 005503  0000          0000
+ 962 005504  4601          4601                    /73:;
+ 963 005505  0000          0000
+ 964                                               /CODE 74:<NOT DISPLAYED
+ 965 005506  0002  QAU,    2                       /CONSTANT
+ 966 005507  0000          0                       /NOT USED
+ 967 005510  1212          1212                    /75:=
+ 968 005511  1212          1212
+ 969                                               /CODE 76:> NOT DISPLAYED
+ 970 005512  0016  QAW,    NOP
+ 971 005513  3506          ADD     QAU
+ 972 005514  4020          4020                    /77:?
+ 973 005515  2055          2055
+ 974               
+ 975 005516  1760  QAF,    DSC I;  6000
+     005517  6000  
+ 976 005520  7131          JMP     QAI
+ 977               
+ 978               /       END Q+A.
+ 979               /      KEYBOARD INPUT ROUTINE.
+ 980               
+ 981 005521  1000  GETKBD, LDA;    0
+     005522  0000  
+ 982 005523  5643          STC     QAEXIT+6        /SAVE RETURN
+ 983 005524  2001          ADD     1               /SAVE XRS 1 AND 2
+ 984 005525  5640          STC     QAEXIT+3
+ 985 005526  2002          ADD     2
+ 986 005527  5642          STC     QAEXIT+5
+ 987 005530  5636          STC     QAEXIT+1
+ 988 005531  0415          KST                     /WAS SOMETHING TYPED?
+ 989 005532  6000          JMP     0               /NO: EXIT
+ 990 005533  0500          IOB;    KRB             /GET TTY CHARACTER, CLEAR THE FLAG
+     005534  6036  
+ 991 005535  1060          STA I                   /SAVE IT
+ 992 005536  0000  QATY,   .-.
+ 993 005537  1120          ADA I;  -237
+     005540  7541  
+ 994 005541  0451          APO                     /BETWEEN 200 AND 237?
+ 995 005542  7604          JMP     QACNTR          /CONTROL CHAR. CHECK FOR CR, LF, TAB
+ 996 005543  0061          SET I   1;      QACHAR-1/NO
+     005544  5654  
+ 997 005545  0062          SET I   2;      -7
+     005546  7771  
+ 998 005547  1000          LDA;    QATY
+     005550  5536  
+ 999 005551  1461          SAE I   1
+1000 005552  7554          JMP     .+2
+1001 005553  7635          JMP     QAEXIT          /ILLEGAL CHAR. DONT ECHO
+1002 005554  0222          XSK I   2               /CHECKED THEM ALL?
+1003 005555  7551          JMP     .-4
+1004 005556  1120          ADA I;  -337
+     005557  7441  
+1005 005560  0451          APO                     /BETWEEN 240 AND 337?
+1006 005561  7575          JMP     QALEGL          /YES. LEGAL CHAR
+1007 005562  1461          SAE I   1               /NO. CHECK FURTHER.
+1008 005563  7572          JMP     .+7
+1009 005564  1020          LDA I;  334             /RUBOUT
+     005565  0334  
+1010 005566  7644          JMP     QATPE           /ECHO BACKSLASH
+1011 005567  1020          LDA I;  37
+     005570  0037  
+1012 005571  7637          JMP     QAEXIT+2        /LEGAL EXIT
+1013 005572  1461          SAE I   1
+1014 005573  7635          JMP     QAEXIT          /ILLEGAL
+1015                                               /ALT
+1016 005574  7637          JMP     QAEXIT+2        /EXIT, DONT ECHO
+1017 005575  1000  QALEGL,        LDA;    QATY
+     005576  5536  
+1018 005577  7644          JMP     QATPE           /ECHO CHAR
+1019 005600  3536          ADD     QATY
+1020 005601  1560          BCL I;  7700            /STRIP IT TO 6-BIT
+     005602  7700  
+1021 005603  7637          JMP     QAEXIT+2
+1022               
+1023               /       TO HERE IF CONTROL CHAR.
+1024               
+1025 005604  1460  QACNTR, SAE I;  7755
+     005605  7755  
+1026 005606  7621          JMP     QACKLF
+1027 005607  1020          LDA I;  43              /CR
+     005610  0043  
+1028 005611  5636          STC     QAEXIT+1
+1029 005612  1020          LDA I;  215
+     005613  0215  
+1030 005614  7644          JMP     QATPE
+1031 005615  1020          LDA I;  212
+     005616  0212  
+1032 005617  7644          JMP     QATPE
+1033 005620  7635          JMP     QAEXIT
+1034               
+1035 005621  1460  QACKLF, SAE I;  7752
+     005622  7752  
+1036 005623  7627          JMP     .+4
+1037 005624  1020          LDA I;  45              /LF
+     005625  0045  
+1038 005626  7611          JMP     QACNTR+5
+1039 005627  1460          SAE I;  7751
+     005630  7751  
+1040 005631  7635          JMP     QAEXIT          /ILLEGAL
+1041 005632  1020          LDA I;  47
+     005633  0047  
+1042 005634  7637          JMP     QAEXIT+2        /EXIT, DONT ECHO
+1043               
+1044 005635  1020  QAEXIT, LDA I;  0               /GET 6-BIT ASCII
+     005636  0000  
+1045 005637  0061          SET I   1;      0       /RESTORE XRS
+     005640  0000  
+1046 005641  0062          SET I   2;      0
+     005642  0000  
+1047 005643  6000          JMP     0               /EXIT S\R GETKBD
+1048               /      S\R TO PRINT C(AC).
+1049               
+1050 005644  0500  QATPE,  IOB;    TLS
+     005645  6046  
+1051 005646  1000          LDA;    0
+     005647  0000  
+1052 005650  5654          STC     .+4             /SAVE RETURN
+1053 005651  0500          IOB;    TSF
+     005652  6041  
+1054 005653  7651          JMP     .-2
+1055 005654  6000          JMP     0               /EXIT
+1056               
+1057 005655  0243  QACHAR, 243                     /HASH
+1058 005656  0244          244                     /DOLLAR SIGN
+1059 005657  0245          245                     /PER CENT
+1060 005660  0247          247                     /APOSTROPHE
+1061 005661  0300          300                     /AT SIGN
+1062 005662  0336          336                     /UP ARROW
+1063 005663  0337          337                     /BACK ARROW
+1064 005664  0040          40                      /RUBOUT
+1065 005665  0036          36                      /ALT
+1066                      PMODE                   /GOTO GOODY MODE
+1067               
+1068 005666  0000  ISIT12, .-.                     /MACHINE CHECK ROUTINE
+1069 005667  7200          CLA                     /CLEAN UP
+1070 005670  6141          LINC                    /GOTO LINC MODE
+1071 005671  0017          COM                     /COMPLEMENT AC
+1072 005672  0002          PDP                     /COME BACK TO PDP MODE
+1073 005673  7001          IAC                     /SHOULD BE ZERO
+1074 005674  7650          SNA CLA                 /SKIP IF NOT A -12
+1075 005675  5666          JMP I   ISIT12          /ELSE JUST RETURN
+1076 005676  1777          TAD I   (SBOOT)         /GET BOOTSTRAP INSTRUCTION
+1077 005677  1376          TAD     (-JMSSYSIO)     /COMPARE TO POSSIBLE VALUE
+1078 005700  7650          SNA CLA                 /SKIP IF DIFFERENT
+1079 005701  5305          JMP     CHKCOVERLAY     /JUMP IF IT MATCHES
+1080 005702  2344          ISZ     CHKKRS          /TURN "KRSIOT"
+1081 005703  2344          ISZ     CHKKRS          /INTO "KRBIOT"
+1082 005704  3355          DCA     CHKKCC          /DESTROY "KCCIOT"
+1083 005705  7326  CHKCOVR,NL0002                  /SETUP "C" BIT MASK
+1084 005706  0775          AND I   (SCRSIZE)       /GET THE "C" BIT
+1085 005707  7650          SNA CLA                 /SKIP IF CONSOLE OVERLAY PRESENT
+1086 005710  5332          JMP     COMPLAIN        /JUMP IF NOT
+1087 005711  1775          TAD I   (SCRSIZE)       /GET THE CORE SIZE WORD
+1088 005712  7012          RTR;RAR                 /MOVE OVER AND
+     005713  7010  
+1089 005714  0374          AND     (70)            /ISOLATE MCS BITS
+1090 005715  1373          TAD     (CIF    10)     /TURN INTO CIF MCS+10
+1091 005716  3772          DCA I   (P7TSF)         /STORE OVER "TSFIOT"
+1092 005717  1771          TAD I   (P7JMP)         /GET "JMP P7AGN"
+1093 005720  3770          DCA I   (P7TLS)         /STORE OVER "TLSIOT"
+1094 005721  1367          TAD     (JMS    OUTCON) /GET OUTPUT CALL INSTRUCTION
+1095 005722  3771          DCA I   (P7JMP)         /STORE OVER "JMP P7AGN"
+1096 005723  1772          TAD I   (P7TSF)         /GET "CIF MCS+10" AGAIN
+1097 005724  3342          DCA     CHKKSF          /STORE OVER "KSFIOT"
+1098 005725  1343          TAD     CHKJMP          /GET "JMP I CTLCTST"
+1099 005726  3344          DCA     CHKKRS          /STORE OVER "KRSIOT" (OR "KRBIOT")
+1100 005727  1366          TAD     (JMS    INCON)  /GET INPUT CALL INSTRUCTION
+1101 005730  3343          DCA     CHKJMP          /STORE OVER "JMP I CTLCTST"
+1102 005731  3355          DCA     CHKKCC          /DESTROY "KCCIOT"
+1103 005732  1760  COMPLAI,TAD I   MESSPTR         /GET A CHARACTER
+1104 005733  7450          SNA                     /END OF MESSAGE?
+1105 005734  5777          JMP I   (SBOOT)         /YES, GOODBYE!
+1106 005735  4765          JMS I   (P7CH)          /NO, PRINT IT
+1107 005736  2360          ISZ     MESSPTR         /BUMP TO NEXT
+1108 005737  5332          JMP     COMPLAIN        /GO DO ANOTHER ONE
+1109 005740  0000  CTLCTST,.-.                    /CHECK FOR <^C> ROUTINE
+1110 005741  7200          CLA                     /CLEAN UP
+1111 005742  6031  CHKKSF, KSFIOT                  /**** CONSOLE **** CIF MCS+10
+1112 005743  5740  CHKJMP, JMP I   CTLCTST         /**** CONSOLE **** JMS INCON
+1113 005744  6034  CHKKRS, KRSIOT/OR KRBIOT        /**** CONSOLE **** JMP I CTLCTST
+1114 005745  0364          AND     (177)           /JUST SEVEN BITS
+1115 005746  3763          DCA I   (INCHAR)        /STASH THE CHARACTER
+1116 005747  7346          NL7775                  /-3
+1117 005750  1763          TAD I   (INCHAR)        /COMPARE INPUT TO <^C>
+1118 005751  7450          SNA                     /SKIP IF OTHER
+1119 005752  2775          ISZ I   (SCRSIZE)       /ELSE SET SOFT INDICATOR
+1120 005753  7750          SPA SNA CLA             /SKIP IF <^D> OR GREATER
+1121 005754  5777          JMP I   (SBOOT)         /ELSE GOODBYE
+1122 005755  6032  CHKKCC, KCCIOT/OR 0000          /**** CONSOLE **** 0000
+1123 005756  1763          TAD I   (INCHAR)        /GET THE CHARACTER
+1124 005757  5740          JMP I   CTLCTST         /RETURN
+1125               
+1126 005760  6562  MESSPTR,MESSAGE                 /COMPLAINT MESSAGE POINTER
+1127               
+1128 005763  6613          PAGE
+     005764  0177  
+     005765  4153  
+     005766  4031  
+     005767  4033  
+     005770  4161  
+     005771  4160  
+     005772  4157  
+     005773  6212  
+     005774  0070  
+     005775  7611  
+     005776  3740  
+     005777  7600  
+1129               
+1130                       LMODE                   /GOTO L...MODE
+1131                      SEGMNT  3               /WHERE TEXT FRAMES GO
+1132               
+1133                       *1                      /START OF FRAMES
+1134                
+1135               /       FRAME 1:
+1136               
+1137               /   MARK12
+1138               /THIS PROGRAM WILL FORMAT AND CHECK 
+1139               /LINC TAPES FOR THE PDP-12
+1140                
+1141               /SELECT OPTION AND PRESS LINE FEED 
+1142               /ON THE CONSOLE TELETYPE
+1143                
+1144               /SELECT -
+1145                
+1146               / 1 STD LINC FORMAT
+1147                
+1148               / P 129 WORD FORMAT
+1149                
+1150               / B 1600 STD BLKS
+1151                
+1152               /       FRAME 2:
+1153                
+1154               /MOUNT TAPE TO BE
+1155               /MARKED ON THE RIGHT
+1156               /REEL OF UNIT 1
+1157                
+1158               /PLACE UNIT 1 IN
+1159               /REMOTE WITH
+1160               /WRITE ENABLED, THEN
+1161                
+1162               /PRESS THE MARK SWITCH
+1163                
+1164                
+1165               /       FRAME 3:
+1166                
+1167               /   GOOD TAPE
+1168                
+1169               /ALLOW MARKED TAPE TO REWIND
+1170               /THEN SELECT OPTION AND TYPE
+1171               /LINE FEED ON THE TELETYPE
+1172                
+1173               /SELECT -
+1174                
+1175               / 1 MARK ANOTHER TAPE
+1176                
+1177               / 2 RESTART P?S/8
+1178               /FRAME 4
+1179                
+1180               /TAPE CHECK FAILED
+1181                
+1182               /SELECT -
+1183                
+1184               / 1 MARK ANOTHER TAPE
+1185                
+1186               / 2 RESTART P?S/8
+1187               
+1188 006001  0640  DS1,    TEXT    "F    MARK 12#H#H"
+     006002  4040  
+     006003  4015  
+     006004  0122  
+     006005  1340  
+     006006  6162  
+     006007  4310  
+     006010  4310  
+     006011  0000  
+1189 006012  4040          TEXT    "    THIS PROGRAM WILL FORMAT AND CHECK#H"
+     006013  4040  
+     006014  2410  
+     006015  1123  
+     006016  4020  
+     006017  2217  
+     006020  0722  
+     006021  0115  
+     006022  4027  
+     006023  1114  
+     006024  1440  
+     006025  0617  
+     006026  2215  
+     006027  0124  
+     006030  4001  
+     006031  1604  
+     006032  4003  
+     006033  1005  
+     006034  0313  
+     006035  4310  
+     006036  0000  
+1190 006037  4040          TEXT    "    LINC TAPES FOR THE PDP-12#"
+     006040  4040  
+     006041  1411  
+     006042  1603  
+     006043  4024  
+     006044  0120  
+     006045  0523  
+     006046  4006  
+     006047  1722  
+     006050  4024  
+     006051  1005  
+     006052  4020  
+     006053  0420  
+     006054  5561  
+     006055  6243  
+     006056  0000  
+1191 006057  1043         TEXT    "H#H    SELECT OPTION AND PRESS LINE FEED"
+     006060  1040  
+     006061  4040  
+     006062  4023  
+     006063  0514  
+     006064  0503  
+     006065  2440  
+     006066  1720  
+     006067  2411  
+     006070  1716  
+     006071  4001  
+     006072  1604  
+     006073  4020  
+     006074  2205  
+     006075  2323  
+     006076  4014  
+     006077  1116  
+     006100  0540  
+     006101  0605  
+     006102  0504  
+     006103  0000  
+1192 006104  4310          TEXT    "#H    ON THE CONSOLE TELETYPE# #"
+     006105  4040  
+     006106  4040  
+     006107  1716  
+     006110  4024  
+     006111  1005  
+     006112  4003  
+     006113  1716  
+     006114  2317  
+     006115  1405  
+     006116  4024  
+     006117  0514  
+     006120  0524  
+     006121  3120  
+     006122  0543  
+     006123  4043  
+     006124  0000  
+1193 006125  0623          TEXT    "FSELECT  <1# #"
+     006126  0514  
+     006127  0503  
+     006130  2440  
+     006131  4074  
+     006132  6143  
+     006133  4043  
+     006134  0000  
+1194 006135  0640          TEXT    "F  1  STD LINC FORMAT#F#"
+     006136  4061  
+     006137  4040  
+     006140  2324  
+     006141  0440  
+     006142  1411  
+     006143  1603  
+     006144  4006  
+     006145  1722  
+     006146  1501  
+     006147  2443  
+     006150  0643  
+     006151  0000  
+1195 006152  0640         TEXT    "F  P  128 WORD FORMAT#F#"
+     006153  4020  
+     006154  4040  
+     006155  6162  
+     006156  7040  
+     006157  2717  
+     006160  2204  
+     006161  4006  
+     006162  1722  
+     006163  1501  
+     006164  2443  
+     006165  0643  
+     006166  0000  
+1196 006167  0640          TEXT    "F  B  896 STD  BLKS#\"
+     006170  4002  
+     006171  4040  
+     006172  7071  
+     006173  6640  
+     006174  2324  
+     006175  0440  
+     006176  4002  
+     006177  1413  
+     006200  2343  
+     006201  3400  
+1197 006202  4306  DS2A,   TEXT    "#F MOUNT TAPE TO BE#"
+     006203  4015  
+     006204  1725  
+     006205  1624  
+     006206  4024  
+     006207  0120  
+     006210  0540  
+     006211  2417  
+     006212  4002  
+     006213  0543  
+     006214  0000  
+1198 006215  0640          TEXT    "F MARKED ON THE RIGHT#"
+     006216  1501  
+     006217  2213  
+     006220  0504  
+     006221  4017  
+     006222  1640  
+     006223  2410  
+     006224  0540  
+     006225  2211  
+     006226  0710  
+     006227  2443  
+     006230  0000  
+1199 006231  0640          TEXT    "F REEL OF UNIT 1.#F#"
+     006232  2205  
+     006233  0514  
+     006234  4017  
+     006235  0640  
+     006236  2516  
+     006237  1124  
+     006240  4061  
+     006241  5643  
+     006242  0643  
+     006243  0000  
+1200 006244  0640         TEXT    "F PLACE UNIT 1 IN#\"
+     006245  2014  
+     006246  0103  
+     006247  0540  
+     006250  2516  
+     006251  1124  
+     006252  4061  
+     006253  4011  
+     006254  1643  
+     006255  3400  
+1201 006256  4340  DS2B,   TEXT    "# # # # # #F"
+     006257  4340  
+     006260  4340  
+     006261  4340  
+     006262  4340  
+     006263  4306  
+     006264  0000  
+1202 006265  4022          TEXT    " REMOTE WITH #" 
+     006266  0515  
+     006267  1724  
+     006270  0540  
+     006271  2711  
+     006272  2410  
+     006273  4043  
+     006274  0000  
+1203 006275  0640          TEXT    "F WRITE ENABLED, THEN#F #F"
+     006276  2722  
+     006277  1124  
+     006300  0540  
+     006301  0516  
+     006302  0102  
+     006303  1405  
+     006304  0454  
+     006305  4024  
+     006306  1005  
+     006307  1643  
+     006310  0640  
+     006311  4306  
+     006312  0000  
+1204 006313  4020          TEXT    " PRESS THE MARK SWITCH#\"
+     006314  2205  
+     006315  2323  
+     006316  4024  
+     006317  1005  
+     006320  4015  
+     006321  0122  
+     006322  1340  
+     006323  2327  
+     006324  1124  
+     006325  0310  
+     006326  4334  
+     006327  0000  
+1205 006330  0643  DS3,   TEXT    "F#F   GOOD TAPE#F#"
+     006331  0640  
+     006332  4040  
+     006333  0717  
+     006334  1704  
+     006335  4024  
+     006336  0120  
+     006337  0543  
+     006340  0643  
+     006341  0000  
+1206 006342  1040          TEXT    "H   ALLOW MARKED TAPE TO REWIND#"
+     006343  4040  
+     006344  0114  
+     006345  1417  
+     006346  2740  
+     006347  1501  
+     006350  2213  
+     006351  0504  
+     006352  4024  
+     006353  0120  
+     006354  0540  
+     006355  2417  
+     006356  4022  
+     006357  0527  
+     006360  1116  
+     006361  0443  
+     006362  0000  
+1207 006363  1040          TEXT    "H   THEN SELECT OPTION AND TYPE#"
+     006364  4040  
+     006365  2410  
+     006366  0516  
+     006367  4023  
+     006370  0514  
+     006371  0503  
+     006372  2440  
+     006373  1720  
+     006374  2411  
+     006375  1716  
+     006376  4001  
+     006377  1604  
+     006400  4024  
+     006401  3120  
+     006402  0543  
+     006403  0000  
+1208 006404  1040         TEXT    "H   LINE FEED ON THE TELETYPE#F#"
+     006405  4040  
+     006406  1411  
+     006407  1605  
+     006410  4006  
+     006411  0505  
+     006412  0440  
+     006413  1716  
+     006414  4024  
+     006415  1005  
+     006416  4024  
+     006417  0514  
+     006420  0524  
+     006421  3120  
+     006422  0543  
+     006423  0643  
+     006424  0000  
+1209 006425  0623          TEXT    "FSELECT  <1#F#"
+     006426  0514  
+     006427  0503  
+     006430  2440  
+     006431  4074  
+     006432  6143  
+     006433  0643  
+     006434  0000  
+1210 006435  0640          TEXT    "F 1 MARK ANOTHER TAPE#F#"
+     006436  6140  
+     006437  1501  
+     006440  2213  
+     006441  4001  
+     006442  1617  
+     006443  2410  
+     006444  0522  
+     006445  4024  
+     006446  0120  
+     006447  0543  
+     006450  0643  
+     006451  0000  
+1211 006452  0640          TEXT    "F 2 BOOT P?S/8 #\"
+     006453  6240  
+     006454  0217  
+     006455  1724  
+     006456  4020  
+     006457  7723  
+     006460  5770  
+     006461  4043  
+     006462  3400  
+1212 006463  0643  DS4,   TEXT    "F#F   TAPE CHECK FAILED#"
+     006464  0640  
+     006465  4040  
+     006466  2401  
+     006467  2005  
+     006470  4003  
+     006471  1005  
+     006472  0313  
+     006473  4006  
+     006474  0111  
+     006475  1405  
+     006476  0443  
+     006477  0000  
+1213 006500  0643          TEXT    "F#F#F#FSELECT <1#F#F"
+     006501  0643  
+     006502  0643  
+     006503  0623  
+     006504  0514  
+     006505  0503  
+     006506  2440  
+     006507  7461  
+     006510  4306  
+     006511  4306  
+     006512  0000  
+1214 006513  4061          TEXT    " 1 MARK ANOTHER TAPE#F#F"
+     006514  4015  
+     006515  0122  
+     006516  1340  
+     006517  0116  
+     006520  1724  
+     006521  1005  
+     006522  2240  
+     006523  2401  
+     006524  2005  
+     006525  4306  
+     006526  4306  
+     006527  0000  
+1215 006530  4062          TEXT    " 2  RESTART P?S/8#F#\"
+     006531  4040  
+     006532  2205  
+     006533  2324  
+     006534  0122  
+     006535  2440  
+     006536  2077  
+     006537  2357  
+     006540  7043  
+     006541  0643  
+     006542  3400  
+1216                      PMODE                   /GOTO GOODY MODE
+1217               
+1218 006543  0000  CHKUP,  .-.                     /CHECK FOR <^C>, ETC. ROUTINE
+1219 006544  4777          JMS I   (CTLCTST)       /CHECK FOR <^C>
+1220 006545  7440          SZA                     /SKIP IF NOTHING CAME IN
+1221 006546  1376          TAD     (-"Q!300)       /ELSE COMPARE TO <^Q>
+1222 006547  7450          SNA                     /SKIP IF NEITHER CASE
+1223 006550  5360          JMP     CHKCLR          /ELSE FORGET IT
+1224 006551  1375          TAD     (-"S+"Q)        /COMPARE TO <^S>
+1225 006552  7640          SZA CLA                 /SKIP IF IT MATCHES
+1226 006553  5743          JMP I   CHKUP           /ELSE RETURN
+1227 006554  4777          JMS I   (CTLCTST)       /GET ANOTHER CHARACTER
+1228 006555  1376          TAD     (-"Q!300)       /COMPARE TO <^Q>
+1229 006556  7640          SZA CLA                 /SKIP IF IT MATCHES
+1230 006557  5354          JMP     .-3             /ELSE KEEP GOING
+1231 006560  3774  CHKCLR, DCA     INCHAR          /OBLITERATE <^Q>, ETC.
+1232 006561  5743          JMP I   CHKUP           /RETURN
+1233               
+1234               /       COMPLAINT MESSAGE.
+1235               
+1236 006562  0015  MESSAGE,15                      /<CR>
+1237 006563  0012          12                      /<LF>
+1238 006564  0116          "N&177
+1239 006565  0157          "O&177+40
+1240 006566  0164          "T&177+40
+1241 006567  0040          " &177
+1242 006570  0122          "R&177
+1243 006571  0165          "U&177+40
+1244 006572  0156          "N&177+40
+1245 006573  0156          "N&177+40
+1246 006574  0151          "I&177+40
+1247 006575  0156          "N&177+40
+1248 006576  0147          "G&177+40
+1249 006577  0040          " &177
+1250 006600  0157          "O&177+40
+1251 006601  0156          "N&177+40
+1252 006602  0040          " &177
+1253 006603  0120          "P&177
+1254 006604  0104          "D&177
+1255 006605  0120          "P&177
+1256 006606  0055          "-&177
+1257 006607  0061          "1&177
+1258 006610  0062          "2&177
+1259 006611  0041          "!&177
+1260 006612  0000          0                       /THIS ENDS THE MESSAGE
+1261               
+1262 006613  0000  INCHAR, .-.                     /TEMPORARY
+1263               
+1264 006774  6613          PAGE
+     006775  7776  
+     006776  7757  
+     006777  5740  
+1265               
+1266                       $                       /THAT'S ALL FOLK!
+
+ANS     4762
+B1TAB   4135
+BIGTAP  4440
+BKBNA   4550
+BKBNS   4551
+BLKCNT  4343
+BLKLP1  4506
+BLKLP2  4523
+BLOCK   4460
+BTEST   4677
+BTSTLP  4674
+BUTIT   4151
+CFBLK   4666
+CHECK   4635
+CHKCLR  6560
+CHKCOV  5705
+CHKJMP  5743
+CHKKCC  5755
+CHKKRS  5744
+CHKKSF  5742
+CHKUP   6543
+COMPLA  5732
+COUNTA  4545
+COUNTB  4546
+CTLCTS  5740
+D       2000
+DLOOP   4737
+DS1     6001
+DS2A    6202
+DS2B    6256
+DS3     6330
+DS3OR4  4201
+DS4     6463
+DSP1    4037
+DSP2    4062
+DSP3    4200
+DSP3R   4215
+EXAMAN  4021
+FBLK    4344
+FRSTGO  4607
+GETKBD  5521
+HERE    4264
+INCHAR  6613
+INCON   0031
+ISIT12  5666
+JMSC    4000
+JMSSYS  4040
+JSR     6000
+KCCIOT  6032
+KIEM    4345
+KIIM    4346
+KRSIOT  6034
+KSFIOT  6031
+LMR     6151
+LTAPE   4400
+MACHEC  4011
+MARK12  4000 unreferenced
+MARKAG  4020 unreferenced
+MARKSW  4114 unreferenced
+MESSAG  6562
+MESSPT  5760
+NL0002  7326
+NL0003  7325
+NL7775  7346
+NL7777  7240
+OMKST   4130
+ONMARK  4060
+OUTCON  0033
+P7AGN   4155
+P7CH    4153
+P7JMP   4160
+P7TEMP  4164
+P7TLS   4161
+P7TSF   4157
+PTAPE   4420
+QAB     5004
+QACA    5015
+QACHAR  5655
+QACKLF  5621
+QACNTR  5604
+QAD     5026
+QAE     5050
+QAEXIT  5635
+QAF     5516
+QAG     5062
+QAH     5114
+QAI     5131
+QAINIT  5000
+QAJ     5136
+QAK     5305
+QAL     5175
+QALEGL  5575
+QAM     5101
+QAN     5223
+QAO     5231
+QAP     5242
+QAQ     5263
+QARFSH  5053
+QAT     5270
+QATPE   5644
+QATY    5536
+QAU     5506
+QAV     5316
+QAW     5512
+QAX     5424
+QAY     5412
+QAZ     5301
+RBLKNO  4720
+RERROR  4747
+RLOOP   4714
+SBOOT   7600
+SCRSIZ  7611
+SYSIO   7640
+TEMPA   4547
+TLSIOT  6046
+TRC     6152
+TSFIOT  6041
+TTY     0003
+WAIT    4600
+WBLKNO  4660
+WLOOP   4654
+WMCNT   4634
+WMCODE  4626
+WMKWD   4620
+WRLOOP  4272
+WRLUP2  4274
+WRLUP3  4275
+WRTAP   4231
+XFR     6154

@@ -179,10 +179,6 @@ struct symbol {
 	{ "ERROR" , 040035 }, /* output an error message */
 	{ "EXPUNG", 040036 }, /* lose the standard symbols */
 	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
-#ifdef LINC
-	{ "LMODE" , 040040 }, /* set the LINC mode */
-	{ "PMODE" , 040041 }, /* set the PDP-8 mode */
-#endif
 #ifdef PQS8
 	{ "ASMIFM", 040025 }, /* assemble next if minus */
 	{ "ASMIFN", 040026 }, /* assemble next if nonzero */
@@ -272,6 +268,10 @@ struct symbol {
 /* and shouldn't be here.  Alas, most of the code in the world	*/
 /* seems to disagree.  As a compromise, I have added the -e	*/
 /* option which defines these. VRS				*/
+#ifdef LINC
+	{ "LMODE", 040040 }, /* set the LINC mode */
+	{ "PMODE", 040041 }, /* set the PDP-8 mode */
+#endif
 	{ "MQA", 007501 }, /* group 3 */
 	{ "SCA", 007441 },
 	{ "MQL", 007421 },
@@ -293,7 +293,11 @@ struct symbol {
 	{ "LINC",006141 },
 	{ "PDP", 050002 }, /* Kludge for PQS8 */
 	{ "COM", 050017 }, /* Kludge for PQS8 */
+#ifdef LINC
+#define pdp8e 23	/* Number of extensions to the symbol table */
+#else
 #define pdp8e 21	/* Number of extensions to the symbol table */
+#endif
 #else
 #define pdp8e 0
 #endif
@@ -1043,6 +1047,7 @@ eval()
 		val = getexprs() & 07777;
 		if (line[lexstart] == ']') {
 			nextlex(); /* skip end bracket */
+			nextlex(); /* skip new terminator */
 		} else {
 			/* error("parens") */;
 		}
@@ -1073,10 +1078,10 @@ eval()
 		val = getexprs() & 07777;
 		if (line[lexstart] == ')') {
 			nextlex(); /* skip end paren */
+			nextlex(); /* skip new terminator */
 		} else {
 			/* error("parens") */ ;
 		}
-//BUGBUG; This didn't work in PDP-12 code??
 		/* Now rig for caller to see the terminator */
 		pos = lexterm = lexstart;
 
