@@ -259,44 +259,117 @@ struct symbol {
 	{ "RSF", 006011 },
 	{ "RRB", 006012 },
 	{ "RFC", 006014 },
+	{ "RCC", 006016 },
 	{ "PSF", 006021 },
 	{ "PCF", 006022 },
 	{ "PPC", 006024 },
 	{ "PLS", 006026 },
+	{ "DCX", 006051 },
+	{ "DXL", 006053 },
+	{ "DIX", 006054 },
+	{ "DXS", 006057 },
+	{ "DCY", 006061 },
+	{ "DYL", 006063 },
+	{ "DIY", 006064 },
+	{ "DYS", 006067 },
+	{ "DSF", 006071 },
+	{ "DCF", 006072 },
+	{ "DSB", 006074 },
+	{ "PLSF", 006501 },
+	{ "PLCF", 006502 },
+	{ "PLPU", 006504 },
+	{ "PLPR", 006511 },
+	{ "PLDU", 006512 },
+	{ "PLDD", 006514 },
+	{ "PLPL", 006521 },
+	{ "PLPD", 006524 },
+	{ "DCMA", 006601 },
+	{ "DMAR", 006603 },
+	{ "DMAW", 006605 },
+	{ "DCEA", 006611 },
+	{ "DSAC", 006612 },
+	{ "DEAL", 006615 },
+	{ "DEAC", 006616 },
+	{ "DFSE", 006621 },
+	{ "DFSC", 006622 },
+	{ "DMAC", 006626 },
+	{ "MMLS", 006751 },
+	{ "MMLM", 006752 },
+	{ "MMLF", 006754 },
+	{ "MMMF", 006756 },
+	{ "MMMM", 006757 },
+	{ "MMSF", 006761 },
+	{ "MMML", 006766 },
+	{ "MMSC", 006771 },
+	{ "MMCF", 006772 },
+	{ "MMRS", 006774 },
+	{ "DTRA", 006761 },
+	{ "DTCA", 006762 },
+	{ "DTXA", 006764 },
+	{ "DTLA", 006766 }, //BUGBUG: PUSHJ Conflict?
+	{ "DTSF", 006771 },
+	{ "DTRB", 006772 },
+	{ "DTLB", 006774 },
+	{ "LCD", 006751 },
+	{ "XDR", 006752 },
+	{ "STR", 006753 },
+	{ "SER", 006754 },
+	{ "SDN", 006755 },
+	{ "INTR", 006756 },
+	{ "INIT", 006757 },
 #ifdef PDP8E
 /* My personal view is that these are not "family of eight",	*/
 /* and shouldn't be here.  Alas, most of the code in the world	*/
 /* seems to disagree.  As a compromise, I have added the -e	*/
 /* option which defines these. VRS				*/
 #ifdef LINC
+	{ "LINC" , 046141 }, /* Also implied LMODE pseudo-op */
 	{ "LMODE", 040040 }, /* set the LINC mode */
 	{ "PMODE", 040041 }, /* set the PDP-8 mode */
 #endif
-	{ "MQA", 007501 }, /* group 3 */
-	{ "SCA", 007441 },
-	{ "MQL", 007421 },
-	{ "SWP", 007521 },
-	{ "SCL", 007403 },
+	{ "SCL", 007403 }, /* group 3 */
+	{ "ASC", 007403 },
 	{ "MUY", 007405 },
 	{ "DVI", 007407 },
 	{ "NMI", 007411 },
 	{ "SHL", 007413 },
 	{ "ASR", 007415 },
 	{ "LSR", 007417 },
+	{ "MQL", 007421 },
+	{ "SCA", 007441 },
+	{ "SWAB", 007431 },
+	{ "DAD", 007443 },
+	{ "DST", 007445 },
+	{ "SWBA", 007447 },
+	{ "DPSZ", 007451 },
+	{ "SAM", 007457 },
+	{ "DPIC", 007473 },
+	{ "DCM", 007475 },
+	{ "MQA", 007501 },
+	{ "SWP", 007521 },
+	{ "DPIC", 007573 },
+	{ "DCM", 007575 },
+	{ "CAM", 007621 },
+	{ "ACL", 007701 },
+	{ "DLD", 007763 },
 	{ "SKON",006000 }, /* IOTs */
 	{ "GTF", 006004 },
 	{ "RTF", 006005 },
 	{ "SGT", 006006 },
 	{ "CAF", 006007 },
+	{ "RPE", 006010 },
+	{ "PCE", 006020 },
 	{ "KCF", 006030 },
 	{ "KIE", 006035 },
-	{ "LINC",006141 },
+	{ "TFL", 006040 },
+	{ "TSK", 006045 },
+	{ "SEL", 006750 },
 	{ "PDP", 050002 }, /* Kludge for PQS8 */
 	{ "COM", 050017 }, /* Kludge for PQS8 */
 #ifdef LINC
-#define pdp8e 23	/* Number of extensions to the symbol table */
+#define pdp8e 42	/* Number of extensions to the symbol table */
 #else
-#define pdp8e 21	/* Number of extensions to the symbol table */
+#define pdp8e 39	/* Number of extensions to the symbol table */
 #endif
 #else
 #define pdp8e 0
@@ -334,6 +407,7 @@ struct symbol lmode[] = {
 	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
 	{ "LMODE" , 040040 }, /* set the LINC mode */
 	{ "PMODE" , 040041 }, /* set the PDP-8 mode */
+	{ "PDP"   , 040043 }, /* Also implies PMODE */
 //	{ "TITLE" , 040047 }, /* set the listing title */
 
 	{ "U",   000010 }, /* "U" bit */
@@ -342,7 +416,6 @@ struct symbol lmode[] = {
 	{ "HLT", 050000 }, /* LINC A-class and others */
 	{ "MSC", 050000 },
 	{ "AXO", 050001 },
-	{ "PDP", 050002 },
 	{ "TAC", 050003 },
 	{ "ESF", 050004 },
 	{ "QAC", 050005 },
@@ -530,7 +603,7 @@ char *argv[];
 	}
 }
 
-#define LINELEN 96
+#define LINELEN 132
 char line[LINELEN];
 int pos;    /* position on line */
 int listed; /* has line been listed to listing yet (0 = no, 1 = yes) */
@@ -567,31 +640,34 @@ char *msg;
 /* generate a line of listing with embedded error messages */
 {
 	FILE *tlst;
-	if (lst == NULL) { /* force error messages to print despite XLIST */
-		tlst = lstsave;
-	} else {
-		tlst = lst;
+// BUGBUG: When XLIST is in effect, error messages print, but the source
+// line does not!
+        tlst = lst;
+	if (lst == NULL) {
+		/* force error messages to print despite XLIST */
+		lst = lstsave;
 	}
-	if (tlst != NULL) {
+	if (lst != NULL) {
 		listline();
-		fprintf( tlst, "%-15.15s ", msg );
+		fprintf( lst, "%-15.15s ", msg );
 		{
 			int i;
 			for (i = 0; i < (pos-1); i++) {
 				if (line[i] == '\t') {
-					putc('\t', tlst );
+					putc('\t', lst );
 				} else {
-					putc( ' ', tlst );
+					putc( ' ', lst );
 				}
 			}
 		}
-		fputc( '^', tlst );
+		fputc( '^', lst );
 		if (dosmode)
-			fputc( '\r', tlst );
-		fputc( '\n', tlst );
+			fputc( '\r', lst );
+		fputc( '\n', lst );
 		fprintf( stderr, "%4d  %s\n", lineno, msg );
 	}
 	listed = 1;
+	lst = tlst; /* Restore lst */
 	errors++;
 }
 
@@ -809,7 +885,8 @@ short int val;
 char lexstart; /* index of start of the current lexeme on line */
 char lexterm;  /* index of character after the current lexeme on line */
 
-#define IsBlank(c) ((c==' ')||(c=='\t')||(c=='\f')||(c=='>')||(c=='\r'))
+#define IsEOF(c) ((c=='$')||(c==032))
+#define IsBlank(c) ((c==' ')||(c=='\t')||(c==0177)||(c=='\f')||(c=='>')||(c=='\r'))
 
 /*
  * The nextlex() function assumes 'pos' is the beginning of a token,
@@ -837,8 +914,8 @@ nextlex()
 			pos++;
 		}
 	} else if (line[pos] == '"') { /* quoted letter */
-		pos ++;
-		pos ++;
+		pos++;
+		pos++;
 	} else if (isend(line[pos])) { /* end of line */
 		/* don't advance pos! */
 	} else if (line[pos] == '/') { /* comment */
@@ -900,7 +977,7 @@ condfalse()
 			} else if (line[pos] == '<') {
 				level ++;
 				pos++;
-			} else if (line[pos] == '$') {
+			} else if (IsEOF(line[pos])) {
 				level = 0;
 				pos++;
 			} else {
@@ -987,6 +1064,19 @@ nextlexblank()
 }
 
 /*
+ * Try to keep track of where we are, lexically (debug).
+*/
+void
+debuglex(caller)
+char *caller;
+{
+	fprintf(stderr, "%d %s; delim = '%c'\n", lineno, caller, delimiter);
+	fprintf(stderr, "    pos = %s", line+pos);
+	fprintf(stderr, "    term = %s", line+lexterm);
+	fprintf(stderr, "    start = %s", line+lexstart);
+}
+
+/*
  * The current lexeme spans from lexstart to lexterm-1.
  * Determine a value for it, and return it.
  * If we are called for something that doesn't have a meaningful
@@ -1045,14 +1135,18 @@ eval()
 
 		nextlexblank(); /* skip bracket */
 		val = getexprs() & 07777;
+		if (pos == lexstart)
+			nextlex(); /* advance */
 		if (line[lexstart] == ']') {
 			nextlex(); /* skip end bracket */
-			nextlex(); /* skip new terminator */
+			//delimiter = line[lexterm];
 		} else {
 			/* error("parens") */;
+			//pos = lexterm = lexstart;
 		}
 		/* Now rig for caller to see the terminator */
 		pos = lexterm = lexstart;
+		delimiter = line[lexterm];
 
 		loc = 00177;
 		while ((loc > pzlc) && (pz[loc] != val)) {
@@ -1074,16 +1168,28 @@ eval()
 			lit = pz;
 			plc = &pzlc;
 		}
-		nextlexblank(); /* skip paren */
+		nextlexblank(); /* skip left paren */
+//fprintf(stderr, "eval calls getexprs() for literal\n");
 		val = getexprs() & 07777;
+//fprintf(stderr, "eval called getexprs() for literal\n");
+//debuglex("after literal expression");
+		if (pos == lexstart) {
+			nextlex(); /* wtf?? */
+			//delimiter = line[lexterm];
+//debuglex("after pos == lexstart kludge");
+		}
 		if (line[lexstart] == ')') {
 			nextlex(); /* skip end paren */
-			nextlex(); /* skip new terminator */
+//debuglex("after eating ')'");
 		} else {
 			/* error("parens") */ ;
+			//pos = lexterm = lexstart;
 		}
+//debuglex("after literal");
 		/* Now rig for caller to see the terminator */
 		pos = lexterm = lexstart;
+		delimiter = line[lexterm];
+//debuglex("after literal post-kludge");
 
 		loc = 00177;
 		while ((loc > *plc) && (lit[loc] != val)) {
@@ -1120,7 +1226,7 @@ fprintf(stderr, "The illegal character is '%c'\n", line[lexstart]);
  * right to left, and also considered "OR" lower precedence than the
  * rest of the operators..
  * Currently "!" functions as an OR that pays no attention to MRI'ness.
- * I gather some assemblers find it useful as a way of forming sixbit, instead.
+ * I gather some assemblers find it useful as a way of forming sixbit.
 */
 int
 getexpr()
@@ -1128,6 +1234,7 @@ getexpr()
 	int value = eval();
 	int op, temp, ostart, oterm;
 
+//This is freshly back from eval().  Have correct delimiter?
 	/* We have set 'value' to the current token at entry, aka
 	 * the left operand, and advanced the token to the operator.
 	 * We need to keep things that way every time through the loop.
@@ -1171,6 +1278,8 @@ getexpr()
 		ostart = lexstart;
 		oterm = lexterm;
 		temp = eval();	/* Evaluate second operand */
+if (delimiter != line[lexstart])
+fprintf(stderr, "TOASTY\n");
 
 		if (IsBlank(op)) {
 			/* interpret space as logical or */
@@ -1182,7 +1291,7 @@ getexpr()
 				/* The left operand is MRI, the right isn't. */
 				/* Rescan the right, as an expression rather */
 				/* than a term. */
-/* BUGBUG: This rescan causes repeated "page zero" errors! */
+/* BUGBUG: This rescan causes error messages to repeat! */
 				lexstart = ostart;
 				lexterm = pos = oterm;
 				temp = getexpr() & 07777;
@@ -1282,7 +1391,7 @@ restart:
 		nextlex();
 		goto restart;
 	}
-	if (line[lexstart] == '$') {
+	if (IsEOF(line[lexstart])) {
 		putcp();
 		putpz(); /* points to end of page for () operands */
 		listline(); /* if it hasn't been listed yet, list it! */
@@ -1451,14 +1560,19 @@ restart:
 				}
 				break;
 			case 6: /* FIELD */
-				putcp();
-				putpz();
 				if (isdone(line[lexstart])) {
 					/* blank FIELD directive */
 					val = field + 1;
 				} else {
 					/* FIELD with an argument */
-					val = getexpr();
+// PQS8 apparently doesn't dump page zero literals if 4000 bit set.
+// That seems wildly unsafe, as well as undocumented, so we don't
+// do that here.
+					val = getexpr() & 07777;
+				}
+				if (val != field) {
+					putcp();
+					putpz();
 				}
 				if (rimflag == 1) { /* can't change fields */
 					error("rim mode");
@@ -1699,6 +1813,10 @@ restart:
 				/* more traditionally.                     */
 				break;
 			case 035: /* ERROR */
+				/* Error allocates a word here so that the */
+				/* symbol may be redefined in old code     */
+				/* during pass 1.                          */
+				lc = (lc+1) & 07777;
 				error("error");
 				break;
 			case 036: /* EXPUNG/E */
@@ -1708,9 +1826,18 @@ restart:
 //BUGBUG				symtab[firstsym].sym[0] = 0;
 				break;
 #ifdef LINC
+			case 06141: /* LINC */
+				/* interpret line load value */
+				putout( lc, 06141);
+				lc = (lc+1) & 07777;
+				/* FALL THROUGH */
 			case 040: /* LMODE */
 				nmode = cmode = lmode;
 				break;
+			case 043: /* PDP */
+				putout( lc, 00002);
+				lc = (lc+1) & 07777;
+				/* FALL THROUGH */
 			case 041: /* PMODE */
 				nmode = cmode = pmode;
 				break;
