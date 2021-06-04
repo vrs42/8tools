@@ -1,0 +1,20 @@
+   1               *20
+   2 000020  0200  ERROR=JMS I . ; ERR
+   3               *200
+   4               MUBUF=.
+   5               MNFNO=.
+   6               CDFMYF=CDF 10
+   7 000200  0000  ERR,    0
+   8 000201  1777          TAD I (MUBUF+MNFNO;CDFMYF       /ELSE GET DOC NUMBER
+     000202  6211  
+   9 000203  1777          TAD I (MUBUF+MNFNO);CDFMYF      /ELSE GET DOC NUMBER2
+     000204  6211  
+  10 000205  1376          TAD (JMS ERR)                   /GET INPUT CALL INSTRUCTION
+  11 000376  4200  $
+     000377  0400  
+
+CDFMYF  6211
+ERR     0200
+ERROR   4420 unreferenced
+MNFNO   0200
+MUBUF   0200
