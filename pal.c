@@ -89,6 +89,16 @@
 		-8	Enable LINC and PDP-8 dual mode assembly at 0200
 		-9	Enable LINC and PDP-8 dual mode assembly at 4020
 
+   missing features:  The ASMIF[MNZ] stuff from sabr and pqs8.
+	The strange undocumented IOTs to control the PDP-12 LINC registers.
+	The two character (sixbit) literals ('AB).
+	Many source files seem to use undefined symbols in IFNZRO.  Is there
+	  a practice of assuming undefined symbols will test as zero?
+	Support for FLTG or DUBL pseudo-ops (FLAP E and F?).
+	Support for IFPOS, IFNEG, IFSW, IFNSW, IFFLAP or IFRALPH pseudo-ops.
+	Support for IFREF, LISTON, LISTOF, REPEAT pseudo-ops.
+	Several source files want to allow spaces before '='.
+
    known bugs:  Only a minimal effort has been made to keep the listing
 	format anything like the PAL-8 listing format.  It screams too loud
 	for off-page addresses (a quote mark would suffice), and it doesn't
@@ -179,6 +189,7 @@ struct symbol {
 	{ "ERROR" , 040035 }, /* output an error message */
 	{ "EXPUNG", 040036 }, /* lose the standard symbols */
 	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
+	{ "SIXBIT", 040045 }, /* output sixbit character data */
 #ifdef PQS8
 	{ "ASMIFM", 040025 }, /* assemble next if minus */
 	{ "ASMIFN", 040026 }, /* assemble next if nonzero */
@@ -194,10 +205,9 @@ struct symbol {
 	{ "IFNREF", 040038 }, /* ?? */
 	{ "NOBITS", 040043 }, /* ?? */
 	{ "PQS"   , 040044 }, /* ?? */
-	{ "SIXBIT", 040045 }, /* output sixbit character data */
 	{ "SKIP"  , 040046 }, /* ?? */
 #endif
-//	{ "TITLE" , 040047 }, /* set the listing title */
+	{ "TITLE" , 040047 }, /* set the listing title */
 
 	{ "AND", 010000 }, /* mainline instructions */
 	{ "TAD", 011000 },
@@ -326,6 +336,10 @@ struct symbol {
 	{ "LINC" , 046141 }, /* Also implied LMODE pseudo-op */
 	{ "LMODE", 040040 }, /* set the LINC mode */
 	{ "PMODE", 040041 }, /* set the PDP-8 mode */
+//BUGBUG: A great many IOTs apparently exist in the PDP-12 to access
+//the LINC-side registers.  Can't find documentation, so I haven't put
+//them here yet.  (Could steal them from asmblr.pa in PQS8, but we
+//still wouldn't know what they do.)
 #endif
 	{ "SCL", 007403 }, /* group 3 */
 	{ "ASC", 007403 },
@@ -363,13 +377,20 @@ struct symbol {
 	{ "KIE", 006035 },
 	{ "TFL", 006040 },
 	{ "TSK", 006045 },
+	{ "CLSK", 006131 }, /* PDP-12 or DK8-EP */
+	{ "CLLR", 006132 },
+	{ "CLAB", 006133 },
+	{ "CLEN", 006134 },
+	{ "CLSA", 006135 },
+	{ "CLBA", 006136 },
+	{ "CLCA", 006137 },
 	{ "SEL", 006750 },
 	{ "PDP", 050002 }, /* Kludge for PQS8 */
 	{ "COM", 050017 }, /* Kludge for PQS8 */
 #ifdef LINC
-#define pdp8e 42	/* Number of extensions to the symbol table */
+#define pdp8e 49	/* Number of extensions to the symbol table */
 #else
-#define pdp8e 39	/* Number of extensions to the symbol table */
+#define pdp8e 46	/* Number of extensions to the symbol table */
 #endif
 #else
 #define pdp8e 0
@@ -405,10 +426,11 @@ struct symbol lmode[] = {
 	{ "ERROR" , 040035 }, /* output an error message */
 	{ "EXPUNG", 040036 }, /* lose the standard symbols */
 	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
+	{ "SIXBIT", 040045 }, /* output sixbit character data */
+	{ "TITLE" , 040047 }, /* set the listing title */
 	{ "LMODE" , 040040 }, /* set the LINC mode */
 	{ "PMODE" , 040041 }, /* set the PDP-8 mode */
 	{ "PDP"   , 040043 }, /* Also implies PMODE */
-//	{ "TITLE" , 040047 }, /* set the listing title */
 
 	{ "U",   000010 }, /* "U" bit */
 	{ "I",   000020 }, /* "I" bit */
@@ -609,6 +631,8 @@ int pos;    /* position on line */
 int listed; /* has line been listed to listing yet (0 = no, 1 = yes) */
 int lineno; /* line number of current line */
 
+char title[LINELEN]; /* Title for listing */
+
 void
 listline()
 /* generate a line of listing if not already done! */
@@ -796,6 +820,7 @@ int reloc; /* the relocation distance (see RELOC) */
 int pzlc; /* the page zero location counter for page zero constants */
 int cplc; /* the current page location counter for current page constants */
 int radix; /* the default number radix */
+int sixbit = 0; /* Only set during SIXBIT */
 
 int pz[0200]; /* storehouse for page zero constants */
 int cp[0200]; /* storehouse for current page constants */
@@ -913,9 +938,11 @@ nextlex()
 		while (isdigit(line[pos])) {
 			pos++;
 		}
+//BUGBUG: Should allow six bit dual character constants: 'AB
 	} else if (line[pos] == '"') { /* quoted letter */
 		pos++;
 		pos++;
+//BUGBUG: Should ignore the closing '"' if present
 	} else if (isend(line[pos])) { /* end of line */
 		/* don't advance pos! */
 	} else if (line[pos] == '/') { /* comment */
@@ -971,6 +998,37 @@ condfalse()
 		while (level > 0) {
 			if (isend(line[pos])) { /* need to get a new line */
 				readline();
+			} else if (isalpha(line[pos])) { /* identifier */
+				lexstart = pos;
+				while (isalnum(line[pos])) {
+					pos++;
+				}
+				if ((pos-lexstart == 4) &&
+				    ((strncmp(line+lexstart, "TEXT", 4) == 0) ||
+				     (strncmp(line+lexstart, "SIXBIT", 6) == 0))) {
+					char delimiter;
+					/* Ignore the text */
+					nextlex();
+					delimiter = line[lexstart];
+					/* Because nextlex() didn't */
+					if (delimiter == '/') pos++;
+					while ((line[pos] != delimiter) &&
+					       !isend(line[pos])       ) {
+						pos++;
+					}
+					pos++;
+				}
+			} else if (line[pos] == '"') {
+				pos++;
+				if (!isend(line[pos]))
+					pos++;
+			} else if (line[pos] == '/') {
+				/* Weirdly, > after / does count! */
+				while (!isend(line[pos])) {
+					if (line[pos] == '<') level++;
+					if (line[pos] == '>') level--;
+					pos++;
+				}
 			} else if (line[pos] == '>') {
 				level --;
 				pos++;
@@ -1052,6 +1110,8 @@ int evalsym()
 }
 
 int delimiter; /* the character immediately after this eval'd term */
+
+#if 0
 void
 nextlexblank()
 /* used only within eval, getexpr, this prevents illegal blanks */
@@ -1062,6 +1122,7 @@ nextlexblank()
 	}
 	delimiter = line[lexterm];
 }
+#endif
 
 /*
  * Try to keep track of where we are, lexically (debug).
@@ -1133,7 +1194,7 @@ eval()
 	} else if (line[lexstart] == '[') {
 		int loc;
 
-		nextlexblank(); /* skip bracket */
+		nextlex(); /* skip bracket */
 		val = getexprs() & 07777;
 		if (pos == lexstart)
 			nextlex(); /* advance */
@@ -1168,28 +1229,20 @@ eval()
 			lit = pz;
 			plc = &pzlc;
 		}
-		nextlexblank(); /* skip left paren */
-//fprintf(stderr, "eval calls getexprs() for literal\n");
+		nextlex(); /* skip left paren */
 		val = getexprs() & 07777;
-//fprintf(stderr, "eval called getexprs() for literal\n");
-//debuglex("after literal expression");
 		if (pos == lexstart) {
 			nextlex(); /* wtf?? */
-			//delimiter = line[lexterm];
-//debuglex("after pos == lexstart kludge");
 		}
 		if (line[lexstart] == ')') {
 			nextlex(); /* skip end paren */
-//debuglex("after eating ')'");
 		} else {
 			/* error("parens") */ ;
 			//pos = lexterm = lexstart;
 		}
-//debuglex("after literal");
 		/* Now rig for caller to see the terminator */
 		pos = lexterm = lexstart;
 		delimiter = line[lexterm];
-//debuglex("after literal post-kludge");
 
 		loc = 00177;
 		while ((loc > *plc) && (lit[loc] != val)) {
@@ -1325,6 +1378,9 @@ fprintf(stderr, "TOASTY\n");
 						lit[*plc] = temp;
 						(*plc)--;
 					}
+					// Fatal if already indirect */
+					if (value & 0400)
+						error("offpage ind");
 					value = value | 00600 | loc;
 				}
 				pos = lexterm = lexstart;
@@ -1375,6 +1431,7 @@ onepass()
 	radix = 8;
 	listed = 1;
 	lineno = 0;
+	nmode = cmode = pmode; /* Start in PMODE */
 
 getline:
 	readline();
@@ -1432,6 +1489,8 @@ restart:
 		goto restart;
 	}
 	if (line[lexterm] == '=') {
+//BUGBUG: This isn't allowing space before '=' ("A = 2")
+//Something to do with ' ' as OR operator?
 		if (isalpha(line[lexstart])) {
 			int start = lexstart;
 			int term = lexterm;
@@ -1468,7 +1527,7 @@ restart:
 				putout( lc, val );
 				lc = (lc+1) & 07777;
 				if (val == 00500) /* IOB */
-					nmode = pmode; /* 1-off PMDODE */
+					nmode = pmode; /* 1-off PMODE */
 				goto restart;
 			}
 		} else if (val > 037777) { /* pseudo op */
@@ -1509,6 +1568,9 @@ restart:
 					}
 				}
 				break;
+			case 045: /* SIXBIT */
+				sixbit = 040;
+				/* FALL THROUGH */
 			case 4: /* TEXT */
 				{
 					char delim = line[lexstart];
@@ -1518,7 +1580,7 @@ restart:
 					while ((line[index] != delim) &&
 					       !isend(line[index])       ) {
 						pack = (pack << 6)
-						     | (line[index] & 077);
+						     | (line[index]+sixbit & 077);
 						count++;
 						if (count > 1) {
 							putout( lc, pack );
@@ -1528,6 +1590,7 @@ restart:
 						}
 						index++;
 					}
+					sixbit = 0;
 					if (count != 0) {
 						putout( lc, pack << 6 );
 						lc++;
@@ -1539,6 +1602,7 @@ restart:
 						lexterm = index;
 						pos = index;
 						error("parens");
+						errors--; /* Warning */
 						nextlex();
 					} else {
 						lexterm = index + 1;
@@ -1556,8 +1620,8 @@ restart:
 					if (dosmode)
 						fputc( '\r', lst );
 					fputc( '\n', lst );
-					goto getline;
 				}
+				goto getline;
 				break;
 			case 6: /* FIELD */
 				if (isdone(line[lexstart])) {
@@ -1569,6 +1633,9 @@ restart:
 // That seems wildly unsafe, as well as undocumented, so we don't
 // do that here.
 					val = getexpr() & 07777;
+//BUGBUG: Is this OK for fields > 7?
+					if ((val & 07) == 0)
+						val /= 010;
 				}
 				if (val != field) {
 					putcp();
@@ -1847,8 +1914,17 @@ restart:
 				/* There is an opportunity to make this   */
 				/* move on to the next source input file. */
 				break;
-			case 046: /* TITLE */
-// BUGBUG: Make this do something, then uncomment in pmode, lmode.
+			case 047: /* TITLE */
+//BUGBUG: TITLE is accepted, but does nothing.
+				{ /* Copy the argument text into the title. */
+					int count = 0;
+					pos = lexstart + 1;
+					while (!isend(line[pos])) {
+						title[count++] = line[pos++];
+					}
+					title[count] = 0;
+					nextlex();
+				}
 				break;
 			} /* end switch */
 			goto restart;
@@ -1857,6 +1933,13 @@ restart:
 	}
 	{ /* default -- interpret line as load value */
 		putout( lc, getexprs() & 07777); /* interpret line load value */
+		if ((lc+1 & 07600) != (lc & 07600)) { /* last in page */
+			/* This error case is not detected by putcp(), */
+			/* as it expects lc to be empty. */
+			if (cplc == 0176)
+				error( "overrun" ); /* overrun constant pool */
+			putcp();
+		}
 		lc = (lc+1) & 07777;
 		nmode = cmode; /* Not an IOB while in LMODE */
 		goto restart;
