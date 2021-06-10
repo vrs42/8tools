@@ -336,10 +336,28 @@ struct symbol {
 	{ "LINC" , 046141 }, /* Also implied LMODE pseudo-op */
 	{ "LMODE", 040040 }, /* set the LINC mode */
 	{ "PMODE", 040041 }, /* set the PDP-8 mode */
-//BUGBUG: A great many IOTs apparently exist in the PDP-12 to access
-//the LINC-side registers.  Can't find documentation, so I haven't put
-//them here yet.  (Could steal them from asmblr.pa in PQS8, but we
-//still wouldn't know what they do.)
+//BUGBUG: Sixteen IOTs apparently exist in the LINC-8 to access the
+//LINC-side registers.  The documentation survives in the 1967 edition
+//of the Small Computer Handbook (but not later editions), and if your
+//code is expected to run on a LINC-8, you may need these.
+/* LINC-8 IOTs! */
+	{ "ICON", 06141 }, // 16 of these
+	{ "IBAC", 06143 },
+	{ "ILES", 06145 },
+	{ "INTS", 06147 },
+	{ "ICS1", 06151 },
+	{ "LMR",  06151 }, // ??
+	{ "ICS2", 06153 },
+	{ "IMBS", 06155 },
+	{ "ITAC", 06157 }, // ??
+	{ "IACB", 06161 },
+	{ "IACS", 06163 },
+	{ "ISSP", 06165 },
+	{ "IACA", 06167 },
+	{ "IAAC", 06171 },
+	{ "IZSA", 06173 },
+	{ "IACF", 06175 }, // ??
+//	{ "????", 06177 }, // ITAC?
 #endif
 	{ "SCL", 007403 }, /* group 3 */
 	{ "ASC", 007403 },
@@ -388,7 +406,7 @@ struct symbol {
 	{ "PDP", 050002 }, /* Kludge for PQS8 */
 	{ "COM", 050017 }, /* Kludge for PQS8 */
 #ifdef LINC
-#define pdp8e 49	/* Number of extensions to the symbol table */
+#define pdp8e (46+19)	/* Number of extensions to the symbol table */
 #else
 #define pdp8e 46	/* Number of extensions to the symbol table */
 #endif
@@ -404,7 +422,7 @@ struct symbol lmode[] = {
 	{ "DECIMA", 040000 }, /* read literal constants in base 10 */
 	{ "OCTAL" , 040001 }, /* read literal constants in base 8 */
 	{ "ZBLOCK", 040002 }, /* zero a block of memory */
-	{ "PAGE"  , 040003 }, /* advance origin to next page or page x (0..37) */
+	{ "PAGE"  , 040003 }, /* advance to next page or page x (0..37) */
 	{ "TEXT"  , 040004 }, /* pack 6 bit trimmed ASCII into memory */
 	{ "EJECT" , 040005 }, /* eject a page in the listing */
 	{ "FIELD" , 040006 }, /* set origin to memory field */
@@ -441,6 +459,7 @@ struct symbol lmode[] = {
 	{ "TAC", 050003 },
 	{ "ESF", 050004 },
 	{ "QAC", 050005 },
+//	{ "ZTA", 050005 },
 	{ "DJR", 050006 },
 	{ "CLR", 050011 },
 	{ "ATR", 050014 },
@@ -468,12 +487,20 @@ struct symbol lmode[] = {
 	{ "IBZ", 050453 },
 	{ "FLO", 050454 },
 	{ "QLZ", 050455 },
+//	{ "ZZZ", 050455 },
 	{ "SKP", 050456 },
+//	{ "SWD", 050457 },
 	{ "IOB", 050500 },
+/* 0501 to 0515 are Undefined */
+//	{ "TYP", 050514 },
+//	{ "KBD", 050515 },
 	{ "RSW", 050516 },
 	{ "LSW", 050517 },
+/* 0521 to 0535 are Undefined */
+/* 0540 to 0577 are Undefined */
 	{ "LIF", 050600 },
 	{ "LDF", 050640 },
+//	{ "UMB", 050640 },
 	{ "RDC", 050700 },
 	{ "RCG", 050701 },
 	{ "RDE", 050702 },
@@ -482,7 +509,8 @@ struct symbol lmode[] = {
 	{ "WCG", 050705 },
 	{ "WRI", 050706 },
 	{ "CHK", 050707 },
-
+//	{ "EXC", 050740 },
+/* 0740 to 0747 are Undefined */
 	{ "LDA", 051000 }, /* LINC B-class */
 	{ "STA", 051040 },
 	{ "ADA", 051100 },
@@ -497,12 +525,13 @@ struct symbol lmode[] = {
 	{ "BCL", 051540 },
 	{ "BSE", 051600 },
 	{ "BCO", 051640 },
-//	{ "???", 051700 }, /* Why is this missing? */
+//	{ "???", 051700 }, /* Undefined, B-class */
 	{ "DSC", 051740 },
 
 	{ "ADD", 052000 }, /* LINC Direct addressing */
 	{ "STC", 054000 },
 	{ "JMP", 056000 },
+//	{ "JSR", 056000 },
 	{ "LINC",006141 }, /* Kludge */
 };
 #define lcount ((sizeof lmode)/(sizeof *lmode))
@@ -1310,6 +1339,10 @@ getexpr()
 			return value;
 		}
 
+// BUGBUG: Want to allow 'X = 2':
+// If the operator is followed by another operator, the first better be
+// a blank.  Also, this would changes '5 -2' to evaluate to 3, not -2.
+// TBD.
 		/*
 		 * Not done, so interpret the next operand.
 		*/
