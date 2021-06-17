@@ -128,7 +128,6 @@
 #define isdone(c) ( (c == '/') || (isend(c)) || (c == ';') )
 
 #define LINC
-#define PDP8E
 /* connections to command line */
 #define NAMELEN 128
 FILE *in;		/* input file */
@@ -327,7 +326,6 @@ struct symbol {
 	{ "SDN", 006755 },
 	{ "INTR", 006756 },
 	{ "INIT", 006757 },
-#ifdef PDP8E
 /* My personal view is that these are not "family of eight",	*/
 /* and shouldn't be here.  Alas, most of the code in the world	*/
 /* seems to disagree.  As a compromise, I have added the -e	*/
@@ -356,7 +354,7 @@ struct symbol {
 	{ "IACA", 06167 },
 	{ "IAAC", 06171 },
 	{ "IZSA", 06173 },
-	{ "IACF", 06175 }, // ??
+	{ "IACF", 06175 },
 //	{ "????", 06177 }, // ITAC?
 #endif
 	{ "SCL", 007403 }, /* group 3 */
@@ -409,9 +407,6 @@ struct symbol {
 #define pdp8e (46+19)	/* Number of extensions to the symbol table */
 #else
 #define pdp8e 46	/* Number of extensions to the symbol table */
-#endif
-#else
-#define pdp8e 0
 #endif
 };
 #define pcount ((sizeof pmode)/(sizeof *pmode))
@@ -561,10 +556,8 @@ char *argv[];
 			for (j=1; argv[i][j] != 0; j++) {
 				if (argv[i][1] == 'd') {
 					dumpflag = 1;
-#ifdef PDP8E
 				} else if (argv[i][1] == 'e') {
 					eflag = 1;
-#endif
 				} else if (argv[i][1] == 'j') {
 					jflag = 1;
 				} else if (argv[i][1] == 'l') {
@@ -577,10 +570,8 @@ char *argv[];
 						 argv[0], argv[i] );
 					fprintf( stderr,
 						 " -d -- dump symtab\n" );
-#ifdef PDP8E
 					fprintf( stderr,
 						 " -e -- predefine Omnibus era instructions\n" );
-#endif
 					fprintf( stderr,
 						 " -j -- don't pad TEXT\n" );
 					fprintf( stderr,
@@ -598,10 +589,8 @@ char *argv[];
 		} /* end if */
         } /* end for loop */
 
-#ifdef PDP8E
 	if (!eflag)
 		pmode[pcount-pdp8e].sym[0] = 0;
-#endif
 
         if (filename == NULL) { /* no input file specified */
 		fprintf( stderr, "%s: no input file specified\n", argv[0] );
@@ -1456,7 +1445,10 @@ void
 onepass()
 /* do one assembly pass */
 {
-	lc = 0;
+	lc = 0200; /* Some code expects this! */
+	if (obj != NULL) { /* ... and on the tape */
+		putorg( lc );
+	}
 	reloc = 0;
 	field = 0;
 	cplc = 00177; /* points to end of page for () operands */
@@ -1669,6 +1661,12 @@ restart:
 //BUGBUG: Is this OK for fields > 7?
 					if ((val & 07) == 0)
 						val /= 010;
+				}
+				// Force dump these for compatibility. */
+				putcp();
+				putpz();
+				if ((lc&07600) != 0200) {
+					putcp();
 				}
 				if (val != field) {
 					putcp();
