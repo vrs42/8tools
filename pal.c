@@ -162,7 +162,9 @@ struct symbol {
 	short int val;	  /* the value associated with the symbol */
 	short int refs;   /* the number of references to the symbol */
 } pmode[] = {  /* values = 01xxxx indicate MRI */
+		       /* values = 02xxxx indicate LINC mode comma def */
 		       /* values = 04xxxx indicate pseudo-ops */
+		       /* values = 05xxxx indicate LINC mode ops */
 	{ "DECIMA", 040000 }, /* read literal constants in base 10 */
 	{ "OCTAL" , 040001 }, /* read literal constants in base 8 */
 	{ "ZBLOCK", 040002 }, /* zero a block of memory */
@@ -757,7 +759,7 @@ sort:
 	/* Dump the symbol table */
 	for (i = firstsym; symtab[i].sym[0] != '\0'; i++) {
 		fprintf( lst, "%-6s  %04o%s",
-			 symtab[i].sym, symtab[i].val,
+			 symtab[i].sym, 07777 & symtab[i].val,
 			 symtab[i].refs? "" : " unreferenced");
 		if (dosmode)
 			fputc( '\r', lst );
@@ -818,7 +820,6 @@ char sym[SYMLEN];
 
 	match:;
 	symtab[i].refs++;
-if (symtab[i].refs == 0) abort();
 	return symtab[i].val;
 }
 
@@ -828,9 +829,13 @@ char sym[SYMLEN];
 	short int val;
 	/* Look in user symbols first */
 	val = lookup1(symtab, sym);
-        if (val >= 0) return val;
-	/* Look in fixed symbols */
-	return lookup1(nmode, sym);
+//BUGBUG: LINC references to PMODE symbols need 10 bits too!
+// Should set 020000 for all comma defs.
+	if ((cmode == lmode) && ((val & ~07777) == 020000))
+		val &= 01777;
+	if (val < 0)
+		val = lookup1(nmode, sym);
+	return val;
 }
 
 int lc; /* the location counter */
@@ -1155,6 +1160,23 @@ char *caller;
 	fprintf(stderr, "    start = %s", line+lexstart);
 }
 
+short int
+negative(arg)
+short int arg;
+{
+	if (cmode == lmode) return 07777 & ~arg;
+	return -arg;
+}
+
+short int
+sum(a, b)
+short int a, b;
+{
+	int s = 017777 & (a + b);
+        if ((s > 07777) && (cmode == lmode)) s++;
+	return s & 077777;
+}
+
 /*
  * The current lexeme spans from lexstart to lexterm-1.
  * Determine a value for it, and return it.
@@ -1174,7 +1196,7 @@ eval()
 	/* Hacks for unary operators */
 	if (line[lexstart] == '-') {
 		nextlex();
-		return -eval();
+		return negative(eval());
 	} else if (line[lexstart] == '+') {
 		nextlex();
 		return eval();
@@ -1208,6 +1230,8 @@ eval()
 
 	} else if (line[lexstart] == '.') {
 		val = lc & 07777;
+		if (cmode == lmode)
+			val &= 01777;
 
 	} else if (line[lexstart] == '[') {
 		int loc;
@@ -1360,7 +1384,7 @@ fprintf(stderr, "TOASTY\n");
 			/* interpret space as logical or */
 			if (value <= 07777) { /* normal 12 bit value */
 				value = value | temp;
-			} else if (temp > 07777) { /* or together MRI opcodes */
+			} else if (temp > 07777 & (020000 != (temp&~07777))) { /* or together MRI opcodes */
 				value = value | temp;
 			} else {
 				/* The left operand is MRI, the right isn't. */
@@ -1389,7 +1413,7 @@ fprintf(stderr, "TOASTY\n");
 					}
 					if (linkmsg) {
 						error("off page");
-						errors--; /* VRS: warning only */
+						errors--; /* warning only */
 					}
 					/* having complained, fix it up */
 					loc = 00177;
@@ -1409,9 +1433,9 @@ fprintf(stderr, "TOASTY\n");
 				delimiter=line[lexstart];
 			}
 		} else if (op == '+') { /* add */
-			value = value + temp;
+			value = sum(value, temp);
 		} else if (op == '-') { /* subtract */
-			value = value - temp;
+			value = sum(value, negative(temp));
 		} else if (op == '^') { /* multiply */
 			value = value * temp;
 		} else if (op == '%') { /* divide */
@@ -1503,9 +1527,16 @@ restart:
                          * the reference count.
                         */
                         int ev;
-                        ev = deflex( lexstart, lexterm, lc & 07777 );
-			if ((ev != -1) && (ev != (lc & 07777)))
+			/* Remember if done in LINC mode. */
+			if (0 || (cmode == lmode)) {
+				ev = deflex( lexstart, lexterm, lc | 020000 );
+				if ((ev >= 0) && (cmode == lmode))
+					ev &= 01777;
+			} else
+				ev = deflex( lexstart, lexterm, lc & 07777 );
+			if ((ev != -1) && (ev != (lc & ((cmode == lmode)? 01777 : 07777) ))) {
 				error("redefined");
+			}
 		} else {
 			error("label");
 		}
@@ -1792,7 +1823,7 @@ restart:
 			case 017: /* SEGMNT */
 				putcp();
 				if (isdone(line[lexstart])) { /* no arg */
-					lc = (lc & 06000) + 02000;
+					lc = lc+01777 & 06000;
                                 } else {
                                         val = getexpr();
 					lc = (val & 003) << 10;
@@ -1815,7 +1846,7 @@ restart:
 					nextlex(); /* skip symbol */
 					nextlex(); /* skip trailing = */
 					if (cmode == lmode) {
-						deflex( start, term, getexprs() );
+						deflex( start, term, 050000 | getexprs() );
 					} else {
 						deflex( start, term, 010000 | getexprs() );
 					}
