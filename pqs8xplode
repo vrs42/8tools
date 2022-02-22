@@ -34,20 +34,19 @@
 #
 # Not much is researched yet about dates in PQS8.  I hope
 # to be able to extract the date from the keyboard monitor 
-# cope image in blocks 001-017, and eventually at least 
+# image in blocks 001-017, and eventually at least 
 # use that to set the timestamps of the extracted files.
-# Meanwhile, this data stuff is just cruft.
+# Meanwhile, this date stuff is just cruft.
 #
-# The original date algorithm was 3 bits, added to 1970.
-# Later, two more bits were added, so years go thru 1999.
-# Dates in the future are interpreted as dates in the
-# previous 8 years.
-# First, get the right epoch.
+# The date algorithm stores an epoch, multiplied by 8 and 
+# added to 1960.  First, get the right epoch.
+# BUGBUG: There's also an epoch on the media, which is the
+# one we actually end up using.
 ($_, $_, $_, $dy, $mo, $i) = localtime(time);
-$i = ($i + 1900) & 037;
+$i = ($i + 1900) - 1960;
+$epoch = int($i/8);
 $cyear = $i & 07;
-$epoch = 70 + ($i&030);
-$i += 70;
+$i += 60;
 @month = ("0",  "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
 	 "AUG", "SEP", "OCT", "NOV", "DEC", "13",  "14",  "15");
 #print " $dy-$month[$mo+1]-$i\n\n";
@@ -90,7 +89,7 @@ $fsname .= ".0";
 mkdir $fsname unless -d $fsname;
 
 #
-# PQS8 stores the version name is in block 001.
+# PQS8 stores the version name, epoch, etc. in block 001.
 # We look that up here, in case we need it later
 # to accomodate changes that were made in where 
 # to find things, etc.
@@ -102,6 +101,7 @@ read(INPUT, $dir, 1*0400) || die "$ARGV[0] directory read: $!";
 # It's at offset 012 or offset 020, depending on the
 # version.  We don't know the version yet, so we don't
 # know where to look.
+$epoch = $dir[011];
 $n1 = $dir[012];
 $n1 = $dir[020] if (($n1>>6)&~1) != 070;
 if ((($n1>>6)&~1) != 070) {
@@ -176,10 +176,15 @@ while (@dir) {
 # Actual text is packed in sixbit.
 sub catfile {
     local($name, $start, $length, $date) = @_;
+#   warn "catfile($name, $start, $length, $date);\n";
+    die unless $length == 16;
 
     # The file is small, so just read in the whole thing.
+    # 0400 is used here, since each word is two bytes.
     seek(INPUT, $start*0400, 0) || die "$ARGV[0] file seek: $!";
-    read(INPUT, $buf, $length*0400) || die "$ARGV[0] file read: $!";
+    # Read the media.  If that fails, it is usually because SIMH didn't
+    # bother to write the uninitialized block.  Fabricate the empty blocks.
+    read(INPUT, $buf, $length*0400) || ($buf = pack("S2048", 0));
     @buf = unpack("S2048", $buf);
     #
     # Check for a valid text file.
@@ -260,6 +265,7 @@ $slots = 85;
 $size = 0;
 while (@dir) {
     # Each entry is six words long.
+    (@meta) = ($dir[0], $dir[1], $dir[2], $dir[3], $dir[4], $dir[5]);
     $n1 = shift @dir;
     $n2 = shift @dir;
     $n3 = shift @dir;
@@ -287,12 +293,15 @@ while (@dir) {
 	$name = "<empty>";
 	next;
     }
-    # The file is small, so just read in the whole thing.
-    seek(INPUT, $start*0400, 0) || die "$ARGV[0] file seek: $!";
-    read(INPUT, $buf, $length*0400) || die "$ARGV[0] file read: $!";
     # Open a file for our results.
     open(OUTPUT, ">$fsname/$name.sd") || die "$fsname/$name: $!";
     binmode(OUTPUT);
+    # Write the directory entry here too, as it has important metadata
+    # that isn't available elsewhere.
+    print OUTPUT pack("S6", @meta);
+    # The file is small, so just read in the whole thing.
+    seek(INPUT, $start*0400, 0) || die "$ARGV[0] file seek: $!";
+    read(INPUT, $buf, $length*0400) || die "$ARGV[0] file read: $!";
     # Write the file.
     print OUTPUT $buf || die "file write: $!";
 
@@ -302,4 +311,93 @@ while (@dir) {
     $start += $length;
 }
 #print "\nUsed $used of $slots slots\n\n";
-exit 0; # BUGBUG: Do the Extended directory, too
+
+# BUGBUG TODO
+sub writefile {
+    local($first, $last, $name) = @_;
+
+    # Open a file for our results.
+    open(OUTPUT, ">$fsname/$name") || die "$fsname/$name: $!";
+#warn "writefile($first, $last, '$name')\n";
+    binmode(OUTPUT);
+    # Copy out the file.  These are binary, so leave the words in DSK format.
+    for (; $first <= $last; $first++) {
+      # Use 0400 here, since each word is two bytes.
+      seek(INPUT, $first*0400, 0) || die "$ARGV[0] file seek: $!";
+      read(INPUT, $buf, 0400) || die "$ARGV[0] file read: $!";
+      # Write the file.
+      print OUTPUT $buf || die "file write: $!";
+    }
+}
+
+#
+# Now do the reserved system areas:
+# Block		Use
+# 0000-0000	BOOTSTRAP, SYSTEM I/O, ETC.
+# 0001-0013	KEYBOARD MONITOR
+# 0014-0014	THE "EDIT" COMMAND
+# 0015-0016	USER CATALOG
+# 0017-0017	TTY: EDITING FEATURES, ETC.
+# 0020-0037	"%" SCRATCH FILE
+# 0040-0057	"$" SCRATCH FILE
+# 0060-0060	/I BLOCK
+# 0061-0062	EXTENDED COMMAND PROCESSOR
+# 0063-0066	SYSTEM DIRECTORY
+# 0067-0071	EXTENDED USER'S CATALOG
+# 0072-0075	"R", "RU" COMMAND PROCESSOR
+# 0076-0077	RESERVED FOR EXPANSION
+# 0100-0100	SLURP LOADER BLOCK
+# 0101-0102	EXTENDED HANDLER INITIALIZATION
+# 0103-0112	EXTENDED HANDLER CODE
+# 0113-0114	I/O HANDLER TRAP BLOCKS
+# 0115-0115	BATCH RECOVERY BLOCK
+# 0116-0116	ACTIVE COPY OF BATCH SAVED IN THIS BLOCK
+# 0117-0117	LAST BATCH BUFFER SAVED IN THIS BLOCK
+# 0120-0120	SYSTEM I/O, SWITCHES, FILES SAVED HERE
+# 0121-0121	PAGE ZERO USER SETTINGS SAVED HERE
+# 0122-0122	RESERVED FOR HANDLER DIRECTORY
+# 0123-0162	RESERVED FOR HANDLERS
+# 0163-0200	ODT SYSTEM
+# 0201-0201	BATCH SYSTEM ONCE-ONLY CODE
+# 0202-0202	BATCH CODE
+# 0203-0215	BIN/GET/START SYSTEM
+# 0216-0231	SCRATCH AREA FOR VIRTUAL LOADER
+# 0232-0240	DUMP SYSTEM
+# 0241-0243	CHANGE/FIND SYSTEM
+# 0244-0244	FIRST BLOCK FOR DIRECTORY FILES
+&writefile(0000, 0000, ".boot");
+&writefile(0001, 0013, ".kbm");
+&writefile(0014, 0014, ".edit");
+&writefile(0015, 0016, ".cat");
+&writefile(0017, 0017, ".tty");
+&writefile(0020, 0037, ".percent");
+&writefile(0040, 0057, ".dollar");
+&writefile(0060, 0060, ".iblock");
+&writefile(0061, 0062, ".ecp");
+&writefile(0063, 0066, ".dir");
+&writefile(0067, 0071, ".euc");
+&writefile(0072, 0075, ".run");
+&writefile(0076, 0077, ".reserved");
+&writefile(0100, 0100, ".slurp");
+&writefile(0101, 0102, ".ehinit");
+&writefile(0103, 0112, ".ehcode");
+&writefile(0113, 0114, ".iohtrap");
+&writefile(0115, 0115, ".brecovr");
+&writefile(0116, 0116, ".batch");
+&writefile(0117, 0117, ".bbuffer");
+&writefile(0120, 0120, ".system");
+&writefile(0121, 0121, ".pzero");
+&writefile(0122, 0122, ".hdir");
+&writefile(0123, 0162, ".handlers");
+&writefile(0163, 0200, ".odt");
+&writefile(0201, 0201, ".bonce");
+&writefile(0202, 0202, ".bcode");
+&writefile(0203, 0215, ".binget");
+&writefile(0216, 0231, ".scratch");
+&writefile(0232, 0240, ".dump");
+&writefile(0241, 0243, ".change");
+
+# BUGBUG: Do the handler directory too
+# BUGBUG: Do the Extended directory too
+
+exit 0;

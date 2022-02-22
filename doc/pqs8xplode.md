@@ -1,59 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 **pqs8xplode** breaks a P?S/8 volume into it's constituent files.
 
 Given the name of a P?S/8 volume on the command line,
@@ -76,16 +20,16 @@ line numbers are presumed binary, and written as packed
 data 3 bytes for every 2 words, in the usual OS/8 bit
 order.
 
-Files extracted from the system DIRECTory are contain
+Files extracted from the system DIRECTory contain
 executable code, and so are treated as binary.  A .sd
 suffix is appended to note that they are not from the
-CATalog.
+CATalog.  Each ".sd" file is also prepended with the
+directory (as six 16-bit integers) to preserve important
+metadata.
 
 BUG: File names are still shouted (uppercase).
 
 BUG: Modification times and dates are not preserved.
-
-BUG: The system areas are not yet extracted and saved.
 
 BUG: No XML instructions for the reconstruction of the
 volume are generated.
