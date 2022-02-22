@@ -45,6 +45,7 @@ $sum = $add = $field = 0;
 while (read(INPUT, $top, 1)) {
   $top = unpack("C", $top);
   next if $top == 0200;	# Leader or Trailer
+  last if $top == 0232;	# Logical EOF
   if (defined($store)) {
     $core1[$field*4096+$loc] = 0 unless defined $core1[$field*4096+$loc];
     $core1[$field*4096+$loc]++;
@@ -103,8 +104,7 @@ if ($fortran) {
 #
 $status = 0;
 print "Memory Map of $ARGV[0]\r\n";
-for ($loc = $min; $loc <= $max; $loc += 0100) {
-  print "\r\n" unless $loc % 0200;
+for ($loc = $min&~077; $loc <= $max; $loc += 0100) {
   printf "%05o:", $loc;
   for ($off = 0; $off < 0100; $off++) {
     print " " unless $off % 010;
@@ -113,6 +113,7 @@ for ($loc = $min; $loc <= $max; $loc += 0100) {
     printf "%1d", $core1[$loc+$off];
   }
   print "\r\n";
+  print "\r\n" unless ($loc+0100) % 0200;
 }
 exit $status;
 
