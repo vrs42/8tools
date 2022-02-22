@@ -58,10 +58,15 @@ while ($link) {
     # @dir starts with a directory segment header.
     $count = shift @dir;
     $start = shift @dir;
+    die "Implausible block number found: $start\n"
+      unless $start == ($start & 07777);
     $link = shift @dir;
+    die "Implausible directory link found: $link\n"
+      unless $link < 7;
     $flag = shift @dir;
     $aiw = shift @dir;
     $aiw = $aiw - 010000 unless $aiw == 0;
+$aiw = 1 unless $aiw == 0;
     $date = "";
     for ($count -= 010000; $count < 0; $count++) {
 	$n1 = shift @dir;
@@ -85,6 +90,8 @@ while ($link) {
 		}
 	    }
 	    $length = shift @dir;
+            die "Implausible file length found: $length\n"
+              unless $length && ($length == ($length & 07777));
 	    $length = 010000 - $length;
 	    @name = ($n1>>6, $n1&077, $n2>>6, $n2&077, $n3>>6, $n3&077);
 	    @ext = ($e1>>6, $e1&077);
@@ -95,6 +102,8 @@ while ($link) {
 	    $name =~ s/@//g;
 	} else {
 	    $length = 010000 - $n2;
+            die "Implausible <empty> length found: $length\n"
+              unless $length && ($length == ($length & 07777));
 	    $name = "<empty>";
 	    $date = "";
 	}
