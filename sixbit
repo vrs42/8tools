@@ -40,7 +40,8 @@ binmode(INPUT);
 # Read each block and print it.
 for ($block = 0; ; $block++) {
     seek(INPUT, $block*2*$bsize, 0) || die "$ARGV[0] file seek: $!";
-    read(INPUT, $buf, 2*$bsize) || die "$ARGV[0] file read: $!";
+#   read(INPUT, $buf, 2*$bsize) || die "$ARGV[0] file read: $!";
+    read(INPUT, $buf, 2*$bsize) || last;
     @buf = unpack($upack, $buf);
     $sixbit = "";
     for ($offset = 0; $offset < $bsize; $offset++) {
@@ -50,7 +51,7 @@ for ($block = 0; ; $block++) {
         }
         printf "%04o ", $buf[$offset];
    	@c = ($buf[$offset]>>6, $buf[$offset]&077);
-    	grep($_ = ($_ > 040? $_ : $_ + 0100), @c);
+    	grep($_ = ($_ >= 040? $_ : $_ + 0100), @c);
     	$sixbit .= pack('CC', @c);
     }
     printf "%s\r\n", $sixbit;
