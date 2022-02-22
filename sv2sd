@@ -61,16 +61,59 @@ sub dosegment {
     local($field, $blk) = @_;
     local($i, @buf);
 
+warn "dosegment($field, $blk, $pages)\n";
     # Each segment is essentially a field.
     # Seek to the correct position for the field.
     seek(OUTPUT, 010000*2*$field, 0) || die "seek($f): $!";
-    for ($i = 0; $i < 020; $i++) {
+    for ($i = 0; $i < $pages; $i+=2) {
         @buf = getblk($blk);
         $blk++;
         $buf = pack("S256", @buf);
         print OUTPUT $buf;
     }
 }
+
+#
+# Look for flags to build up the system directory entry.
+# -S	5-5	Scan for file names inhibit
+# -R	5-6	Use current Radix
+# -O	6-5	Scan for output files only
+# -\d+	6-6:11	Set file type
+# File types:
+#  "          ", 0
+#  "GENO  GENI", 1
+#  "      BIN ", 2
+#  "BIN   BIN ", 3
+#  "BIN       ", 4
+#  "ASC   ASC ", 5
+#  "ASC       ", 6
+#  "BIN   PAL ", 7
+#  "PAL   PAL ", 8
+#  "      BAT ", 9
+#  "      DUMP", 10
+#  "      FOC ", 11
+#  "PAL       ", 12
+#  "      PAL ", 13
+#
+$type = $blkno = 0;
+$bit55 = $bit56 = $bit65 = $bit66 = 0;
+while ($ARGV[0] =~ s/-([SRO\d]+)/-/) {
+  $flags = $1;
+  while ($flags) {
+    if ($flags =~ s/(\d+)//) {
+      $type = $1;
+    } elsif ($flags =~ s/S//g) {
+      $bit55 = 0100;
+    } elsif ($flags =~ s/R//g) {
+      $bit56 = 0040;
+    } elsif ($flags =~ s/O//g) {
+      $bit65 = 0100;
+    } else {
+      die "Unknown option flag: $flags\n";
+    }
+  }
+}
+$ARGV[0] =~ s/-//g;
 
 # Open the input file for binary input.
 open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
@@ -94,6 +137,30 @@ open(OUTPUT, ">$f") || die "$f: $!";
 binmode(OUTPUT);
 
 #
+# BUGBUG: blkno is still zero here!
+# Emit the system directory entry first.
+#
+# Words 1-3 are the file name in SIXBIT.
+$n = $f; $n =~ s/[.]sd$//; $n =~ y/a-z/A-Z/;
+@c = unpack("C6", $n);
+grep($_ = $_ & 077, @c);
+$w1 = (shift(@c) << 6) + shift(@c);
+$w2 = (shift(@c) << 6) + shift(@c);
+$w3 = (shift(@c) << 6) + shift(@c);
+# Word 4 is the starting (128 byte) block number.
+$w4 = $blkno;
+# Words 5 and 6 also contain flags to control command line parsing.
+# Word 5 is the load address and length for the initial segment.
+# Assume field 0 is first, if both are present.
+$la = (($buf[1]&070)<<9) + $buf[0];
+$len = $buf[1] >> 6;
+$w5 = $la + $bit55 + $bit56 + $len;
+# Word 6 is the start address and file type information.
+$w6 = $sa + $bit65 + $type;
+printf STDERR "0%0o 0%0o 0%0o: 0%0o 0%0o 0%0o\n", $w1, $w2, $w3, $w4, $w5, $w6;
+print OUTPUT pack("S6", $w1, $w2, $w3, $w4, $w5, $w6);
+
+#
 # Walk the segment table, outputting segments to
 # their new home.
 $blk = 1;
@@ -102,8 +169,8 @@ for ($s = 0; $s < $segments; $s++) {
      $w2 = shift @buf;
      $pages = ($w2 >> 6) & 037;
      $field = $w2 & 070;
-     warn "Segment size must be 4K: $pages\n" unless $pages == 037;
+#    warn "Segment size must be 4K: $pages\n" unless $pages == 037;
      die "Segment field must be 0 or 1: $field\n" if $field & 060;
-     &dosegment($field>>3, $blk);
-     $blk += 020;
+     &dosegment($field>>3, $blk, $pages);
+     $blk += $pages;
 }
