@@ -88,9 +88,9 @@
   87 004032  0077  UNREAD, SET I   17;     ANSWR1!D/ROUTINE TO GET NUMBER OF BLOCKS TO BE TRANSFERRED
      004033  7715  
   88 004034  0076          SET I   16;
-  89 004035  7774  M4,     -4                      /4 NUM ANS
+  89 004035  7773  M4,     -4                      /4 NUM ANS
   90 004036  0075          SET I   15;     NUMBRS-1/ANS ADD -1
-     004037  4110  
+     004037  0110  
   91 004040  0073          SET I   13;
   92 004041  6026          JMP     QAREAD          /RETURN JMP
   93 004042  6222          JMP     GET             /GET ANSWER;
@@ -104,49 +104,49 @@
  101 004052  1134          ADA I   14              /ADD +2000
  102 004053  4626          STC     RDENUM          /NUM OF BLOCKS
  103 004054  0077         SET I   17;             /ROUTINE TO GET TAPE UNIT NO.
- 104 004055  3720          ANSWR1!D+4003
+ 104 004055  3721          ANSWR1!D+4003
  105 004056  0076          SET I   16;     -1      /1 NUM ANS
-     004057  7777  
+     004057  7776  
  106 004060  0075          SET I   15;     NUMBRS-1/ANS ADD -1
-     004061  4110  
+     004061  0110  
  107 004062  6222          JMP     GET             /GET ANS
  108 004063  4622          STC     RDEFU           /UNIT
  109               /
  110               /
  111 004064  0077          SET I   17;             /ROUTINE TO GET STARTING BLOCK
- 112 004065  3721          ANSWR1!D+4004
+ 112 004065  3722          ANSWR1!D+4004
  113 004066  0076          SET I   16;     -4      /4 WORD ANS
-     004067  7774  
+     004067  7773  
  114 004070  0075          SET I   15;     NUMBRS-1/ANS ADD-1
-     004071  4110  
+     004071  0110  
  115 004072  6222          JMP     GET             /GET ANS
  116 004073  4625          STC     RDEBN           /BLOCK NUM
  117               /
  118               /
  119 004074  0077          SET I   17;             /GET READ FORMAT
- 120 004075  3717          ANSWR1!D+4002
+ 120 004075  3720          ANSWR1!D+4002
  121 004076  0076          SET I   16;     -1      /1 NUM ANS
-     004077  7777  
+     004077  7776  
  122 004100  0075          SET I   15;     CHARS-1 /ANS ADD-1
-     004101  4116  
+     004101  0116  
  123 004102  6222          JMP     GET             /GET ANS
  124 004103  1260          MUL I;  3               /CONVERT TO MODOP ADDRESS
      004104  0003  
  125 004105  1120          ADA I;                  /CHANGE RANGE
- 126 004106  7775  M3,     -3                      /FROM 3,6,9 TO
+ 126 004106  7774  M3,     -3                      /FROM 3,6,9 TO
  127 004107  4161          STC     MODOP           /0,3,6
  128 004110  6123          JMP     QAWRIT          /GET NEXT FRAME
  129               /
  130               /
- 131 004111  7721  NUMBRS, -57                     /NUMBER  LIMITS
+ 131 004111  7720  NUMBRS, -57                     /NUMBER  LIMITS
  132 004112  0057          +57
- 133 004113  7711          -67
+ 133 004113  7710          -67
  134 004114  0067          +67
- 135 004115  6000          -2000
+ 135 004115  5777          -2000
  136 004116  2000          +2000
  137 004117  0000  CHARS,  0                       /CHAR LIMITS
  138 004120  0000          0
- 139 004121  7775          -3
+ 139 004121  7774          -3
  140 004122  0003          +3
  141 004123  7113  QAWRITE,JSR    QAINIT          /CALL QANDA
  142 004124  7507          TXTWRI!D                /FRAME ADDRESS
@@ -155,9 +155,9 @@
  145 004127  0077  UNWRIT, SET I   17;             /GET UNIT TO WRITE ON;
  146 004130  7726          ANSWR2!D+1
  147 004131  0076          SET I   16;     -1      /1 NUM ANS
-     004132  7777  
+     004132  7776  
  148 004133  0075          SET I   15;     NUMBRS-1
-     004134  4110  
+     004134  0110  
  149 004135  0073          SET I   13;
  150 004136  6123          JMP     QAWRIT          /RETURN ADD
  151 004137  6222          JMP     GET             /GET ANS
@@ -167,9 +167,9 @@
  155 004141  0077          SET I   17;             /GET STARTING BLOCK FOR WRITE;
  156 004142  7727          ANSWR2!D+2
  157 004143  0076          SET I   16;     -4      /4 NUM ANS
-     004144  7774  
+     004144  7773  
  158 004145  0075          SET I   15;     NUMBRS-1/ADDRESS-1
-     004146  4110  
+     004146  0110  
  159 004147  6222          JMP     GET             /GET ANS
  160 004150  4633          STC     WRIBN           /BLOCK
  161               /
@@ -177,9 +177,9 @@
  163 004151  0077          SET I   17;     ANSWR2!D/ANS ADD
      004152  7725  
  164 004153  0076          SET I   16;     -1      /1 NUM ANS
-     004154  7777  
+     004154  7776  
  165 004155  0075          SET I   15;     CHARS-1 /CHECK ADD
-     004156  4116  
+     004156  0116  
  166 004157  6222          JMP     GET             /GET ANS
  167 004160  1160          ADM I;
  168 004161  0000  MODOP,  0                       /FORMAT
@@ -203,7 +203,7 @@
  184 004203  1020          LDA I;  JMP     RDEAGN
      004204  6460  
  185 004205  1040          STA;    PARERR!D
-     004206  6430  
+     004206  2430  
  186 004207  0011          CLR
  187               /
  188               /
@@ -264,17 +264,17 @@
  239 004265  4634          STC     WRINUM          /AND WRITE
  240 004266  2313          ADD     M16             /DO 16 AT A TIME
  241 004267  1040          STA;    RDLTAN!D
-     004270  6066  
+     004270  2066  
  242 004271  1040          STA;    WDLTAN!D
-     004272  6037  
+     004272  2037  
  243 004273  1020          LDA I;  -201            /TOTAL WORDS PER BLOCK          
-     004274  7577  
+     004274  7576  
  244 004275  1040          STA;    RDEKEY!D
-     004276  6070  
+     004276  2070  
  245 004277  1020          LDA I;  -202
-     004300  7576  
+     004300  7575  
  246 004301  1040          STA;    WRIKEY!D
-     004302  6041  
+     004302  2041  
  247 004303  6620          JMP     GO              /DO THE JOB !
  248               /
  249               /
@@ -282,24 +282,24 @@
  251               /
  252 004304  2654  MODOP2, ADD     P8FMT1          /PDP-8 TO PDP-12
  253 004305  1040          STA;    ADDINC!D        /WRITE 129 WORDS IN A 400 WORD BLOCK
-     004306  6747  
+     004306  2747  
  254 004307  4624          STC     RDELNG          /READ 129 WORDS
  255 004310  2626          ADD     RDENUM
  256 004311  4634          STC     WRINUM          /1:1 BLOCK TRANSFER
  257 004312  1020          LDA I;
- 258 004313  7762  M16,    -16
+ 258 004313  7761  M16,    -16
  259 004314  1040          STA;    RDLTAN!D
-     004315  6066  
+     004315  2066  
  260 004316  1040          STA;    WDLTAN!D
-     004317  6037  
+     004317  2037  
  261 004320  1020          LDA I;  -201
-     004321  7577  
+     004321  7576  
  262 004322  1040          STA;    RDEKEY!D
-     004323  6070  
+     004323  2070  
  263 004324  0011          CLR
  264 004325  0017          COM
  265 004326  1040          STA;    WRIKEY!D
-     004327  6041  
+     004327  2041  
  266 004330  6620          JMP     GO
  267               /
  268               /
@@ -310,28 +310,28 @@
  273 004333  2657          ADD     P10FM1
  274 004334  4632          STC     WRILNG
  275 004335  1020          LDA I;  -3
-     004336  7775  
+     004336  7774  
  276 004337  4667          STC     DIVISR
  277 004340  6660          JMP     DIVIDE
  278 004341  0011          CLR
  279 004342  2015          ADD     DIVCNT
  280 004343  4634          STC     WRINUM
  281 004344  1020          LDA I;  -14
-     004345  7764  
+     004345  7763  
  282 004346  1040          STA;    RDLTAN!D
-     004347  6066  
+     004347  2066  
  283 004350  1020          LDA I;  -4
-     004351  7774  
+     004351  7773  
  284 004352  1040          STA;    WDLTAN!D
-     004353  6037  
+     004353  2037  
  285 004354  1020          LDA I;  -201
-     004355  7577  
+     004355  7576  
  286 004356  1040          STA;    RDEKEY!D
-     004357  6070  
+     004357  2070  
  287 004360  1020          LDA I;
- 288 004361  7177  M601,   -601
+ 288 004361  7176  M601,   -601
  289 004362  1040          STA;    WRIKEY!D
-     004363  6041  
+     004363  2041  
  290 004364  6620          JMP     GO
  291               /
  292               /
@@ -345,23 +345,23 @@
  300 004372  1020          LDA I;
  301 004373  0200  K200,   200
  302 004374  1040          STA;    ADDINC!D
-     004375  6747  
+     004375  2747  
  303 004376  1020          LDA I;
- 304 004377  7762  NM16,   -16
+ 304 004377  7761  NM16,   -16
  305 004400  1040          STA;    RDLTAN!D
-     004401  6066  
+     004401  2066  
  306 004402  1020          LDA I;  -16
-     004403  7762  
+     004403  7761  
  307 004404  1040          STA;    WDLTAN!D
-     004405  6037  
+     004405  2037  
  308 004406  0011          CLR
  309 004407  0017          COM
  310 004410  1040          STA;    RDEKEY!D
-     004411  6070  
+     004411  2070  
  311 004412  1020          LDA I;  -202
-     004413  7576  
+     004413  7575  
  312 004414  1040          STA;    WRIKEY!D
-     004415  6041  
+     004415  2041  
  313 004416  6620          JMP     GO
  314               /
  315               /
@@ -371,19 +371,19 @@
  319 004420  4634          STC     WRINUM
  320 004421  2377          ADD     NM16
  321 004422  1040          STA;    RDLTAN!D
-     004423  6066  
+     004423  2066  
  322 004424  1040          STA;    WDLTAN!D
-     004425  6037  
+     004425  2037  
  323 004426  0011          CLR
  324 004427  2373          ADD     K200
  325 004430  1040          STA;    ADDINC!D
-     004431  6747  
+     004431  2747  
  326 004432  0011          CLR
  327 004433  0017          COM
  328 004434  1040          STA;    RDEKEY!D
-     004435  6070  
+     004435  2070  
  329 004436  1040          STA;    WRIKEY!D
-     004437  6041  
+     004437  2041  
  330 004440  6620          JMP     GO
  331               /
  332               /
@@ -410,23 +410,23 @@
  353 004463  4634          STC     WRINUM
  354 004464  2373          ADD     K200
  355 004465  1040          STA;    ADDINC!D
-     004466  6747  
+     004466  2747  
  356 004467  1020          LDA I;  -14
-     004470  7764  
+     004470  7763  
  357 004471  1040          STA;    RDLTAN!D
-     004472  6066  
+     004472  2066  
  358 004473  1020          LDA I;  -4
-     004474  7774  
+     004474  7773  
  359 004475  1040          STA;    WDLTAN!D
-     004476  6037  
+     004476  2037  
  360 004477  0011          CLR
  361 004500  0017          COM
  362 004501  1040          STA;    RDEKEY!D
-     004502  6070  
+     004502  2070  
  363 004503  1020          LDA I;  -601
-     004504  7177  
+     004504  7176  
  364 004505  1040          STA;    WRIKEY!D
-     004506  6041  
+     004506  2041  
  365 004507  6620          JMP     GO
  366               /
  367               /
@@ -442,19 +442,19 @@
  376 004517  4634          STC     WRINUM
  377 004520  2035          ADD     M4
  378 004521  1040          STA;    RDLTAN!D
-     004522  6066  
+     004522  2066  
  379 004523  1020          LDA I;  -14
-     004524  7764  
+     004524  7763  
  380 004525  1040          STA;    WDLTAN!D
-     004526  6037  
+     004526  2037  
  381 004527  1020          LDA I;
- 382 004530  7200  M600,   -600
+ 382 004530  7177  M600,   -600
  383 004531  1040          STA;    RDEKEY!D
-     004532  6070  
+     004532  2070  
  384 004533  1020          LDA I;  -202
-     004534  7576  
+     004534  7575  
  385 004535  1040          STA;    WRIKEY!D
-     004536  6041  
+     004536  2041  
  386 004537  6620          JMP     GO
  387               /
  388               /
@@ -471,23 +471,23 @@
  399 004550  4634          STC     WRINUM
  400 004551  2035          ADD     M4
  401 004552  1040          STA;    RDLTAN!D
-     004553  6066  
+     004553  2066  
  402 004554  1020          LDA I;/CLR
- 403 004555  7764          -14/ADD M6
+ 403 004555  7763          -14/ADD M6
  404 004556  1040          STA;    WDLTAN!D
-     004557  6037  
+     004557  2037  
  405 004560  1020          LDA I;  200
      004561  0200  
  406 004562  1040          STA;    ADDINC!D
-     004563  6747  
+     004563  2747  
  407 004564  0011          CLR
  408 004565  0017          COM
  409 004566  1040          STA;    WRIKEY!D
-     004567  6041  
+     004567  2041  
  410 004570  0011          CLR
  411 004571  2530          ADD     M600
  412 004572  1040          STA;    RDEKEY!D
-     004573  6070  
+     004573  2070  
  413 004574  6620          JMP     GO
  414               /
  415               /
@@ -501,17 +501,17 @@
  423 004602  4634          STC     WRINUM
  424 004603  2035          ADD     M4
  425 004604  1040          STA;    RDLTAN!D
-     004605  6066  
+     004605  2066  
  426 004606  1040          STA;    WDLTAN!D
-     004607  6037  
+     004607  2037  
  427 004610  0011          CLR
  428 004611  2361          ADD     M601
  429 004612  1040          STA;    WRIKEY!D
-     004613  6041  
+     004613  2041  
  430 004614  0011          CLR
  431 004615  2530          ADD     M600
  432 004616  1040          STA;    RDEKEY!D
-     004617  6070  
+     004617  2070  
  433               /
  434               /
  435               /
@@ -550,7 +550,7 @@
  468               
  469 004636  0643          LDF     3
  470 004637  1000          LDA;    NBLOCK!D        /GET REMAINING BLOCKS
-     004640  6012  
+     004640  2012  
  471 004641  1620          BSE I;  6000
      004642  6000  
  472 004643  0470          AZE I                   /ARE WE FINISHED?
@@ -652,7 +652,7 @@
      004773  7611  
      004774  3754  
      004775  3743  
-     004776  3740  
+     004776  3540  
      004777  7600  
  557               
  558                       LMODE                   /GOTO L...MODE
@@ -678,9 +678,9 @@
  577 005126  5165          STC     QARFSH-1
  578 005127  4006          STC     6               /XR6=0 IF NO ANSWER FIELD, XR6=1777 IF YES
  579 005130  0043  QACA,   SET     3;      QARFSH-1/POINT XR3 TO ANSWERS
-     005131  5165  
+     005131  1165  
  580 005132  0044          SET     4;      QAG-3   /POINT XR4 TO QUESTIONS
-     005133  5172  
+     005133  1172  
  581               
  582               /       COMES HERE IF FIRST TIME THROUGH OR FOLLOWING A <CR>.
  583               
@@ -700,7 +700,7 @@
  595 005150  1343          STH     3               /74 TO ANSWERS
  596 005151  1324          LDH I   4               /NEXT HALFWORD
  597 005152  1120          ADA I;  -60
-     005153  7720  
+     005153  7717  
  598 005154  0017          COM
  599 005155  4006          STC     6
  600 005156  1363          STH I   3               /0 IN AC
@@ -722,7 +722,7 @@
  614 005171  0063          SET I   3;      0       /XR3 TO PTR TO HALFWORD QUESTIONS-1
      005172  0000  
  615 005173  0045          SET     5;      QARFSH-1/XR5 TO PTR TO LAST DISPLAYED CHAR IN ANSWER BUFR
-     005174  5165  
+     005174  1165  
  616 005175  0041  QAG,    SET     1;      3
      005176  0003  
  617 005177  7403          JMP     QAT
@@ -746,7 +746,7 @@
  632 005221  0061          SET I   1;      100     /XR1 TO INITIAL X POSITION
      005222  0100  
  633 005223  1020          LDA I;  -40             /Y COORDINATE MULTIPLE
-     005224  7740  
+     005224  7737  
  634 005225  1160          ADM I;  0               /Y COORDINATE
      005226  0000  
  635 005227  1323  QAH,    LDH I   3
@@ -773,7 +773,7 @@
  655 005252  0470          AZE I
  656 005253  7117          JMP     QAB             /NOTHING TYPED . EXIT
  657 005254  0062          SET I   2;      QAY
-     005255  5525  
+     005255  1525  
  658 005256  1402          SHD     2               /LF?
  659 005257  7424          JMP     QAK+4           /YES. EXIT
  660 005260  1422          SHD I   2               /CR?
@@ -804,7 +804,7 @@
  684 005310  1304  QAL,    LDH     4               /TO HERE IF RUBOUT OR <
  685 005311  7345          JMP     QAO+1
  686 005312  7166          JMP     QARFSH          /74 IGNORE
- 687 005313  1776          -6002
+ 687 005313  1775          -6002
  688 005314  1302          LDH     2               /TEST THE CHAR
  689 005315  1460          SAE I;  37              /RUBOUT?
      005316  0037  
@@ -864,7 +864,7 @@
  739 005375  6000          JMP     0
  740               
  741 005376  1020  QAQ,    LDA I;  -4000           /BACK UP PTR BY 1
-     005377  4000  
+     005377  3777  
  742 005400  1140          ADM;    4
      005401  0004  
  743 005402  7166          JMP     QARFSH          /REDISPLAY
@@ -895,7 +895,7 @@
  765 005424  1020          LDA I;  1
      005425  0001  
  766 005426  1140          ADM;    QAB
-     005427  5117  
+     005427  1117  
  767 005430  7117          JMP     QAB
  768               /      CHARACTER PATTERNS.
  769               
@@ -976,7 +976,7 @@
  844 005540  7376          JMP     QAQ
  845 005541  7376          JMP     QAQ
  846 005542  7166          JMP     QARFSH
- 847 005543  5431          QAV
+ 847 005543  1431          QAV
  848 005544  0000          0                       /NOT USED
  849 005545  5166          5166                    /46: &
  850 005546  0526          0526
@@ -1056,22 +1056,22 @@
  921 005650  1060          STA I;                  /SAVE IT
  922 005651  0000  QATY,   0
  923 005652  1120          ADA I;  -237
-     005653  7541  
+     005653  7540  
  924 005654  0451          APO                     /BETWEEN 200 AND 237?
  925 005655  7717          JMP     QACNTR          /CONTROL CHAR. CHECK FOR CR, LF, TAB
  926 005656  0061          SET I   1;      QACHAR-1/NO
-     005657  5767  
+     005657  1767  
  927 005660  0062          SET I   2;      -7
-     005661  7771  
+     005661  7770  
  928 005662  1000          LDA;    QATY
-     005663  5651  
+     005663  1651  
  929 005664  1461          SAE I   1
  930 005665  7667          JMP     .+2
  931 005666  7750          JMP     QAEXIT          /ILLEGAL CHAR. DONT ECHO
  932 005667  0222          XSK I   2               /CHECKED THEM ALL?
  933 005670  7664          JMP     .-4
  934 005671  1120          ADA I;  -337
-     005672  7441  
+     005672  7440  
  935 005673  0451          APO                     /BETWEEN 240 AND 337?
  936 005674  7710          JMP     QALEGL          /YES. LEGAL CHAR
  937 005675  1461          SAE I   1               /NO. CHECK FURTHER.
@@ -1087,7 +1087,7 @@
  945                                               /ALT
  946 005707  7752          JMP     QAEXIT+2        /EXIT, DONT ECHO
  947 005710  1000  QALEGL,        LDA;    QATY
-     005711  5651  
+     005711  1651  
  948 005712  7757          JMP     QATPE           /ECHO CHAR
  949 005713  3651          ADD     QATY
  950 005714  1560          BCL I;  7700            /STRIP IT TO 6-BIT
@@ -1279,12 +1279,12 @@
 1121                       LMODE
 1122               
 1123 006027  1000          LDA;    WRITE           /GET THE CALLING ADDRESS
-     006030  6025  
+     006030  0025  
 1124 006031  4057          STC     READ            /AND PLACE IN THE READ ADDRESS
 1125 006032  0061          SET I   TASK;           /SET THE OPERATION TO DO A WRITE
 1126 006033  6476          JMP     DOUTIT          /JMP TO WRITE ROUTINE
 1127 006034  0062          SET I   BEST;           /SET THE BEST CASE TO SKIP
-1128 006035  7775          -3                      /3 WORDS. THE WRITTERS NEED SOME ROOM
+1128 006035  7774          -3                      /3 WORDS. THE WRITTERS NEED SOME ROOM
 1129 006036  0075          SET I   IBLOCK;
 1130 006037  0000  WDLTAN, 0                       /NUMBER OF BLOCKS WRITTEN AT A TIME
 1131 006040  0076          SET I   SWITCH;
@@ -1293,10 +1293,10 @@
      006043  0706  
 1134 006044  4744          STC     INST
 1135 006045  1020          LDA I;  WRIBN!D         /SET-UP WRITE
-     006046  6633  
+     006046  2633  
 1136 006047  5003          STC     BNSET
 1137 006050  1020          LDA I;  WRINUM!D        /DITTO
-     006051  6634  
+     006051  2634  
 1138 006052  5010          STC     NUMSET
 1139 006053  1020          LDA I;  APO 
      006054  0451  
@@ -1316,7 +1316,7 @@
 1153 006061  0061          SET I   TASK;           /SET THE TASK TO READ
 1154 006062  6350          JMP     DINIT
 1155 006063  0062          SET I   BEST;   -4      /SET THE BEST CASE TO SKIP 5 WORDS
-     006064  7774  
+     006064  7773  
 1156 006065  0075          SET I   IBLOCK;
 1157 006066  0000  RDLTAN, 0                       /NUM BLKS READ AT A TIME
 1158 006067  0076          SET I   SWITCH;
@@ -1325,10 +1325,10 @@
      006072  0702  
 1161 006073  4744          STC     INST
 1162 006074  1020          LDA I;  RDEBN!D
-     006075  6625  
+     006075  2625  
 1163 006076  5003          STC     BNSET           /SET-UP FOR READ
 1164 006077  1020          LDA I;  RDENUM!D        /NUM BLKS
-     006100  6626  
+     006100  2626  
 1165 006101  5010          STC     NUMSET
 1166 006102  1020          LDA I;  NOP
      006103  0016  
@@ -1399,23 +1399,23 @@
 1231 006135  2125          ADD     ARG1            /GET THE FIRST ARGUMENT
 1232 006136  0245          ROL     5               /ROTATE TO GOOD IOB PLACE
 1233 006137  1560          BCL I;  -40             /JUST GET BIT 6
-     006140  7740  
+     006140  7737  
 1234 006141  4252          STC     UNITL1          /SAVE UNITS 0 & 1;
 1235 006142  2125          ADD     ARG1            /GET IT AGAIN
 1236 006143  0301          ROR     1               /SHIFT OVER
 1237 006144  1560          BCL I;  -3
-     006145  7775  
+     006145  7774  
 1238 006146  4240          STC     LAXO            /AND STASH AWAY
 1239 006147  2125          ADD     ARG1            /GET THE CRAP AGAIN
 1240 006150  0301          ROR     1
 1241 006151  1560          BCL I;  -34
-     006152  7744  
+     006152  7743  
 1242 006153  1620          BSE I;  LDF     0
      006154  0640  
 1243 006155  4635          STC     SDATAF
 1244 006156  2126          ADD     ARG2            /GET THE ADDRESS
 1245 006157  1040          STA;    COREL1          /STORE IN FIRST CORE LOC
-     006160  6347  
+     006160  0347  
 1246 006161  4552          STC     COREL2          /ALSO IN SECOND LOC.
 1247 006162  2127          ADD     ARG3            /GET THE NUMBER OF WORDS TO TDUE
 1248 006163  0017          COM                     /NEGATE IT
@@ -1444,7 +1444,7 @@
 1268 006203  2240          ADD     LAXO            /ADD ON CORRECT UNITS
 1269 006204  0001          AXO
 1270 006205  1000          LDA;    UNITL1
-     006206  6252  
+     006206  0252  
 1271 006207  1120          ADA I;  206
      006210  0206  
 1272 006211  0500          IOB;    6152            /SELECT,SET MTN
@@ -1480,9 +1480,9 @@
 1295               /
 1296               /
 1297 006243  0047  FORWARD,SET    DATAWD; SIZE    /DATA WORDS PER BLOCK
-     006244  6132  
+     006244  0132  
 1298 006245  0043          SET     WCOUNT; SWITCH  /TOTAL WORDS PER BLOCK
-     006246  6016  
+     006246  0016  
 1299 006247  1020          LDA I;  226
      006250  0226  
 1300 006251  1120          ADA I;
@@ -1490,7 +1490,7 @@
 1302 006253  0500          IOB;    6152            /SEL,SET FWD
      006254  6152  
 1303 006255  0045          SET     SKIP1;  BEST    /NUM CONTROL WORDS
-     006256  6002  
+     006256  0002  
 1304 006257  0414          SBM                     /WAIT FOR BM
 1305 006260  6257          JMP     .-1
 1306 006261  0003          TAC                     /BN TO AC
@@ -1501,7 +1501,7 @@
 1311 006266  0451          APO                     /ARE WE OUT OF END ZONE?
 1312 006267  6243          JMP     FORWARD         /NO
 1313 006270  1440          SAE;    FBLOCK          /YES, RIGHT BLOCK?
-     006271  6130  
+     006271  0130  
 1314 006272  0456          SKP                     /NO
 1315 006273  6001          JMP     TASK            /YES; NOW DO IT!
 1316 006274  0017          COM
@@ -1521,11 +1521,11 @@
 1330 006300  1020  BACKWARD,LDA I;        306
      006301  0306  
 1331 006302  1100          ADA;    UNITL1
-     006303  6252  
+     006303  0252  
 1332 006304  0500          IOB;    6152            /GO BACKWARD
      006305  6152  
 1333 006306  1000          LDA;    FBLOCK
-     006307  6130  
+     006307  0130  
 1334 006310  1120          ADA I;  7774
      006311  7774  
 1335 006312  0451          APO                     /IS BLOCK <4?
@@ -1560,7 +1560,7 @@
 1363 006335  0450          AZE                     /BLOCK 0?
 1364 006336  6300          JMP     BACKWARD        /NOT YET!
 1365 006337  0071          SET I   COUNT1; -13     /THIS DELAY ALLOWS US TO FIND THE BLK GOING FWD
-     006340  7765  
+     006340  7764  
 1366 006341  4010          STC     COUNT0
 1367 006342  0230          XSK I   COUNT0
 1368 006343  6342          JMP     .-1
@@ -1578,7 +1578,7 @@
 1380               /
 1381               /
 1382 006350  0046  DINIT,  SET     SKIP2;  SKIP1   /READ ROUTINE
-     006351  6005  
+     006351  0005  
 1383 006352  0011          CLR
 1384 006353  4641          STC     LPB
 1385 006354  6635          JMP     SDATAF          /JUST SET DF
@@ -1633,10 +1633,10 @@
 1433 006417  2641          ADD     LPB             /GET PARITY BUF
 1434 006420  6646          JMP     LPB+5           /SHUFFLE IT
 1435 006421  1040          STA;    LPB
-     006422  6641  
+     006422  0641  
 1436 006423  0246          ROL     6               /XOR L&R
 1437 006424  1640          BCO;    LPB
-     006425  6641  
+     006425  0641  
 1438 006426  0306          ROR     6
 1439 006427  0450          AZE                     /GOOD CHK SUM?
 1440 006430  6460  PARERR, JMP     RDEAGN          /NO!TRY AGAIN
@@ -1648,7 +1648,7 @@
 1446 006431  1020  RDEDUN, LDA I; 1
      006432  0001  
 1447 006433  1140          ADM;    FBLOCK          /INCR BLOCK
-     006434  6130  
+     006434  0130  
 1448 006435  0232          XSK I   NBLOCK          /ALL DONE?
 1449 006436  0456          SKP                     /NOT DONE YET
 1450 006437  6020          JMP     EXIT            /YES DONE
@@ -1656,12 +1656,12 @@
 1452 006441  6243          JMP     FORWARD          /NO
 1453 006442  0642          LDF     2
 1454 006443  1040          STA;    RDEBN!D         /SET UP FOR NEXT READ
-     006444  6625  
+     006444  2625  
 1455 006445  0011          CLR
 1456 006446  2012          ADD     NBLOCK
 1457 006447  0017          COM
 1458 006450  1040          STA;    RDENUM!D
-     006451  6626  
+     006451  2626  
 1459 006452  6020          JMP     EXIT
 1460               /
 1461               /
@@ -1677,12 +1677,12 @@
 1471 006462  1120          ADA I;  1               /BY 1 BLOCK
      006463  0001  
 1472 006464  1200          LAM;    COREL1
-     006465  6347  
+     006465  0347  
 1473 006466  0011          CLR                     /CLR LINK
 1474 006467  1000          LDA;    FBLOCK
-     006470  6130  
+     006470  0130  
 1475 006471  1120          ADA I;  -3
-     006472  7775  
+     006472  7774  
 1476 006473  0471          APO I
 1477 006474  6300          JMP     BACKWARD
 1478 006475  6243          JMP     FORWARD
@@ -1691,7 +1691,7 @@
 1481 006476  0011  DOUTIT,        CLR                     /WRITE ROUTINE
 1482 006477  4641          STC     LPB
 1483 006500  0046          SET     SKIP2;  SKIP1
-     006501  6005  
+     006501  0005  
 1484 006502  6635          JMP     SDATAF          /SET DF
 1485 006503  1020          LDA I;  27
      006504  0027  
@@ -1757,10 +1757,10 @@
 1543 006561  6571          JMP     WRILPB          /WRITE PARITY
 1544 006562  4710          STC     OUTRTN
 1545 006563  1000          LDA;    LPB             /GET PARITY WOR
-     006564  6641  
+     006564  0641  
 1546 006565  0306          ROR     6               /ITS 6 BITS
 1547 006566  1640          BCO;    LPB             /XOR IT 
-     006567  6641  
+     006567  0641  
 1548 006570  6670          JMP     OUTIT           /SHUFFLE IT GOOD
 1549 006571  0457  WRILPB, SWD                     /WRITE CS
 1550 006572  6571          JMP     .-1
@@ -1781,22 +1781,22 @@
 1562 006611  1020  WRIDUN, LDA I;  0001            /PREPARE TO WRITE NEXT BLK      
      006612  0001  
 1563 006613  1140          ADM;    FBLOCK
-     006614  6130  
+     006614  0130  
 1564 006615  0232          XSK I   NBLOCK          /ALL DONE?
 1565 006616  0456          SKP                     /NOT YET
 1566 006617  6020          JMP     EXIT            /THATS IT!
 1567 006620  0043          SET     WCOUNT; WRIKEY  /INIT WCOUNT
-     006621  6041  
+     006621  0041  
 1568 006622  0235          XSK I   IBLOCK          /FINISHED GROUP?
 1569 006623  6243          JMP     FORWARD         /GO DO IT!
 1570 006624  0642          LDF     2
 1571 006625  1040          STA;    WRIBN!D         /NEXT BLOCK
-     006626  6633  
+     006626  2633  
 1572 006627  0011          CLR
 1573 006630  2012          ADD     NBLOCK
 1574 006631  0017          COM
 1575 006632  1040          STA;    WRINUM!D        /REMAINING BLKS
-     006633  6634  
+     006633  2634  
 1576 006634  6020          JMP     EXIT            /READ SOME MORE
 1577               /
 1578               /
@@ -1825,14 +1825,14 @@
 1601 006645  2643          ADD     TEMP1           /READ SHUFFLE
 1602 006646  0017          COM
 1603 006647  1040          STA;    TEMP1
-     006650  6643  
+     006650  0643  
 1604 006651  1560          BCL I;  -77
-     006652  7701  
+     006652  7700  
 1605 006653  1120          ADA I;
 1606 006654  3012          ADD     TABLE1
 1607 006655  4666          STC     ADDIN1
 1608 006656  1300          LDH;    TEMP1&3777      /GET LEFT HALF OF TEMP1
-     006657  2643  
+     006657  0643  
 1609 006660  1120          ADA I;
 1610 006661  3012          ADD     TABLE1
 1611 006662  4664          STC     ADDIN2
@@ -1854,12 +1854,12 @@
 1627 006670  1060  OUTIT, STA I;                  /WRITE SHUFFLE
 1628 006671  0000  TEMP2,  0
 1629 006672  1560          BCL I;  -77             /LOOK AT RIGHT HALF
-     006673  7701  
+     006673  7700  
 1630 006674  1120          ADA I;
 1631 006675  3112          ADD     TABLE2
 1632 006676  4706          STC     ADOUT1
 1633 006677  1300          LDH;    TEMP2&3777      /GET LEFT HALF
-     006700  2671  
+     006700  0671  
 1634 006701  1120          ADA I;
 1635 006702  3112          ADD     TABLE2
 1636 006703  4704          STC     .+1
@@ -1873,14 +1873,14 @@
 1644               /
 1645               /
 1646 006711  1000  LINCE,  LDA;   ARG1            /LINC TAPE HANDLER; GET UNIT
-     006712  6125  
+     006712  0125  
 1647 006713  0321          ROR I   1
 1648 006714  1560          BCL I;  7774
      006715  7774  
 1649 006716  4730          STC     EXUN
 1650 006717  0264          ROL I   4               /GET LINK BIT BACK
 1651 006720  1140          ADM;    INST            /ADD UNIT ONE BIT IF ITS THERE
-     006721  6744  
+     006721  0744  
 1652 006722  1620          BSE I;  0007
      006723  0007  
 1653 006724  4763          STC     CHECK
@@ -1890,9 +1890,9 @@
 1656 006730  0000  EXUN,   0
 1657 006731  0001          AXO                     /SET EX UNIT
 1658 006732  1000          LDA;    ARG4            /GET BLOCK NUMBER
-     006733  6130  
+     006733  0130  
 1659 006734  1040          STA;    BN
-     006735  6745  
+     006735  0745  
 1660 006736  4764          STC     CHECK+1
 1661 006737  4742          STC     ADDR
 1662 006740  0640          LDF     0               /CLR DF
@@ -1904,11 +1904,11 @@
 1668 006746  1020          LDA I;
 1669 006747  0000  ADDINC, 0000                    /WORDS PER BLOCK
 1670 006750  1140          ADM;    ADDR
-     006751  6742  
+     006751  0742  
 1671 006752  1020          LDA I;  1
      006753  0001  
 1672 006754  1140          ADM;    BN              /INCR BLOCK NUM
-     006755  6745  
+     006755  0745  
 1673 006756  0232          XSK I   NBLOCK
 1674 006757  0456          SKP
 1675 006760  6763          JMP     CHECK           /TRANSFER COMPLETE
@@ -1925,9 +1925,9 @@
 1685 006767  1020          LDA I;  1
      006770  0001  
 1686 006771  1140          ADM;    CHECK+1
-     006772  6764  
+     006772  0764  
 1687 006773  1440          SAE;    BN              /FINISHED?
-     006774  6745  
+     006774  0745  
 1688 006775  6763          JMP     CHECK           /NO
 1689 006776  0212          XSK     NBLOCK          /ALL DONE?
 1690 006777  0456          SKP
@@ -1936,12 +1936,12 @@
 1693               /
 1694 007001  0642          LDF     2
 1695 007002  1040          STA;
-1696 007003  6625  BNSET,  RDEBN!D                 /OR WRIBN!D
+1696 007003  2625  BNSET,  RDEBN!D                 /OR WRIBN!D
 1697 007004  0011          CLR
 1698 007005  2012          ADD     NBLOCK
 1699 007006  0017          COM
 1700 007007  1040          STA;
-1701 007010  6626  NUMSET, RDENUM!D                /OR WRINUM!D
+1701 007010  2626  NUMSET, RDENUM!D                /OR WRINUM!D
 1702 007011  6020          JMP     EXIT
 1703                      LMODE
 1704               
@@ -2795,7 +2795,7 @@ DOUTIT  6476
 EXIT    6020
 EXTRA   4462
 EXUN    6730
-FBLOCK  6130
+FBLOCK  0130
 FORWAR  6243
 GET     4222
 GETKBD  5634
@@ -2811,8 +2811,8 @@ INCON   0031
 INIT    6637
 INST    6744
 ISIT12  4674
-JMSC    4000
-JMSSYS  4040
+JMSC    4200
+JMSSYS  4240
 JOB1    4621
 JOB2    4627 unreferenced
 JSR     6000
@@ -2923,7 +2923,7 @@ READPT  4651
 SBM     0414
 SBOOT   7600
 SCRSIZ  7611
-SDATAF  6635
+SDATAF  0635
 SETUP   4210
 SIZE    6132
 SKIP1   6005
