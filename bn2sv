@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # 
-# Copyright © 2015-2020 by Vincent Slyngstad
+# Copyright © 2015-2022 by Vincent Slyngstad
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -110,8 +110,23 @@ sub readBin {
 }
 
 #
+# Remember the output file specification, if any.
+$start = -1;
+$jsw = -1;
+$ofile = $ARGV[0];
+$start = oct($1) if $ofile =~ s/=([0-7]+)//;
+#warn "start set to $start" unless $start == -1;
+$jsw = oct($1) if $ofile =~ s/%[0-7]+//;
+if ($ofile =~ /[.]sv/i) {
+  shift @ARGV;
+} else {
+  $ofile = "foo.sv";
+}
+
+#
 # Read the input files
 @core = ();
+$minaddr = 077777;
 foreach $f (@ARGV) {
   &readBin($f, *core);
 }
@@ -128,7 +143,7 @@ $F1TOSS = 00001;	# Doesn't need low field 1
 #
 # Compute the segment table and the JSW.  Note that the values for JSW
 # are just educated guesses.
-$jsw = $NLOWF0 | $NLOWF1 | $NHIGHF | $F0TOSS | $F1TOSS;
+$njsw = $NLOWF0 | $NLOWF1 | $NHIGHF | $F0TOSS | $F1TOSS;
 $last = undef;		# Nothing loaded yet
 $segment = 0;		# No segments yet.
 for ($field = 7; $field >= 0; $field--) {
@@ -136,9 +151,9 @@ for ($field = 7; $field >= 0; $field--) {
     next unless defined $core[$i];
     #
     # Fix JSW if load is into an area shared with OS8.
-    $jsw &= ~($NLOWF0 | $F0TOSS) if ($i&076000) == 000000;
-    $jsw &= ~($NLOWF1 | $F1TOSS) if ($i&076000) == 010000;
-    $jsw &= ~$NHIGHF if ($i&076000) >= 020000;
+    $njsw &= ~($NLOWF0 | $F0TOSS) if ($i&076000) == 000000;
+    $njsw &= ~($NLOWF1 | $F1TOSS) if ($i&076000) == 010000;
+    $njsw &= ~$NHIGHF if ($i&076000) >= 020000;
     #
     # Update segment table.
     $page = int($i / 0200); # Page size is 0200 words.
@@ -151,6 +166,7 @@ for ($field = 7; $field >= 0; $field--) {
 #printf "Segment  $segment ends at %05o\n", $last;
       $segment++;
       $start[$segment] = $page;
+      $minaddr = $page*0200 if $minaddr > $page*0200; # Page is 0200 words.
 #printf "Segment $segment starts at %05o\n", $page;
     }
     $last = $page;	# Last load was to page $last.
@@ -158,10 +174,13 @@ for ($field = 7; $field >= 0; $field--) {
 }
 #printf "Segment  $segment ends at %05o\n", $last;
 $stop[$segment] = $last;
+#
+# Use the JSW guess, unless one was given on the command line.
+$jsw = $njsw if $jsw == -1;
 
 #
 # Open the output file.
-open(OUTPUT, ">foo.sv") || die "foo.sv: $!";
+open(OUTPUT, ">$ofile") || die "$ofile: $!";
 binmode(OUTPUT);
 
 #
@@ -175,8 +194,15 @@ sub outWords {
 
 #
 # Output the Core Image header.
-&outWords((-$segment) & 07777, 06203);
-&outWords(00200, $jsw);
+if ($start == -1) {
+  if ($minaddr == 0) {
+    $start = 0200;
+  } else {
+    $start = $minaddr;
+  }
+}
+&outWords((-$segment) & 07777, 06203 + ($start >> 9) & 070);
+&outWords($start&07777, $jsw);
 for ($i = 1; $i <= $segment; $i++) {
   $w1 = ($start[$i] * 0200) & 07400;
   $pages = $stop[$i] - ($w1/0200-1);
