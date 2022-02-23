@@ -1,0 +1,149 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2022 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Convert PXG DECtape images to DT (aka DJG) DECtape images.
+
+# A PXG file stores each tape line from the DECtape or LINCtape as
+# a 4 bit nibble, with the mark track as MSB.
+
+# There also exists a DWJ format, which moves the mark track bits to the
+# MSB two of the byte.
+
+# Return the bits of the argument byte.
+sub bits {
+  local($b) = @_;
+
+  return (1-!($b & 0x80), 1-!($b & 0x40), 1-!($b & 0x20), 1-!($b & 0x10),
+          1-!($b & 0x08), 1-!($b & 0x04), 1-!($b & 0x02), 1-!($b & 0x01));
+}
+
+foreach $f (@ARGV) {
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+  $tap = $f; $f =~ s/[.]pxg$//i; $f =~ s/[.]dt$//;
+  $f .= ".dt";
+
+# die "$f: exists" if -f $f;
+  open(OUTPUT, ">$f") || die "$f: $!";
+  binmode(OUTPUT);
+
+  # Just read the tape image in.
+  @tape = ();
+  while (<INPUT>) {
+    @tape = (@tape, unpack("C*", $_));
+  }
+#warn "$#tape bytes read\n";
+
+  # Each tape word is 24 bits (3 bytes).
+  # Repack it into 6 mark bits and 18 data bits.
+  @marks = @words = ();
+  while (@tape) {
+    $b1 = shift @tape;
+    ($m0, $d5, $d11, $d17, $m1, $d4, $d10, $d16) = bits($b1);
+    $b2 = shift @tape;
+    ($m2, $d3, $d9,  $d15, $m3, $d2, $d8,  $d14) = bits($b2);
+    $b3 = shift @tape;
+    ($m4, $d1, $d7,  $d13, $m5, $d0, $d6,  $d12) = bits($b3);
+    # Now repack the word more usefully.
+    $mark = ($m0<<5) + ($m1<<4) + ($m2<<3) + ($m3<<2) + ($m4<<1) + ($m5);
+    push(@marks, $mark);
+    $word = ($d5<<17) + ($d11<<16) + ($d17<<15) + 
+            ($d4<<14) + ($d10<<13) + ($d16<<12) + 
+            ($d3<<11) + ($d9 <<10) + ($d15<< 9) + 
+            ($d2<< 8) + ($d8 << 7) + ($d14<< 6) + 
+            ($d1<< 5) + ($d7 << 4) + ($d13<< 3) + 
+            ($d0<< 2) + ($d6 << 1) + ($d12);
+    push(@words, $word);
+  }
+
+  # Parse the mark track and deal with the data.
+  $bits = $data = $count = $done = 0;
+  $data0 = $data1 = undef;
+  while (@marks) {
+    $mark = shift @marks;
+    $word = shift @words;
+#   printf "Mark %02o: ", $mark;
+#   printf "Data %06o\n", $word;
+    if ($mark == 010) {
+      # Two of these have data in them!!
+      $data0 = $data1;
+      $data1 = $word;
+    }
+    if ($mark == 026) {
+#     printf "%s 12 bit words in block $block\n", $count if $count;
+      print "$bits unused!\n" unless $bits == 0;
+      $block = $word;
+      $data0 = $data1 = undef;
+      $done = 0;
+      $count = 0;
+    }
+    if ($mark == 073) {
+      next if $done;
+      # Two of these also have data in them!
+      $data0 = $data1;
+      $data1 = $word;
+      next unless defined $data0;
+      $word = $data0 >> 6;
+      print OUTPUT pack("S", $word); $count++;
+      $data0 = (($data0 & 077) << 18) + $data1;
+      $word = $data0 >> 12;
+      print OUTPUT pack("S", $word); $count++;
+      $word = $data0 & 07777;
+      print OUTPUT pack("S", $word); $count++;
+      $data0 = undef;
+      $bits = 0;
+      $done++;
+    }
+    next unless $mark == 070; # Ignore if not data word.
+    # Hack in $data0 and $data1 if needed.
+    if (defined $data0) {
+      $word = $data0 >> 6;
+      print OUTPUT pack("S", $word); $count++;
+      $data0 = (($data0 & 077) << 18) + $data1;
+      $word = $data0 >> 12;
+      print OUTPUT pack("S", $word); $count++;
+      $word = $data0 & 07777;
+      print OUTPUT pack("S", $word); $count++;
+      $data0 = undef;
+      $bits = 0;
+    }
+    # Repack 18 bit data words into 12 bit words and output them.
+    # (We rely on being able to fit two 12 bit words into an integer.)
+    $bits += 18;
+    $data = ($data<<18) + $word;
+    # Now have at least one word to output!
+    while ($bits >= 12) {
+      $word = $data >> ($bits-12);
+      print OUTPUT pack("S", $word); $count++;
+      $data -= $word << ($bits-12);
+      $bits -= 12;
+    }
+  }
+}
+#printf "%s 12 bit words in block $block\n", $count if $count;
+exit 0;

@@ -1,4 +1,4 @@
-**dt2dk** converts SIMH dectape images to .dsk format.
+**dt2dk** converts SIMH DECtape images to .dsk format.
 
 This essentially just removes the extra 129th 
 word of each DECtape block.

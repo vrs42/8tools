@@ -1,3 +1,4 @@
+#!/usr/bin/perl
 # 
 # Copyright © 2015-2022 by Vincent Slyngstad
 # 
@@ -24,3 +25,43 @@
 # shall not be used in advertising or otherwise to promote the sale, use
 # or other dealings in this Software without prior written authorization
 # from those authors.
+
+# Unpack every 3 M43 bytes into 2 words.  Similar to "3to4" except the
+# bit order is different.
+
+# Each block lives at 33 + (unit*06300+block) * (384+33)
+# The interesting bit is 384 bytes long.
+# The block number is at offset 28.
+
+# Note: The media is 06300 blocks per half, not 06260.  Only the 06260
+# are used by OS/8 (which gives warnings in os8xplode).
+
+$prefix = 33; # bytes == 22 words
+$suffix = 0;
+
+foreach $f (@ARGV) {
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+
+  $o = $f; $o =~ s/.m43$//i; $o .= ".dsk";
+  open(OUTPUT, ">$o") || die "$o: $!";
+  binmode(OUTPUT);
+
+  while (1) {
+    # Skip the prefix, if any
+    read(INPUT, $buf, $prefix) if $prefix;
+    # Copy out a block
+    for ($i = 0; $i < 0400; $i += 2) {
+      if (read(INPUT, $buf, 3) == 3) {
+        ($b1, $b2, $b3) = unpack("CCC", $buf);
+        $b1 = ($b1 << 4) + ($b2 >> 4);
+        $b2 = 07777 & (($b2 << 8) + $b3);
+        print OUTPUT pack("SS", $b1, $b2);
+      } else {
+        exit 0; # Lame way to break while (1).
+      }
+    }
+    # Skip the suffix, if any
+    read(INPUT, $buf, $suffix) if $suffix;
+  }
+}
