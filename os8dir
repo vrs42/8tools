@@ -39,75 +39,89 @@ $epoch = 70 + ($i&030);
 $i += 70;
 @month = ("0",  "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
 	 "AUG", "SEP", "OCT", "NOV", "DEC", "13",  "14",  "15");
-print " $dy-$month[$mo+1]-$i\n\n";
 
 open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
 binmode(INPUT);
 
 #
-# Directory starts in block 1.
-$link = 1;
-#
-# Read in the next directory segment (block).
-while ($link) {
-    seek(INPUT, $link*01000, 0) || die "directory seek: $!";
-    read(INPUT, $dir, 01000) || die "directory read: $!";
-    @dir = unpack("S512", $dir);
-    grep($_ &= 07777, @dir);
-    #
-    # @dir starts with a directory segment header.
-    $count = shift @dir;
-    $start = shift @dir;
-    die "Implausible block number found: $start\n"
-      unless $start == ($start & 07777);
-    $link = shift @dir;
-    die "Implausible directory link found: $link\n"
-      unless $link < 7;
-    $flag = shift @dir;
-    $aiw = shift @dir;
-    $aiw = $aiw - 010000 unless $aiw == 0;
-$aiw = 1 unless $aiw == 0;
-    $date = "";
-    for ($count -= 010000; $count < 0; $count++) {
-	$n1 = shift @dir;
-	$n2 = shift @dir;
-	if ($n1) {
-	    $n3 = shift @dir;
-	    $e1 = shift @dir;
-	    if ($aiw) {
-		$a = shift @dir;
-		# Blow that off and use year as 3 bits, from 1970.
-		$yr = $a & 07;
-		$yr -= 8 if $yr > $cyear;
-		$yr += $epoch;
-		# Day is 5 bits.
-		$dy = ($a>>3) & 037;
-		# Month is 4 bits.
-		$mo = ($a>>8) & 017;
-		$date = "$dy-$month[$mo]-$yr";
-		for ($i = $aiw+1; $i < 0; $i++) {
-		   $a = shift @dir;
-		}
-	    }
-	    $length = shift @dir;
-            die "Implausible file length found: $length\n"
-              unless $length && ($length == ($length & 07777));
-	    $length = 010000 - $length;
-	    @name = ($n1>>6, $n1&077, $n2>>6, $n2&077, $n3>>6, $n3&077);
-	    @ext = ($e1>>6, $e1&077);
-	    grep($_ = ($_ > 040? $_ : $_ + 0100), @name, @ext);
-	    $name = pack("CCCCCC", @name);
-	    $ext = pack("CC", @ext);
-	    $name .= "." . $ext;
-	    $name =~ s/@//g;
-	} else {
-	    $length = 010000 - $n2;
-            die "Implausible <empty> length found: $length\n"
-              unless $length && ($length == ($length & 07777));
-	    $name = "<empty>";
-	    $date = "";
-	}
-	printf "%-9s\t%04o\t%d\t%s\n", $name, $start, $length, $date;
-	$start += $length;
-    }
+# Determine the volume size in blocks.
+# Use that to guage the number of volumes.
+# Adjust the volume size for equal sized volumes.
+$size = (-s $ARGV[0]) / 512;
+$vols = 1 + int(($size-1) / 010000);
+$vsiz = $size / $vols;
+#printf "Volume size is 0%04o blocks\n", $vsiz;
+
+for ($vstart = 0; $vstart < $size; $vstart += $vsiz) {
+  # Print the made-up date.
+  printf "Unit %d:\n", $vstart/$vsiz if $vsiz != $size;
+  print "\n $dy-$month[$mo+1]-$i\n\n";
+  #
+  # Directory starts in block 1.
+  $link = 1;
+  #
+  # Read in the next directory segment (block).
+  while ($link) {
+      seek(INPUT, ($vstart+$link)*01000, 0) || die "directory seek: $!";
+      read(INPUT, $dir, 01000) || die "directory read: $!";
+      @dir = unpack("S512", $dir);
+      grep($_ &= 07777, @dir);
+      #
+      # @dir starts with a directory segment header.
+      $count = shift @dir;
+      $start = shift @dir;
+      die "Implausible block number found: $start\n"
+        unless $start == ($start & 07777);
+      $link = shift @dir;
+      die "Implausible directory link found: $link\n"
+        unless $link < 7;
+      $flag = shift @dir;
+      $aiw = shift @dir;
+      $aiw = $aiw - 010000 unless $aiw == 0;
+  $aiw = 1 unless $aiw == 0;
+      $date = "";
+      for ($count -= 010000; $count < 0; $count++) {
+  	$n1 = shift @dir;
+  	$n2 = shift @dir;
+  	if ($n1) {
+  	    $n3 = shift @dir;
+  	    $e1 = shift @dir;
+  	    if ($aiw) {
+  		$a = shift @dir;
+  		# Blow that off and use year as 3 bits, from 1970.
+  		$yr = $a & 07;
+  		$yr -= 8 if $yr > $cyear;
+  		$yr += $epoch;
+  		# Day is 5 bits.
+  		$dy = ($a>>3) & 037;
+  		# Month is 4 bits.
+  		$mo = ($a>>8) & 017;
+  		$date = "$dy-$month[$mo]-$yr";
+  		for ($i = $aiw+1; $i < 0; $i++) {
+  		   $a = shift @dir;
+  		}
+  	    }
+  	    $length = shift @dir;
+              die "Implausible file length found: $length\n"
+                unless $length && ($length == ($length & 07777));
+  	    $length = 010000 - $length;
+  	    @name = ($n1>>6, $n1&077, $n2>>6, $n2&077, $n3>>6, $n3&077);
+  	    @ext = ($e1>>6, $e1&077);
+  	    grep($_ = ($_ > 040? $_ : $_ + 0100), @name, @ext);
+  	    $name = pack("CCCCCC", @name);
+  	    $ext = pack("CC", @ext);
+  	    $name .= "." . $ext;
+  	    $name =~ s/@//g;
+  	} else {
+  	    $length = 010000 - $n2;
+              die "Implausible <empty> length found: $length\n"
+                unless $length && ($length == ($length & 07777));
+  	    $name = "<empty>";
+  	    $date = "";
+  	}
+  	printf "%-9s\t%04o\t%d\t%s\n", $name, $start, $length, $date;
+  	$start += $length;
+      }
+  }
+  print "\n";
 }
