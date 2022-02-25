@@ -72,7 +72,8 @@ foreach $f (@ARGV) {
       $data1 = $word;
     }
     if ($mark == 026) {
-#     printf "%s 12 bit words in block $block\n", $count if $count;
+      printf "%s 12 bit words in block $block\n", $count
+        if $count && ($count != 129);
       print "$bits unused!\n" unless $bits == 0;
       $block = $word;
 #warn "block number is $block\n";
@@ -100,6 +101,7 @@ foreach $f (@ARGV) {
     next unless $mark == 070; # Ignore if not data word.
     # Hack in $data0 and $data1 if needed.
     if (defined $data0) {
+      $sword = $word; # Save for a second
       $word = $data0 >> 6;
       print OUTPUT pack("S", $word); $count++;
       $data0 = (($data0 & 077) << 18) + $data1;
@@ -107,8 +109,9 @@ foreach $f (@ARGV) {
       print OUTPUT pack("S", $word); $count++;
       $word = $data0 & 07777;
       print OUTPUT pack("S", $word); $count++;
-      $data0 = undef;
+      $data0 = $data1 = undef;
       $bits = 0;
+      $word = $sword; # ...and restore
     }
     # Repack 18 bit data words into 12 bit words and output them.
     # (We rely on being able to fit two 12 bit words into an integer.)
@@ -123,5 +126,5 @@ foreach $f (@ARGV) {
     }
   }
 }
-#printf "%s 12 bit words in block $block\n", $count if $count;
+printf "%s 12 bit words in block $block\n", $count if $count != 129;
 exit 0;
