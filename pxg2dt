@@ -34,14 +34,6 @@
 # There also exists a DWJ format, which moves the mark track bits to the
 # MSB two of the byte.
 
-# Return the bits of the argument byte.
-sub bits {
-  local($b) = @_;
-
-  return (1-!($b & 0x80), 1-!($b & 0x40), 1-!($b & 0x20), 1-!($b & 0x10),
-          1-!($b & 0x08), 1-!($b & 0x04), 1-!($b & 0x02), 1-!($b & 0x01));
-}
-
 foreach $f (@ARGV) {
   open(INPUT, $f) || die "$f: $!";
   binmode(INPUT);
@@ -52,41 +44,26 @@ foreach $f (@ARGV) {
   open(OUTPUT, ">$f") || die "$f: $!";
   binmode(OUTPUT);
 
-  # Just read the tape image in.
+  # Just read the tape image in and convert it to nibbles.
   @tape = ();
   while (<INPUT>) {
-    @tape = (@tape, unpack("C*", $_));
+    @tape = (@tape, split(//, unpack("H*", $_)));
   }
-#warn "$#tape bytes read\n";
+#warn "$#tape nibbles read\n";
 
-  # Each tape word is 24 bits (3 bytes).
-  # Repack it into 6 mark bits and 18 data bits.
-  @marks = @words = ();
-  while (@tape) {
-    $b1 = shift @tape;
-    ($m0, $d5, $d11, $d17, $m1, $d4, $d10, $d16) = bits($b1);
-    $b2 = shift @tape;
-    ($m2, $d3, $d9,  $d15, $m3, $d2, $d8,  $d14) = bits($b2);
-    $b3 = shift @tape;
-    ($m4, $d1, $d7,  $d13, $m5, $d0, $d6,  $d12) = bits($b3);
-    # Now repack the word more usefully.
-    $mark = ($m0<<5) + ($m1<<4) + ($m2<<3) + ($m3<<2) + ($m4<<1) + ($m5);
-    push(@marks, $mark);
-    $word = ($d5<<17) + ($d11<<16) + ($d17<<15) + 
-            ($d4<<14) + ($d10<<13) + ($d16<<12) + 
-            ($d3<<11) + ($d9 <<10) + ($d15<< 9) + 
-            ($d2<< 8) + ($d8 << 7) + ($d14<< 6) + 
-            ($d1<< 5) + ($d7 << 4) + ($d13<< 3) + 
-            ($d0<< 2) + ($d6 << 1) + ($d12);
-    push(@words, $word);
-  }
-
-  # Parse the mark track and deal with the data.
-  $bits = $data = $count = $done = 0;
+  # Push each nibble past the "tape head".  If the mark track forms an
+  # interesting value, process the data bits appropriately.
+  $mark = $d1 = $d2 = $d3 = 0;
   $data0 = $data1 = undef;
-  while (@marks) {
-    $mark = shift @marks;
-    $word = shift @words;
+  while (@tape) {
+    $nibble = shift @tape;
+    $nibble = unpack("B4", pack("H", $nibble));
+    ($m, $b1, $b2, $b3) = split(//, $nibble);
+    # Update the shift registers
+    $mark  = 077 & ($mark<<1) + $m;
+    $word = 0777777 & ($word*8 + $b1*4 + $b2*2 + $b3);
+    # Now inspect the new mark and see if it is time to do something
+    # with the word..
 #   printf "Mark %02o: ", $mark;
 #   printf "Data %06o\n", $word;
     if ($mark == 010) {
@@ -98,6 +75,7 @@ foreach $f (@ARGV) {
 #     printf "%s 12 bit words in block $block\n", $count if $count;
       print "$bits unused!\n" unless $bits == 0;
       $block = $word;
+#warn "block number is $block\n";
       $data0 = $data1 = undef;
       $done = 0;
       $count = 0;

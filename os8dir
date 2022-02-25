@@ -102,9 +102,9 @@ for ($vstart = 0; $vstart < $size; $vstart += $vsiz) {
   		}
   	    }
   	    $length = shift @dir;
-              die "Implausible file length found: $length\n"
-                unless $length && ($length == ($length & 07777));
-  	    $length = 010000 - $length;
+            die "Implausible file length found: $length\n"
+              unless ($length == ($length & 07777));
+  	    $length = 010000 - $length if $length;
   	    @name = ($n1>>6, $n1&077, $n2>>6, $n2&077, $n3>>6, $n3&077);
   	    @ext = ($e1>>6, $e1&077);
   	    grep($_ = ($_ > 040? $_ : $_ + 0100), @name, @ext);
