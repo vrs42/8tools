@@ -49,7 +49,7 @@ binmode(INPUT);
 # Adjust the volume size for equal sized volumes.
 $size = (-s $ARGV[0]) / 512;
 $vols = 1 + int(($size-1) / 010000);
-$vsiz = $size / $vols;
+$vsiz = int($size / $vols);
 #printf "Volume size is 0%04o blocks\n", $vsiz;
 
 for ($vstart = 0; $vstart < $size; $vstart += $vsiz) {
@@ -78,7 +78,7 @@ for ($vstart = 0; $vstart < $size; $vstart += $vsiz) {
       $flag = shift @dir;
       $aiw = shift @dir;
       $aiw = $aiw - 010000 unless $aiw == 0;
-  $aiw = 1 unless $aiw == 0;
+$aiw = 1 unless $aiw == 0;
       $date = "";
       for ($count -= 010000; $count < 0; $count++) {
   	$n1 = shift @dir;
