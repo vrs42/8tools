@@ -1,0 +1,90 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Extract the data blocks in ".dsk" format from a LINCtape image.
+#
+# So, the .linc format appears to decode as follows:
+# The last 3 words are the block length in words, the negative prolog
+# block count, and the negative epilog block count.  The remainder of the
+# file should be a multiple of the given block length.  The prolog and epilog
+# block counts indicate the number of unused blocks at the beginning and
+# end of the file.  Data blocks are found between the prolog and the epilog.
+#
+
+#
+# Read the specified block, taking into account $boff and $bsize.
+sub getblk {
+  local($blk) = @_;
+$off = ($blk+$boff) * $bsize*2;
+warn "getblk seek: $off\n";
+  seek(INPUT, ($blk+$boff) * $bsize*2, 0) || die "blk seek: $!";
+  read(INPUT, $buf, $bsize*2) || die "blk read: $!";
+  return unpack("S$bsize", $buf);
+}
+
+#
+# Process each image mentioned on the command line.
+foreach $arg (@ARGV) {
+  open(INPUT, $arg) || die "$arg: $!";
+  binmode(INPUT);
+
+  #
+  # First, obtain block size and offset info.
+  seek(INPUT, -6, 2) || die "seek: $!";
+  read(INPUT, $buf, 6) || die "read: $!";
+  ($bsize, $boff, $eoff) = unpack("sss", $buf);
+  $boff = -$boff;
+  $eoff = -$eoff;
+
+  #
+  # Verify the plausibility of the format information.
+  $size = (-s $arg) - 3*2;
+  $blocks = int($size / (2*$bsize));
+#warn "$size $blocks $bsize\n";
+  die "Couldn't determine block size for $arg" unless $blocks*$bsize*2 == $size;
+
+  # : Open a corresponding ".dsk" file.
+  $ofile = $arg; $ofile =~ s/[.]linc$//;
+  $ofile .= ".dsk";
+  open(OUTPUT, ">$ofile") || die "$ofile: $!";
+  binmode(OUTPUT);
+
+  #
+  # Copy out the data.  Data is mostly in the correct format from &getblk,
+  # except the 129th word of 129 word blocks should be truncated.
+  $blocks -= $boff;
+  $blocks -= $eoff;
+  $osize = $bsize;
+  $osize-- if $osize == 129;
+  for ($block = 0; $block < $blocks; $block++) {
+    @blk = &getblk($block);
+    $buf = pack("S$osize", @blk);
+    print OUTPUT $buf || die "$ofile: $!";
+  }
+}

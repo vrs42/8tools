@@ -110,7 +110,8 @@ foreach $f (@todo) {
 #   }
 # }
   $of = $f; $of =~ y/A-Z/a-z/;
-  $of =~ s/\.sv/.svb/;
+  $of =~ s/\.dg//; $of =~ s/\.sv//;
+  $of .= ".svb";
   if (-f $of) {
 #   warn "Skipping $of: exists\n";
 #   next;

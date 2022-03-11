@@ -1,0 +1,102 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2022 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# DIAL binary files have a header block, which starts with a prolog.
+# The prolog typically begins with code to either HLT or to autostart
+# the binary in the correct mode.  The three code sequences generated
+# by the save binary command are:
+# HLT startup:
+#	0000		HLT
+# PDP mode startup:
+#	0002		PDP
+#	60x2		CIF x
+#	5777		JMP I 377
+#	xxxx		start
+# LINC mode startup:
+#	060x		LIF x
+#	6000+start	JMP start
+# Pad words are then included up to the last 041 words, which are:
+#	The length of the binary, in blocks.
+#	A 32 word array, non-zero if the corresponding pair of pages is
+#	    to be loaded from the next block.
+#
+# This is followed by up to 32 additional blocks which are actually
+# loaded, in sequential order.
+#
+
+$bsize = 0400 * 2;
+#
+# Read the specified block, taking into account $boff and $bsize.
+sub getblk {
+  local($blk) = @_;
+  seek(INPUT, ($blk+$voffset) * $bsize, 0) || die "blk seek: $!";
+  read(INPUT, $buf, $bsize) || die "blk read: $!";
+  return unpack("S*", $buf);
+}
+
+#
+# Process each image mentioned on the command line.
+foreach $arg (@ARGV) {
+  next unless $arg =~ /[.]bd/;
+  open(INPUT, $arg) || die "$arg: $!";
+  binmode(INPUT);
+  print "\n$arg: ";
+  #
+  # Read in the header block.
+  @hdr = &getblk(0);
+#warn "$#hdr\n@hdr\n";
+  #
+  # Print what we got.
+  if ($hdr[0] == 0000) { # "HLT"
+    printf "Loader will HLT after loading\n";
+  } elsif ($hdr[0] == 0002) { # "PDP"
+    $sa = ($hdr[1] & 070) << 9; # Field
+    $sa += $hdr[3]; # Low 12 bits
+    printf "Start Address %05o in PDP mode\n", $sa;
+  } elsif (($hdr[0]&07770) == 0600) { # "LIF n"
+    $sa = ($hdr[0]&07) << 10;
+    $sa += $hdr[1] & 01777; # Low 10 bits
+    printf "Start Address %05o in LINC mode\n", $sa;
+  } else {
+    warn "Unexpected header content\n";
+  }
+# printf "Loads in %d 256-word memory blocks.\n", $hdr[0337];
+  print "Memory blocks used:\n";
+  $column = 0;
+  for ($blk = 0; $blk < 040; $blk++) {
+    if ($hdr[0340+$blk]) {
+      printf "%05o ", $blk*0400;
+      if ($column++ > 8) {
+        print "\n";
+        $column = 0;
+      }
+    }
+  }
+  print "\n" if $column;
+}
