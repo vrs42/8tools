@@ -132,30 +132,31 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     "8",   "9", ":", ";", "<", "=", ">", "?",  # 07x
   );
   @dir = &getblk($dirblk);
-  # Check for leading entry of 05757.  Retry at 0402 if absent.
+  # Check for leading entry of 05757.  Retry at 0326 if absent.
   if (($dir[0] != 05757) || ($dir[1] != 05757)
    || ($dir[2] != 05757) || ($dir[3] != 05757)) {
-    $dirblk = 0402;
+    $dirblk = 0326;
     $lap6 = 1;
     # Set up character translation for LAP6.
     @sixbit = (
       "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
-      "8",   "9", "\r","?", " ", "i", "p", "-",   # 01x
-      "+",   "|", "#", " ", "A", "B", "C", "D",   # 02x
+      "8",   "9", "\n","?", " ", "I", ".", "-",   # 01x
+      "+",   "\\","#", " ", "A", "B", "C", "D",   # 02x
       "E",   "F", "G", "H", "I", "J", "K", "L",   # 03x
       "M",   "N", "O", "P", "Q", "R", "S", "T",   # 04x
-      "U",   "V", "W", "X", "Y", "Z", "\n","\0",  # 05x
-      "\033","=", "u", ",", ".", "\$","[", "_",   # 06x
+      "U",   "V", "W", "X", "Y", "Z", "\n","/",   # 05x
+      "\033","=", "U", ",", ".", "\$","[", "_",   # 06x
       '"',   '"', "<", ">", "]", "*", ":", "\032",# 07x
     );
     @dir = &getblk($dirblk);
   }
   if (($dir[0] != 05757) || ($dir[1] != 05757)
    || ($dir[2] != 05757) || ($dir[3] != 05757)) {
-    die "No DIAL or LAP6 directory found.\n";
+    die "$ARGV[0]: No DIAL or LAP6 directory found.\n";
   }
   push(@dir, &getblk($dirblk+1));
-  printf "\n%s Name\tTBLK\tTLEN\tBBLK\tBLEN\n", $lap6? "LAP6": "DIAL";
+  printf "\n$ARGV[0]\n";
+  printf "%s Name\tTBLK\tTLEN\tBBLK\tBLEN\n", $lap6? "LAP6": "DIAL";
   printf "---------\t----\t----\t----\t----\n";
   while (@dir) {
     #
@@ -176,6 +177,7 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $name = join("", @name);
     $name =~ y/A-Z/a-z/; # Don't shout
     $name =~ s/[?]*$//; # Remove trailing "?"
+    $name =~ s/[\032]*$//; # Remove trailing EOF
     next if $name eq '////////'; # Empty
     $name =~ s:^//:..:; # Deleted file, write as hidden
 #   #
@@ -280,43 +282,5 @@ sub writefile {
       print OUTPUT $buf || die "file write: $!";
     }
 }
-
-exit 0;
-# BUGBUG TODO Write the system areas as described above.
-#
-# This is currently PQS8 cruft.
-# Now do the reserved system areas:
-# Block		Use
-&writefile(0000, 0000, ".boot");
-&writefile(0001, 0013, ".kbm");
-&writefile(0014, 0014, ".edit");
-&writefile(0015, 0016, ".cat");
-&writefile(0017, 0017, ".tty");
-&writefile(0020, 0037, ".percent");
-&writefile(0040, 0057, ".dollar");
-&writefile(0060, 0060, ".iblock");
-&writefile(0061, 0062, ".ecp");
-&writefile(0063, 0066, ".dir");
-&writefile(0067, 0071, ".euc");
-&writefile(0072, 0075, ".run");
-&writefile(0076, 0077, ".reserved");
-&writefile(0100, 0100, ".slurp");
-&writefile(0101, 0102, ".ehinit");
-&writefile(0103, 0112, ".ehcode");
-&writefile(0113, 0114, ".iohtrap");
-&writefile(0115, 0115, ".brecovr");
-&writefile(0116, 0116, ".batch");
-&writefile(0117, 0117, ".bbuffer");
-&writefile(0120, 0120, ".system");
-&writefile(0121, 0121, ".pzero");
-&writefile(0122, 0122, ".hdir");
-&writefile(0123, 0162, ".handlers");
-&writefile(0163, 0200, ".odt");
-&writefile(0201, 0201, ".bonce");
-&writefile(0202, 0202, ".bcode");
-&writefile(0203, 0215, ".binget");
-&writefile(0216, 0231, ".scratch");
-&writefile(0232, 0240, ".dump");
-&writefile(0241, 0243, ".change");
 
 exit 0;
