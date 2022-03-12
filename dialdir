@@ -1,0 +1,322 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+#
+# Explode the contents of a DIAL file-system into the 
+# various files it contains.
+# BUGBUG: We aren't yet writing XML instructions to
+# facilitate reconstructing the media image.
+
+#
+# Not much is researched yet about dates in DIAL.  There's
+# no evidence that there was a notion of system or file
+# dates, AFAIK.
+# Probably, this date stuff is just cruft.
+($_, $_, $_, $dy, $mo, $i) = localtime(time);
+$i = ($i + 1900) - 1960;
+$epoch = int($i/8);
+$cyear = $i & 07;
+$i += 60;
+@month = ("0",  "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
+	 "AUG", "SEP", "OCT", "NOV", "DEC", "13",  "14",  "15");
+#print " $dy-$month[$mo+1]-$i\n\n";
+
+#
+# Open the disk image to be examined.  Media specific tools are 
+# used to convert media into simple 12 bit words, zero extented 
+# to 16 bits, and stored in two bytes in Perl's packed 'S' format.
+# Consecutive words form blocks, and blocks are stored in logical 
+# order, not the physical order of the original media.
+open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
+binmode(INPUT);
+
+#
+# Check for OS/8 or COS, and bail if this doesn't appear to be
+# a DIAL image..
+# Read first OS/8 directory segment
+$link = 001; $fsbase = 0; $bsize = 2*0400;
+seek(INPUT, $bsize*($fsbase+$link), 0) || die "seek($dsk): $!";
+read(INPUT, $buf, $bsize) || die "read($dsk): $!";
+@blk = unpack("S512", $buf);
+$nent = shift @blk;
+$sblk = shift @blk;
+# If it has files in the system area, it's not a system device.
+$sys = 0 if $sblk < 070; # Not a system image
+$cos = 0 if $sblk < 0140; # Not a COS image
+$nent = 010000 - $nent;
+$link = shift @blk;
+$tent = shift @blk;
+$aiw = shift @blk;
+$aiw = 010000 - $aiw unless $aiw == 0;
+die "$ARGV[0] looks like OS/8\n" if $sblk == 0007;
+die "$ARGV[0] looks like OS/8\n" if $sblk == 0070;
+die "$ARGV[0] looks like COS\n" if $sblk == 0140;
+
+##
+## Make sure the output directory exists.
+#$fsname = $ARGV[0]; $fsname =~ s/[.]dsk$//;
+#$fsname .= ".0";
+#mkdir $fsname unless -d $fsname;
+
+#
+# A DIAL tape volume has this basic format:
+#
+# Block		Function
+# -----		--------
+# 000-267	File Storage
+# 277		Free
+# 300-367	DIAL
+# 370-467	Working Area
+# 470-777	File Storage
+#
+# The DIAL area breaks down thus:
+# 300-321	EDITOR
+# 322-345	ASSEMBLER
+# 346-247	DIAL Index
+# 350-353	FILECOMS
+# 354-355	LOADER
+# 356-360	SAVE BINARY
+# 361-362	PX, DX
+# 363		TTY
+# 364		PS
+# 365		UNUSED
+# 367		SCRATCH
+#
+# TODO: Research disk layout for DF32/RS08/RK08, and
+# save them with appropriate names.
+#
+# For now, we just carve the media into 1000 block units and
+# dump each one.
+#
+$bsize = 0400 * 2;
+$vsize = -s $ARGV[0];
+$vsize /= $bsize; # In blocks
+$parts = $vsize / 1000;
+for ($unit = 0; $unit <= $parts; $unit++) {
+  $voffset = $unit * 1000;
+  # Read the index.
+  $dirblk = 0346;
+  $lap6 = 0;
+  @sixbit = (
+    "\032","A", "B", "C", "D", "E", "F", "G",  # 00x
+    "H",   "I", "J", "K", "L", "M", "N", "O",  # 01x
+    "P",   "Q", "R", "S", "T", "U", "V", "W",  # 02x
+    "X",   "Y", "Z", "[", "\\","]", "^", "\r", # 03x
+    " ",   "!", '"', "\n","\$","%", "?", "\t", # 04x
+    "(",   ")", "*", "+", ",", "-", ".", "/",  # 05x
+    "0",   "1", "2", "3", "4", "5", "6", "7",  # 06x
+    "8",   "9", ":", ";", "<", "=", ">", "?",  # 07x
+  );
+  @dir = &getblk($dirblk);
+  # Check for leading entry of 05757.  Retry at 0402 if absent.
+  if (($dir[0] != 05757) || ($dir[1] != 05757)
+   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
+    $dirblk = 0402;
+    $lap6 = 1;
+    # Set up character translation for LAP6.
+    @sixbit = (
+      "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
+      "8",   "9", "\r","?", " ", "i", "p", "-",   # 01x
+      "+",   "|", "#", " ", "A", "B", "C", "D",   # 02x
+      "E",   "F", "G", "H", "I", "J", "K", "L",   # 03x
+      "M",   "N", "O", "P", "Q", "R", "S", "T",   # 04x
+      "U",   "V", "W", "X", "Y", "Z", "\n","\0",  # 05x
+      "\033","=", "u", ",", ".", "\$","[", "_",   # 06x
+      '"',   '"', "<", ">", "]", "*", ":", "\032",# 07x
+    );
+    @dir = &getblk($dirblk);
+  }
+  if (($dir[0] != 05757) || ($dir[1] != 05757)
+   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
+    die "No DIAL or LAP6 directory found.\n";
+  }
+  push(@dir, &getblk($dirblk+1));
+  printf "\n%s Name\tTBLK\tTLEN\tBBLK\tBLEN\n", $lap6? "LAP6": "DIAL";
+  printf "---------\t----\t----\t----\t----\n";
+  while (@dir) {
+    #
+    # Shift the next directory entry.
+    $name1 = shift @dir;
+    $name2 = shift @dir;
+    $name3 = shift @dir;
+    $name4 = shift @dir;
+    $stxt = shift @dir;
+    $ctxt = shift @dir;
+    $sbin = shift @dir;
+    $cbin = shift @dir;
+    #
+    # Pack up the file name.  File names depend on @sixbit.
+    @name = ($name1>>6, $name1&077, $name2>>6, $name2&077,
+             $name3>>6, $name3&077, $name4>>6, $name4&077);
+    grep($_ = $sixbit[$_], @name);
+    $name = join("", @name);
+    $name =~ y/A-Z/a-z/; # Don't shout
+    $name =~ s/[?]*$//; # Remove trailing "?"
+    next if $name eq '////////'; # Empty
+    $name =~ s:^//:..:; # Deleted file, write as hidden
+#   #
+#   # Process text and binary versions, as found.
+#   &writetxt($stxt, $stxt+$ctxt, "$name.tx") unless $stxt == 05757;
+#   # BUGBUG: These are currently written as one word per short,
+#   # which is readable but not efficient.  Could they reasonably
+#   # be converted to .sv format or something similar?
+#   &writefile($sbin, $sbin+$cbin, "$name.bd") unless $sbin == 05757;
+    #
+    # Print the directory.
+    $name =~ y/a-z/A-Z/;
+    printf "%-8s\t", $name;
+    if ($stxt == 05757) {
+      printf "    \t    \t";
+    } else {
+      printf "%4o\t%4o\t", $stxt, $ctxt;
+    }
+    if ($sbin == 05757) {
+      printf "    \t    \n";
+    } else {
+      printf "%4o\t%4o\n", $sbin, $cbin;
+    }
+#   printf "%-8s\t0%04o\t0%04o\n", "${name}.tx", $stxt, $ctxt
+#     unless $stxt == 05757;
+#   printf "%-8s\t0%04o\t0%04o\n", "${name}.bd", $sbin, $cbin
+#     unless $sbin == 05757;
+  }
+}
+
+#
+# Read the specified block, taking into account $boff and $bsize.
+sub getblk {
+  local($blk) = @_;
+  seek(INPUT, ($blk+$voffset) * $bsize, 0) || die "blk seek: $!";
+  read(INPUT, $buf, $bsize) || die "blk read: $!";
+  return unpack("S*", $buf);
+}
+
+#
+# DIAL binary files have an extra header block prepended, which
+# looks like this:
+# A word with the mode of the binary.
+# A word with the field of the start address.
+# A word with unknown data.
+# A word with the starting address.
+# 256-32-5 = 219 filler words.
+# The length of the binary, in blocks.
+# A 32 word array, non-zero if the corresponding pair of pages is to
+# be loaded from the next block.
+#
+# This is followed by up to 32 additional blocks which are actually loaded,
+# in sequential order.
+#
+
+#
+# Here we go:
+# Actual text is packed in sixbit, with substitutions.
+sub writetxt {
+    local($start, $end, $name) = @_;
+#warn "writetxt($start, $end, $name)\n";
+
+    @text = ();
+    while ($start < $end) {
+      # Read in the text.
+      seek(INPUT, $start*$bsize, 0) || die "$ARGV[0] file seek: $!";
+      # Read the media.  If that fails, it is usually because SIMH didn't
+      # bother to write the uninitialized block.  Fabricate the empty blocks.
+      read(INPUT, $buf, $bsize) || ($buf = pack("S$bsize", 0));
+      push(@text, unpack("S*", $buf));
+      $start++;
+    }
+    # Open a file for our results.
+    open(OUTPUT, ">$fsname/$name") || die "$fsname/$name: $!";
+    binmode(OUTPUT);
+    #
+    # We've got ourselves a text file.  Unpack the beast.
+    while (@text) {
+      $word = shift @text;
+      $c1 = $sixbit[$word >> 6];
+      last if $c1 eq "\032"; # EOF
+      print OUTPUT $c1;
+      $c2 = $sixbit[$word & 077];
+      last if $c2 eq "\032"; # EOF
+      print OUTPUT $c2;
+    }
+}
+
+
+sub writefile {
+    local($first, $last, $name) = @_;
+
+    # Open a file for our results.
+    open(OUTPUT, ">$fsname/$name") || die "$fsname/$name: $!";
+#warn "writefile($first, $last, '$name')\n";
+    binmode(OUTPUT);
+    # Copy out the file.  These are binary, so leave the words in DSK format.
+    for (; $first <= $last; $first++) {
+      seek(INPUT, $first*$bsize, 0) || die "$ARGV[0] file seek: $!";
+      read(INPUT, $buf, $bsize) || die "$ARGV[0] file read: $!";
+      # Write the file.
+      print OUTPUT $buf || die "file write: $!";
+    }
+}
+
+exit 0;
+# BUGBUG TODO Write the system areas as described above.
+#
+# This is currently PQS8 cruft.
+# Now do the reserved system areas:
+# Block		Use
+&writefile(0000, 0000, ".boot");
+&writefile(0001, 0013, ".kbm");
+&writefile(0014, 0014, ".edit");
+&writefile(0015, 0016, ".cat");
+&writefile(0017, 0017, ".tty");
+&writefile(0020, 0037, ".percent");
+&writefile(0040, 0057, ".dollar");
+&writefile(0060, 0060, ".iblock");
+&writefile(0061, 0062, ".ecp");
+&writefile(0063, 0066, ".dir");
+&writefile(0067, 0071, ".euc");
+&writefile(0072, 0075, ".run");
+&writefile(0076, 0077, ".reserved");
+&writefile(0100, 0100, ".slurp");
+&writefile(0101, 0102, ".ehinit");
+&writefile(0103, 0112, ".ehcode");
+&writefile(0113, 0114, ".iohtrap");
+&writefile(0115, 0115, ".brecovr");
+&writefile(0116, 0116, ".batch");
+&writefile(0117, 0117, ".bbuffer");
+&writefile(0120, 0120, ".system");
+&writefile(0121, 0121, ".pzero");
+&writefile(0122, 0122, ".hdir");
+&writefile(0123, 0162, ".handlers");
+&writefile(0163, 0200, ".odt");
+&writefile(0201, 0201, ".bonce");
+&writefile(0202, 0202, ".bcode");
+&writefile(0203, 0215, ".binget");
+&writefile(0216, 0231, ".scratch");
+&writefile(0232, 0240, ".dump");
+&writefile(0241, 0243, ".change");
+
+exit 0;
