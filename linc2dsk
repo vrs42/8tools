@@ -42,7 +42,7 @@
 sub getblk {
   local($blk) = @_;
 $off = ($blk+$boff) * $bsize*2;
-warn "getblk seek: $off\n";
+#warn "getblk seek: $off\n";
   seek(INPUT, ($blk+$boff) * $bsize*2, 0) || die "blk seek: $!";
   read(INPUT, $buf, $bsize*2) || die "blk read: $!";
   return unpack("S$bsize", $buf);
