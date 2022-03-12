@@ -7,12 +7,6 @@ the various files of the directory are extracted.
 The output directory name is derived by removing the ".dsk"
 extension, if any, from the input file name, and adding ".0".
 
-Deleted files in LAP6/DIAL have the first two characters
-of their names over-written with '//'.  To prevent name
-collisions, these characters are converted to '..'.  In
-Linux and similar systems, these files won't appear in
-the default directory listing.
-
 Each file name in the directory may have a text file
 and/or a binary file associated with it.  Text files
 are converted from either the LAP6 or DIAL sixbit
@@ -21,8 +15,15 @@ Binary files are written as one word every two bytes,
 similar to the .dsk format.  Their file name will have
 ".bd" appended.
 
-BUG: The directory is currently printed, making the
-output quite verbose.
+Deleted files in LAP6/DIAL have the first two characters
+of their names over-written with '//'.  To prevent name
+collisions, these characters are converted to '..'.  In
+Linux and similar systems, these files won't appear in
+the default directory listing.
+
+System areas are also copied to output files with a single
+dot prefix, so that they do not appear in the default
+directory listing..
 
 BUG: No XML instructions for the reconstruction of the
 volume are generated.

@@ -155,8 +155,8 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     die "No DIAL or LAP6 directory found.\n";
   }
   push(@dir, &getblk($dirblk+1));
-  printf "\n%s Name\tTBLK\tTLEN\tBBLK\tBLEN\n", $lap6? "LAP6": "DIAL";
-  printf "---------\t----\t----\t----\t----\n";
+# printf "\n%s Name\tTBLK\tTLEN\tBBLK\tBLEN\n", $lap6? "LAP6": "DIAL";
+# printf "---------\t----\t----\t----\t----\n";
   while (@dir) {
     #
     # Shift the next directory entry.
@@ -185,19 +185,20 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     # which is readable but not efficient.  Could they reasonably
     # be converted to .sv format or something similar?
     &writefile($sbin, $sbin+$cbin, "$name.bd") unless $sbin == 05757;
-    # Print the directory too.
-    $name =~ y/a-z/A-Z/;
-    printf "%-8s\t", $name;
-    if ($stxt == 05757) {
-      printf "    \t    \t";
-    } else {
-      printf "%4o\t%4o\t", $stxt, $ctxt;
-    }
-    if ($sbin == 05757) {
-      printf "    \t    \n";
-    } else {
-      printf "%4o\t%4o\n", $sbin, $cbin;
-    }
+#   #
+#   # Print the directory.
+#   $name =~ y/a-z/A-Z/;
+#   printf "%-8s\t", $name;
+#   if ($stxt == 05757) {
+#     printf "    \t    \t";
+#   } else {
+#     printf "%4o\t%4o\t", $stxt, $ctxt;
+#   }
+#   if ($sbin == 05757) {
+#     printf "    \t    \n";
+#   } else {
+#     printf "%4o\t%4o\n", $sbin, $cbin;
+#   }
 #   printf "%-8s\t0%04o\t0%04o\n", "${name}.tx", $stxt, $ctxt
 #     unless $stxt == 05757;
 #   printf "%-8s\t0%04o\t0%04o\n", "${name}.bd", $sbin, $cbin
@@ -280,42 +281,31 @@ sub writefile {
     }
 }
 
-exit 0;
-# BUGBUG TODO Write the system areas as described above.
 #
-# This is currently PQS8 cruft.
-# Now do the reserved system areas:
-# Block		Use
-&writefile(0000, 0000, ".boot");
-&writefile(0001, 0013, ".kbm");
-&writefile(0014, 0014, ".edit");
-&writefile(0015, 0016, ".cat");
-&writefile(0017, 0017, ".tty");
-&writefile(0020, 0037, ".percent");
-&writefile(0040, 0057, ".dollar");
-&writefile(0060, 0060, ".iblock");
-&writefile(0061, 0062, ".ecp");
-&writefile(0063, 0066, ".dir");
-&writefile(0067, 0071, ".euc");
-&writefile(0072, 0075, ".run");
-&writefile(0076, 0077, ".reserved");
-&writefile(0100, 0100, ".slurp");
-&writefile(0101, 0102, ".ehinit");
-&writefile(0103, 0112, ".ehcode");
-&writefile(0113, 0114, ".iohtrap");
-&writefile(0115, 0115, ".brecovr");
-&writefile(0116, 0116, ".batch");
-&writefile(0117, 0117, ".bbuffer");
-&writefile(0120, 0120, ".system");
-&writefile(0121, 0121, ".pzero");
-&writefile(0122, 0122, ".hdir");
-&writefile(0123, 0162, ".handlers");
-&writefile(0163, 0200, ".odt");
-&writefile(0201, 0201, ".bonce");
-&writefile(0202, 0202, ".bcode");
-&writefile(0203, 0215, ".binget");
-&writefile(0216, 0231, ".scratch");
-&writefile(0232, 0240, ".dump");
-&writefile(0241, 0243, ".change");
+# The DIAL area breaks down thus:
+# 300-321	EDITOR
+# 322-345	ASSEMBLER
+# 346-347	DIAL Index
+# 350-353	FILECOMS
+# 354-355	LOADER
+# 356-360	SAVE BINARY
+# 361-362	PX, DX
+# 363		TTY
+# 364		PS
+# 365		UNUSED
+# 366		BUGBUG: What's this?
+# 367		SCRATCH
+#
+&writefile(0300, 0321, ".edit");
+&writefile(0322, 0345, ".asmblr");
+&writefile(0346, 0347, ".index");
+&writefile(0350, 0353, ".filecoms");
+&writefile(0354, 0355, ".loader");
+&writefile(0356, 0360, ".svbinary");
+&writefile(0361, 0362, ".pxdx");
+&writefile(0363, 0363, ".tty");
+&writefile(0364, 0364, ".ps");
+&writefile(0365, 0366, ".unused");
+&writefile(0367, 0367, ".scratch");
 
 exit 0;
