@@ -6,6 +6,7 @@ and a listing file.
 
 Currently, the following options may precede the name
 of the source file:
+* -c	Request the PAL8 subset of predefined symbols
 * -d	dump the symbol table at end of assembly
 * -e	Define Omnibus-era only instructions
 * -j	Do not pad TEXT or SIXBIT

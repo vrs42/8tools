@@ -33,6 +33,9 @@
 		-l	do not warn about offpage references
 		-r	produce output in rim format (default is bin format)
 
+	Needed soon:
+		-c	Use the PAL8 predefined symbol table
+
 	PQS8 assembler switches:
 		-a	Include all symbols with -s
 		-b	Use P?S/8 '%' area for binary output (N/A)
@@ -138,6 +141,7 @@ char objname[NAMELEN];	/* object file's name */
 FILE *lst = NULL;	/* listing file */
 FILE *lstsave = NULL;	/* alternate listing file */
 char lstname[NAMELEN];	/* listing file's name */
+int cflag = 0;		/* PAL8 compatibility requested */
 int eflag = 0;		/* Add some more symbols */
 int jflag = 0;		/* Suppress zero word after TEXT, SIXBIT */
 int linkmsg = 1;	/* Suppress "off page" messages */
@@ -262,7 +266,7 @@ struct symbol {
 	{ "RMF", 006244 },
 	{ "SMP", 006101 },
 	{ "CMP", 006104 },
-	{ "TFL", 006040 },
+/*	{ "TFL", 006040 },*/
 	{ "TSF", 006041 },
 	{ "TCF", 006042 },
 	{ "TPC", 006044 },
@@ -385,6 +389,7 @@ struct symbol {
 	{ "ACL", 007701 },
 	{ "DLD", 007763 },
 	{ "SKON",006000 }, /* IOTs */
+	{ "SRQ", 006003 },
 	{ "GTF", 006004 },
 	{ "RTF", 006005 },
 	{ "SGT", 006006 },
@@ -534,6 +539,116 @@ struct symbol lmode[] = {
 #define lcount ((sizeof lmode)/(sizeof *lmode))
 #endif
 
+struct symbol pal8[] = {  /* values = 01xxxx indicate MRI */
+		       /* values = 02xxxx indicate LINC mode comma def */
+		       /* values = 04xxxx indicate pseudo-ops */
+		       /* values = 05xxxx indicate LINC mode ops */
+	{ "DECIMA", 040000 }, /* read literal constants in base 10 */
+	{ "OCTAL" , 040001 }, /* read literal constants in base 8 */
+	{ "ZBLOCK", 040002 }, /* zero a block of memory */
+	{ "PAGE"  , 040003 }, /* advance origin to next page or page x (0..37) */
+	{ "TEXT"  , 040004 }, /* pack 6 bit trimmed ASCII into memory */
+	{ "EJECT" , 040005 }, /* eject a page in the listing */
+	{ "FIELD" , 040006 }, /* set origin to memory field */
+	{ "NOPUNC", 040007 }, /* turn off object code generation */
+	{ "ENPUNC", 040010 }, /* turn on object code generation */
+	{ "XLIST" , 040011 }, /* toggle listing generation */
+	{ "IFZERO", 040012 }, /* unsupported */
+	{ "IFNZRO", 040013 }, /* unsupported */
+	{ "IFDEF" , 040014 }, /* unsupported */
+	{ "IFNDEF", 040015 }, /* unsupported */
+	{ "RELOC" , 040016 }, /* assemble for execution at a different address */
+	{ "FIXMRI", 040021 }, /* like =, but creates mem ref instruction */
+
+	{ "DEVICE", 040022 }, /* creates sixbit device name */
+	{ "FILENA", 040023 }, /* creates sixbit file name, with extension */
+	{ "FIXTAB", 040024 }, /* Fix symbol table */
+	{ "EXPUNG", 040036 }, /* lose the standard symbols */
+	{ "PAUSE" , 040042 }, /* wait for tape to be mounted */
+	{ "DTORG" , 040032 }, /* set the output media block */
+	{ "AND", 010000 }, /* mainline instructions */
+	{ "TAD", 011000 },
+	{ "ISZ", 012000 },
+	{ "DCA", 013000 },
+	{ "JMS", 014000 },
+	{ "JMP", 015000 },
+	{ "I",   010400 },
+	{ "Z",   010000 },
+
+	{ "OPR", 007000 },
+
+	{ "NOP", 007000 }, /* group 1 */
+	{ "CLA", 007200 },
+	{ "CIA", 007041 },
+	{ "CLL", 007100 },
+	{ "CMA", 007040 },
+	{ "CML", 007020 },
+	{ "IAC", 007001 },
+	{ "BSW", 007002 },
+	{ "RAR", 007010 },
+	{ "RAL", 007004 },
+	{ "RTR", 007012 },
+	{ "RTL", 007006 },
+	{ "STA", 007240 },
+	{ "STL", 007120 },
+	{ "GLK", 007204 },
+	{ "LAS", 007604 },
+
+	{ "SMA", 007500 }, /* group 2 */
+	{ "SZA", 007440 },
+	{ "SNL", 007420 },
+	{ "SKP", 007410 },
+	{ "SPA", 007510 },
+	{ "SNA", 007450 },
+	{ "SZL", 007430 },
+	{ "OSR", 007404 },
+	{ "HLT", 007402 },
+	{ "KCC", 006032 }, /* actually iots, but haven't fixed iots yet */
+	{ "KSF", 006031 },
+	{ "KRS", 006034 },
+	{ "KRB", 006036 },
+	{ "IOT", 006000 },
+	{ "ION", 006001 },
+	{ "IOF", 006002 },
+	{ "CDF", 006201 },
+	{ "CIF", 006202 },
+	{ "RDF", 006214 },
+	{ "RIF", 006224 },
+	{ "RIB", 006234 },
+	{ "RMF", 006244 },
+	{ "TSF", 006041 },
+	{ "TCF", 006042 },
+	{ "TPC", 006044 },
+	{ "TLS", 006046 },
+	{ "RSF", 006011 },
+	{ "RRB", 006012 },
+	{ "RFC", 006014 },
+	{ "PSF", 006021 },
+	{ "PCF", 006022 },
+	{ "PPC", 006024 },
+	{ "PLS", 006026 },
+/* My personal view is that these are not "family of eight",	*/
+/* and shouldn't be here.  Alas, most of the code in the world	*/
+/* seems to disagree.  As a compromise, I have added the -e	*/
+/* option which defines these. VRS				*/
+	{ "MQL", 007421 },
+	{ "MQA", 007501 },
+	{ "SWP", 007521 },
+	{ "SKON",006000 }, /* IOTs */
+	{ "SRQ", 006003 },
+	{ "GTF", 006004 },
+	{ "RTF", 006005 },
+	{ "SGT", 006006 },
+	{ "CAF", 006007 },
+	{ "RPE", 006010 },
+	{ "PCE", 006020 },
+	{ "KCF", 006030 },
+	{ "KIE", 006035 },
+	{ "TFL", 006040 },
+	{ "TSK", 006045 },
+};
+#define palcount ((sizeof pal8)/(sizeof *pal8))
+
 struct symbol *cmode = pmode; /* Start in PMODE */
 /* The nmode normally tracks cmode, except after IOB. */
 struct symbol *nmode = pmode; /* Start in PMODE */
@@ -556,7 +671,9 @@ char *argv[];
         for (i=1; i < argc; i++) {
 		if (argv[i][0] == '-') { /* a flag */
 			for (j=1; argv[i][j] != 0; j++) {
-				if (argv[i][1] == 'd') {
+				if (argv[i][1] == 'c') {
+					cflag = 1;
+				} else if (argv[i][1] == 'd') {
 					dumpflag = 1;
 				} else if (argv[i][1] == 'e') {
 					eflag = 1;
@@ -570,6 +687,8 @@ char *argv[];
 					fprintf( stderr,
 						 "%s: unknown flag: %s\n",
 						 argv[0], argv[i] );
+					fprintf( stderr,
+						 " -c -- use PAL8 symtab\n" );
 					fprintf( stderr,
 						 " -d -- dump symtab\n" );
 					fprintf( stderr,
@@ -1480,7 +1599,11 @@ onepass()
 	radix = 8;
 	listed = 1;
 	lineno = 0;
-	nmode = cmode = pmode; /* Start in PMODE */
+	if (cflag) {
+		nmode = cmode = pal8; /* Start in PAL mode */
+	} else {
+		nmode = cmode = pmode; /* Start in PMODE */
+	}
 
 getline:
 	readline();
