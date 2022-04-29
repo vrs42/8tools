@@ -52,7 +52,7 @@ $vols = 1 + int(($size-1) / 010000);
 $vsiz = int($size / $vols);
 #printf "Volume size is 0%04o blocks\n", $vsiz;
 
-for ($vstart = 0; $vstart < $size; $vstart += $vsiz) {
+for ($vstart = 0; $vstart <= $size-$vsiz; $vstart += $vsiz) {
   # Print the made-up date.
   printf "Unit %d:\n", $vstart/$vsiz if $vsiz != $size;
   print "\n $dy-$month[$mo+1]-$i\n\n";

@@ -61,6 +61,8 @@ foreach $arg (@ARGV) {
   ($bsize, $boff, $eoff) = unpack("sss", $buf);
   $boff = -$boff;
   $eoff = -$eoff;
+#printf STDERR "block size %04o, %04o before, %04o after\n",
+#                          $bsize, $boff, $eoff;
 
   #
   # Verify the plausibility of the format information.

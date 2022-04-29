@@ -93,7 +93,7 @@ if ($fortran) {
   $sum += 0640; # 4K Fortran loader counts 0300 and 0340
 }
 $sum &= 07777;
-warn "$ARGV[0]: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
+printf STDERR "$ARGV[0]: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
 if ($fortran) {
   warn "$ARGV[0]: 4K Fortran Binary\n" if $fortran;
   $sum += 0640; # 4K Fortran loader counts 0300 and 0340
