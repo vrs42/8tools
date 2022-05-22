@@ -410,10 +410,53 @@ struct symbol {
 	{ "SEL", 006750 },
 	{ "PDP", 050002 }, /* Kludge for PQS8 */
 	{ "COM", 050017 }, /* Kludge for PQS8 */
+#define TSS
+#ifdef TSS
+	{ "RRS", 006010 },
+	{ "PST", 006020 },
+	{ "KSR", 006030 },
+	{ "SAS", 006040 },
+	{ "CKS", 006200 },
+	{ "KSB", 006400 },
+	{ "SBC", 006401 },
+	{ "DUP", 006402 },
+	{ "UND", 006403 },
+	{ "CLS", 006405 },
+	{ "SEGS", 006406 },
+	{ "URT", 006411 },
+	{ "TOD", 006412 },
+	{ "RCR", 006413 },
+	{ "DATE", 006414 },
+	{ "SYN", 006415 },
+	{ "STM", 006416 },
+	{ "SRA", 006417 },
+	{ "TSS", 006420 },
+	{ "USE", 006421 },
+	{ "CON", 006422 },
+	{ "SSW", 006430 },
+	{ "SEA", 006431 },
+	{ "ASD", 006440 },
+	{ "REL", 006442 },
+	{ "REN", 006600 },
+	{ "OPEN", 006601 },
+	{ "CLOS", 006602 },
+	{ "RFILE",006603 },
+	{ "PROT", 006604 },
+	{ "WFILE",006605 },
+	{ "CRF", 006610 },
+	{ "EXT", 006611 },
+	{ "RED", 006612 },
+	{ "FINF", 006613 },
+	{ "SIZE", 006614 },
+	{ "WHO", 006616 },
+	{ "ACT", 006617 },
+#define pdp8e (46+19+38) /* Number of extensions to the symbol table */
+#else
 #ifdef LINC
 #define pdp8e (46+19)	/* Number of extensions to the symbol table */
 #else
 #define pdp8e 46	/* Number of extensions to the symbol table */
+#endif
 #endif
 };
 #define pcount ((sizeof pmode)/(sizeof *pmode))
