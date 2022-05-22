@@ -341,6 +341,7 @@ foreach $f (@ARGV) {
 
   # Verify an integral number of blocks.
   ($_, $_, $_, $_, $_, $_, $_, $b, $_, $_, $ctime) = stat(INPUT);
+  $b += 256 if $b % $bsize; # DECtape kludge
   die "$dsk: Not an integral number of blocks!\n" if $b % $bsize;
   $blocks = $b / $bsize; @b = ();
   printf XML "<image name='$dsk' size=0%o>\n", $blocks;

@@ -130,9 +130,6 @@ sub ofile {
     @buf = unpack("S512", $buf);
     # Repack the bits amd write the block.
     while (@buf && !$eof) {
-#     $chr1 = shift @buf;
-#     $chr2 = shift @buf;
-#     $chr3 = (($chr2 >> 8) & 017) | (($chr1 >> 4) & 0360);
       $chr1 = shift @buf;
       $chr2 = shift @buf;
       $chr3 = $chr2 & 0377;

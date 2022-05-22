@@ -1,0 +1,68 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Unpack every 3 TSS8 bytes into 2 words.  Output the words as a
+# rudimentary file in .bin format.  Each input file is presumed to
+# be a program in .sav format, designed to load starting at location 0.
+
+# Output leader/trailer.
+sub leader {
+  for ($i = 0; $i < 120; $i++) {
+    print OUTPUT pack("C", 0200);
+  }
+}
+
+# Ouput a word and update the checksum.
+sub dframe {
+  local($word) = @_;
+  print OUTPUT pack("CC", $word >> 6, 077 & $word);
+  $checksum += $word >> 6;
+  $checksum += 077 & $word;
+}
+
+foreach $f (@ARGV) {
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+  $of = $f; $of =~ s/[.]sav$/.svb/;
+  die "$f: Expected .sav" if $f eq $of;
+  open(OUTPUT, ">$of") || die "$of: $!";
+  binmode(OUTPUT);
+  &leader;
+  print OUTPUT pack("CC", 0100, 0);
+  $checksum = 0100;
+  while (read(INPUT, $buf, 3) == 3) {
+    ($b1, $b2, $b3) = unpack("CCC", $buf);
+    $b1 = ($b1<<16) + ($b2<<8) + $b3;
+    $b2 = $b1 & 07777;
+    $b1 = $b1 >> 12;
+    &dframe($b1);
+    &dframe($b2);
+  }
+  &dframe(07777 & $checksum);
+  &leader;
+}
