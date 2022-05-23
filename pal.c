@@ -877,6 +877,33 @@ char *msg;
 	errors++;
 }
 
+/* Some input files use NUL as a padding character, particularly
+ * after form feed.  The use of fgets() here would preclude us
+ * from seeing any character on the line after a NUL.
+*/
+char *myfgets(line, n, in)
+char *line;
+int n;
+FILE *in;
+{
+	int i, c;
+	for (i = 0; i < n; ) {
+        	c = fgetc(in);
+		if (c == EOF) {
+			if (i)
+				return line;
+			return NULL;
+		}
+		if (c) /* Don't store NUL */
+			line[i++] = c;
+		if (c == '\n') {
+			line[i++] = 0;
+			return line;
+		}
+	}
+	return line;
+}
+
 void
 readline()
 /* read one input line, setting things up for lexical analysis */
@@ -885,7 +912,8 @@ readline()
 	lineno = lineno + 1;
 	listed = 0;
 	pos = 0;
-	if (fgets( line, LINELEN-1, in ) == NULL) {
+	
+	if (myfgets( line, LINELEN-1, in ) == NULL) {
 		line[0] = '$';
 		line[1] = '\n';
 		line[2] = '\000';
