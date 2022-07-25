@@ -1,0 +1,14 @@
+   1               /
+   2               / Check whether IFNZRO EXPR is true when EXPR refers to an undefined
+   3               / symbol.  Treating it as such will cause TSS/8 assembly to fail.
+   4               / A similar bug exists where 
+   5               /
+   6               *200
+   7 000200  7000  START,  NOP
+   8                       /IFZERO FOO1 <HLT>
+   9 000201  7402          IFNZRO FOO1 <HLT>
+  10               FOO1,   NOP     / Should not move between passes 1 and 2.
+redefined          ^
+     000202  7000  
+  11 000203  7402          HLT
+  12               $

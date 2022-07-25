@@ -1,0 +1,15 @@
+/
+/ Check whether IFNZRO EXPR is true when EXPR refers to an undefined
+/ symbol.  Treating it as such will cause TSS/8 assembly to fail.
+/ A similar bug exists with IFZERO.  These should not change their
+/ result, but it is nearly impossible for them not to.
+/
+/ Encasing them in IFDEF would work around the problem.
+/
+*200
+START,	NOP
+	/IFZERO FOO1 <HLT>
+	IFNZRO FOO1 <HLT>
+FOO1,	NOP	/ Should not move between passes 1 and 2.
+	HLT
+$
