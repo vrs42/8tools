@@ -88,7 +88,7 @@ binmode(INPUT);
 # That's 20K of fixed overhead, followed by the swap
 # area, 4K per user.
 $mfbase = 0;
-for ($users = 20; $users < 32; $users++) {
+for ($users = 8; $users < 32; $users++) {
     $link = (20 + 4*$users) * 4; # 1K == 4 blocks
     #
     # Attempt to find the MFD at the next proposed spot.
