@@ -37,5 +37,11 @@ NOTE: This only creates the XML assembly instructions for the
 volume.  You will still need to run the mkdsk utility to create
 (or update) the media image.
 
-BUG: Currently requires exactly .0 and .1 to work.  Volumes
-with only one directory, or more than two, will fail.
+Current version support "-rk05", "-rx1", and "-rx2" flags, which
+change the default expectations about the output volume size, and
+therefore also the number of file-system directories expected.
+The initial values are equivalent to "-rk05".
+
+Future options are likely to be added for DECtape and such.
+ 
+BUG: Volumes with more than two directores will fail.
