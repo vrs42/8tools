@@ -1,0 +1,206 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2023 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Compare a BIN format file to an SV format file.  The two compare if it
+# is possible that an OS/8 SAVE command could have created the SV file
+# after a LOAD command for the BIN file.
+#
+# There are two criterion:
+# First, every location loaded by the BIN file must be loaded with the
+# same value by the SV file.
+# Second, the SV file should not load any page that wasn't loaded by the
+# BIN file.  This would ensure that the SV file isn't actually the result
+# of loading the BIN file along with some other stuff.
+#
+# Since the SV format is less granular than the BIN format, it is permitted
+# for the SV file to load locations that are not loaded by the BIN file, as
+# long as the BIN file does load into that page.  The SV format will always
+# save whole pages, so this happens all the time.
+#
+# Note also that the JSW and starting address are not checked, since they
+# are not available in the BIN file.
+# BUGBUG: Are any parts of the JSW checkable?
+#
+
+@rem = '
+@echo off
+c:\perl5\bin\perl %0 %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto endofperl
+@rem ' if @rem;
+
+$max = 0;
+
+#open(STDERR, ">log") || die "log: $!";
+#
+# Open the first file in BIN format and read it in.
+# Issue: Many of the DEC tapes have the location bit set in
+# their checksums, so we must allow that.
+open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
+binmode(INPUT);
+@page = @core1 = (); $loc = $store = undef;
+$sum = $add = $field = 0;
+while (read(INPUT, $top, 1)) {
+  $top = unpack("C", $top);
+  next if $top == 0200;	# Leader or Trailer
+  last if $top == 0232; # End of file
+  # It isn't trailer.  That implies time to store the previous word
+  # if any.
+  if (defined($store)) {
+    $core1[$field*4096+$loc] = $store;
+    $page[($field*4096+$loc)/0200] = 1;
+    $max = $field*4096+$loc unless $max > $field*4096+$loc;
+    $store = undef;
+    $loc = ($loc + 1) & 07777;
+    $sum += $add;
+    $fortran = 0;
+  }
+  if ($top & 0200) { # Better be field setting!
+    die "$ARGV[0]: Invalid field setting" unless $top >= 0300;
+    die "$ARGV[0]: Invalid field setting" if $top & 0007;
+    $fortran = 1 if $top == 0340;
+    $field = ($top & 070) >> 3;
+    next;
+  }
+  # Read and verify the format of the bottom half.
+  read(INPUT, $bot, 1) || die "$ARGV[0] read: $!";
+  $bot = unpack("c", $bot);
+  die "$ARGV[0]: ".$bot." not in bin format ". tell(INPUT) unless $bot <= 077;
+  # Assemble the word, and figure out the checksum update.
+  $word = ($top << 6) + $bot;
+  $add = $top + $bot; # Update checksum
+  # If the word has the 010000 bit set, it's a location setting.
+  if ($word > 07777) {
+    #
+    # Change location counter
+    $loc = $word & 07777;
+#printf "Loc == %04o\n", $loc;
+    $sum += $add;
+  } else {
+    die "$ARGV[0]: no location counter" unless defined($loc);
+    $store = $word;
+  }
+}
+close(INPUT);
+if ($fortran) {
+  warn "$ARGV[0]: 4K Fortran Binary\n" if $fortran;
+  $sum += 0640; # 4K Fortran loader counts 0300 and 0340
+}
+if (!defined($store)) {
+  # This is that weird case where the checksum has location bit set!
+  $store = $loc;
+  $sum -= $add;
+}
+$sum &= 07777;
+printf "$ARGV[0]: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
+#printf STDERR "$ARGV[0]: Checksum is %04o, not %04o\n", $sum, $store if $sum != $store;
+
+#
+# Helper routine for unpacking words from the SV file.
+$half = 0;
+sub getword {
+  if ($half == 0) {
+#printf STDERR "Read at offset 0%05o\n", tell(INPUT);
+    read(INPUT, $ccc, 3) || die "read $ARGV[1]: $!"; # 3 bytes is two words.
+    ($w1, $w2, $c3) = unpack("CCC", $ccc);
+    $w1 += ($c3 & 0xF0) << 4;
+    $w2 += ($c3 & 0x0F) << 8;
+    $half = 1;
+    return $w1;
+  }
+  $half = 0;
+  return $w2;
+}
+
+#
+# Open the second file in SV format and read it in.
+open(INPUT, $ARGV[1]) || die "$ARGV[1]: $!";
+binmode(INPUT);
+@core2 = (); $loc = $store = undef;
+$sum = $add = $field = 0;
+@co = @pc = @fld = ();
+# The first four words
+$cs = 010000-&getword; # Core Segment Count (stored negative)
+$sf = &getword; # Starting Field (062N3)
+$sa = &getword; # Starting Address
+$jsw = &getword; # JSW
+# Now, save each core segment doubleword.
+for ($i = 0; $i < $cs; $i++) {
+  push(@co, &getword); # Core Origin
+  $pc = &getword;
+  push(@pc, $pc >> 6); # Page Count
+  push(@fld, ($pc >> 3) & 07); # Field to load
+}
+$cs--;
+die "$ARGV[1]: origin count $#co != $cs\n" unless $#co == $cs;
+die "$ARGV[1]: page count $#pc != $cs\n" unless $#pc == $cs;
+die "$ARGV[1]: field count $#fld != $cs\n" unless $#fld == $cs;
+#warn "cs == $cs";
+# At this point, we have parsed a seemingly valid header.
+#
+# Now iterate over the various blocks and load them.
+seek(INPUT, 3*256/2, 0) || die "seek $ARGV[1]: $!";
+#printf STDERR "Seek to offset 0%05o\n", 3*256/2;
+for ($i = 0; $i <= $cs; $i++) {
+  $base = $fld[$i]*010000 + $co[$i];
+#printf STDERR "$pc[$i] pages in segment $i load at 0%05o\n", $base;
+  # Load each page
+  for ($j = 0; $j < $pc[$i]; $j++) {
+#printf STDERR "page %d loads at 0%05o\n", $j, $base;
+    for ($k = 0; $k < 0200; $k++) {
+      $core2[$base++] = &getword;
+    }
+  }
+  # If an odd number of pages, skip unused storage
+  if ($pc[$i] & 0001) {
+    for ($k = 0; $k < 0200; $k++) {
+      &getword;
+    }
+  }
+}
+# At this point we have loaded the file.
+close(INPUT);
+
+$status = 0;
+for ($loc = 0; $loc <= $max; $loc++) {
+  next unless defined($core1[$loc]) || defined($core2[$loc]);
+  if (!defined($core1[$loc])) {
+    # Just check that the page is loaded somewhere.
+    next if $page[$loc/0200];
+  }
+  $c1 = defined $core1[$loc]? sprintf("%04o", $core1[$loc]): "XXXX";
+  $c2 = defined $core2[$loc]? sprintf("%04o", $core2[$loc]): "XXXX";
+  if ($c1 ne $c2) {
+    printf "%04o: $c1 != $c2\n", $loc;
+    $status = 1;
+  }
+}
+exit $status;
+
+__END__
+:endofperl
