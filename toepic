@@ -240,7 +240,7 @@ binmode(STDOUT);
        $c1 = shift @ibuf;
        $c2 = shift @ibuf;
        $c3 = shift @ibuf;
-       $w1 = $c1 + (($c3&036)<<4);
+       $w1 = $c1 + (($c3&0360)<<4);
        $w2 = $c2 + (($c3&017)<<8);
        push(@buf, $w1, $w2);
      }
