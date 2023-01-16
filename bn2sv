@@ -201,11 +201,13 @@ if ($start == -1) {
     $start = $minaddr;
   }
 }
-&outWords((-$segment) & 07777, 06203 + ($start >> 9) & 070);
+&outWords((-$segment) & 07777, 06203 + (($start >> 9) & 070));
 &outWords($start&07777, $jsw);
 for ($i = 1; $i <= $segment; $i++) {
   $w1 = ($start[$i] * 0200) & 07400;
-  $pages = $stop[$i] - ($w1/0200-1);
+#warn "stop == $stop[$i], start = $start[$i]\n";
+  # @start and @stop are page numbers.
+  $pages = $stop[$i] - $start[$i] + 1;
   $field = int($start[$i]*0200 / 01000) & 070;
 #warn "pages == $pages, field = $field\n";
   $w2 = ($pages * 0100) + $field;

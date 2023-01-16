@@ -42,7 +42,8 @@
 $half = 0;
 sub getword {
   if ($half == 0) {
-    read(INPUT, $ccc, 3) || die "read: $!"; # 3 bytes is two words.
+#   read(INPUT, $ccc, 3) || die "read: $! at ", tell(INPUT); # 3 bytes is two words.
+    read(INPUT, $ccc, 3) || ($ccc = pack("CCC", 0, 0, 0)); # 3 bytes is two words.
     ($w1, $w2, $c3) = unpack("CCC", $ccc);
     $w1 += ($c3 & 0xF0) << 4;
     $w2 += ($c3 & 0x0F) << 8;
@@ -85,7 +86,9 @@ foreach $f (@todo) {
   for ($i = 0; $i <= $cs; $i++) {
     $base = $fld[$i]*010000 + $co[$i];
     # Load each page
+#warn "Loading $pc[$i] pages\n";
     for ($j = 0; $j < $pc[$i]; $j++) {
+#warn "Loading page $j from ", tell(INPUT);
 #warn "got here $base";
       for ($k = 0; $k < 0200; $k++) {
         $core[$base++] = &getword;
