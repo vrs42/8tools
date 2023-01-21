@@ -34,14 +34,14 @@
 # There are two criterion:
 # First, every location loaded by the BIN file must be loaded with the
 # same value by the SV file.
-# Second, the SV file should not load any page that wasn't loaded by the
-# BIN file.  This would ensure that the SV file isn't actually the result
-# of loading the BIN file along with some other stuff.
+# Second, the SV file should not load any block that wasn't loaded by
+# the # BIN file.  This would ensure that the SV file isn't actually the
+# result of loading the BIN file along with some other stuff.
 #
 # Since the SV format is less granular than the BIN format, it is permitted
 # for the SV file to load locations that are not loaded by the BIN file, as
-# long as the BIN file does load into that page.  The SV format will always
-# save whole pages, so this happens all the time.
+# long as the BIN file does load into that block.  The SV format will always
+# save whole blocks, so this happens all the time.
 #
 # Note also that the JSW and starting address are not checked, since they
 # are not available in the BIN file.
@@ -63,7 +63,7 @@ $max = 0;
 # their checksums, so we must allow that.
 open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
 binmode(INPUT);
-@page = @core1 = (); $loc = $store = undef;
+@block = @core1 = (); $loc = $store = undef;
 $sum = $add = $field = 0;
 while (read(INPUT, $top, 1)) {
   $top = unpack("C", $top);
@@ -73,7 +73,7 @@ while (read(INPUT, $top, 1)) {
   # if any.
   if (defined($store)) {
     $core1[$field*4096+$loc] = $store;
-    $page[($field*4096+$loc)/0200] = 1;
+    $block[($field*4096+$loc)/0400] = 1;
     $max = $field*4096+$loc unless $max > $field*4096+$loc;
     $store = undef;
     $loc = ($loc + 1) & 07777;
@@ -190,8 +190,8 @@ $status = 0;
 for ($loc = 0; $loc <= $max; $loc++) {
   next unless defined($core1[$loc]) || defined($core2[$loc]);
   if (!defined($core1[$loc])) {
-    # Just check that the page is loaded somewhere.
-    next if $page[$loc/0200];
+    # Just check that the block is loaded somewhere.
+    next if $block[$loc/0400];
   }
   $c1 = defined $core1[$loc]? sprintf("%04o", $core1[$loc]): "XXXX";
   $c2 = defined $core2[$loc]? sprintf("%04o", $core2[$loc]): "XXXX";

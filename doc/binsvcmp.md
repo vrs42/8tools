@@ -8,5 +8,5 @@ locations which were not loaded in one or the other image.
 
 Note that it is permitted for a location to be set in the .sv file
 that is not loaded by the .bin file.  This is because the granularity
-of the .sv file is pages, not words.  Location set in .sv pages which
+of the .sv file is blocks, not words.  Location set in .sv blocks which
 are not loaded at all by the .bin file will be reported as differences.
