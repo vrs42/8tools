@@ -1,0 +1,135 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Dump the file if it is really in TSS FOCAL format.
+# TSS FOCAL stores the FOCAL program space in the file.  Each line
+# of the program consists of 3 items:
+# 1. A pointer to where the FOCAL statement is to be loaded.
+#    These pointers start at 03217 and advance as needed.
+# 2. A line number in fixed point in a single word.
+# 3. Packed sixbit characters of source code.  The line ends with
+#    sixbit 077 015 (carriage return).
+
+# Pick a block size (in words!)
+$bsize = 128;
+$upack = "S$bsize";
+
+# Process the argument(s).  The -q option toggles quiet mode, in which the
+# FOCAL text is not output.
+$quiet = 0;
+for $file (@ARGV) {
+  if ($file =~ /-q/i) {
+    $quiet = !$quiet;
+    next;
+  }
+
+  # Open the file.
+  open(INPUT, $file) || die "$file: $!";
+  binmode(INPUT);
+
+  #
+  # Read in each block.
+  @buf = ();
+  for ($block = 0; ; $block++) {
+      read(INPUT, $buf, 2*$bsize) || last;
+      push(@buf, unpack($upack, $buf));
+  }
+
+  #
+  # Check for a valid FOCAL file.  Accumulate source code.
+  #
+  # Each file starts with six magic pointers, so skip them.
+  # 4111 3764 4617 3313 3315 3316
+  shift @buf; shift @buf; shift @buf;
+  shift @buf; shift @buf; shift @buf;
+  $loc = 03217; # This didn't actually do any good.
+  #
+  # Next the statements.
+  # Peek at the first statement to confirm line number of 0000
+  # and a comment.
+  $fail = $oline = 0;
+  $fail = 1 if $buf[1];
+  $fail = 1 unless ($buf[2]&07700) == 0300;
+  $focal = "";
+  while (@buf) {
+    $nloc = shift @buf;
+    last unless $nloc;
+#warn "$nloc != $loc\n" unless $loc == $nloc;
+    $loc = $nloc;
+    $line = shift @buf;
+    $loc++;
+    # Line numbers are stored as a 5 bit group number, and a
+    # 7 bit step number, which must be between 1 and 99, inclusive.
+    # The exception is the value 0000, which is not printed.
+    if ($line) {
+      $grp = $line >> 7;
+      $stp = $line & 0177;
+      $fail = 1 unless $grp;
+      $fail = 1 unless $stp;
+      $fail = 1 unless $stp < 100;
+#warn sprintf("%02d.%02d ", $grp, $stp);
+#warn "$line <= $oline\n" if $line <= $oline;
+#     $fail = 1 if $line <= $oline;
+      last if $fail;
+      $focal .= "\r\n" if ($line>>7) != ($oline>>7);
+      $oline = $line;
+      $focal .= sprintf("%02d.%02d ", $grp, $stp);
+    }
+    # Now decode some source code text.
+    while (@buf) {
+      $word = shift @buf;
+      $loc++;
+# BUGBUG: Decoding of other 077 sequences will be incorrect.
+      last if $word == 07715;
+      $c = $word >> 6;
+      last if $is77 && ($c == 015);
+      last unless $c;
+      $c = $c + 0100 unless $c >= 040;
+      $focal .= pack('C', $c);
+      $c = $word & 077;
+      if ($c == 077) {
+        $is77 = 1;
+        next;
+      } else {
+        $is77 = 0;
+      }
+      last unless $c;
+      $c = $c + 0100 unless $c >= 040;
+      $focal .= pack('C', $c);
+      $loc++;
+    }
+    $focal .= "\r\n";
+  }
+  warn "$file: not a FOCAL file\n" if $fail;
+# exit $fail if $fail;
+
+# warn "$file:\n";
+  $quiet = 1 if $fail;
+  print $focal unless $quiet;
+}
+exit $fail;

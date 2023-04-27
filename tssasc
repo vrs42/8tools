@@ -1,0 +1,95 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Dump the file if it is really in TSS ASCII format.
+# TSS ASCII stores three 8 bit characters per 24-bit double word:
+# aaaaaaaabbbb bbbbcccccccc
+# Theoretically, any file content could be interpreted as characters.
+# However, in practice, mark parity is used.  So, we recognise here
+# files which contain only bytes with the high bit set, making an
+# exception for NUL, which was sometimes used for leader/trailer.
+
+# Pick a block size (in words!)
+$bsize = 128;
+$upack = "S$bsize";
+
+# Process the argument(s).  The -q option toggles quiet mode, in which the
+# FOCAL text is not output.
+$quiet = 0;
+for $file (@ARGV) {
+  if ($file =~ /-q/i) {
+    $quiet = !$quiet;
+    next;
+  }
+
+  # Open the file
+  open(INPUT, $file) || die "$file: $!";
+  binmode(INPUT);
+
+  #
+  # Read in each block.
+  @buf = ();
+  for ($block = 0; ; $block++) {
+      read(INPUT, $buf, 2*$bsize) || last;
+      push(@buf, unpack($upack, $buf));
+  }
+
+  #
+  # Check for a valid ASCII file.  Accumulate the text.
+  $fail = 0;
+  $text = "";
+  while (@buf) {
+    $word1 = shift @buf;
+    # An odd number of words rules out ASC format.
+    $fail unless @buf;
+    $word2 = shift @buf;
+    $word1 = ($word1 << 12) + $word2;
+    $c1 = $word1 >> 16;
+    $c2 = ($word1 >> 8) & 0377;
+    $c3 = $word1 & 0377;
+    if ($c1 & 0177) {
+      $fail = 1 unless $c1 & 0200;
+      $text .= pack("C", $c1 & 0177);
+    }
+    if ($c2 & 0177) {
+      $fail = 1 unless $c2 & 0200;
+      $text .= pack("C", $c2 & 0177);
+    }
+    if ($c3 & 0177) {
+      $fail = 1 unless $c3 & 0200;
+      $text .= pack("C", $c3 & 0177);
+    }
+    last if $fail;
+  }
+  warn "$file: not an ASC file\n" if $fail;
+
+# warn "$file:\n";
+  $quiet = 1 if $fail;
+  print $text unless $quiet;
+}
+exit 0;

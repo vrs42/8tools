@@ -128,6 +128,8 @@ if ($ofile =~ /[.]sv/i) {
 @core = ();
 $minaddr = 077777;
 foreach $f (@ARGV) {
+  $f =~ s/=([0-7]+)//;
+  $f =~ s/%[0-7]+//;
   &readBin($f, *core);
 }
 
