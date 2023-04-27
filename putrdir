@@ -1,0 +1,189 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+# Dump the PUTR DECtape directory.
+
+# A PUTR DECtape has 129 word blocks, and uses the 129th word in each
+# block to point to the next logical block in a file, terminating in
+# a block whose last word is 0000.
+
+# Setu up block size (in words!)
+$bsize = 129;
+$upack = "S$bsize";
+$_ = $bsize - 1;
+$rpack = "S$_";
+
+# Dates are presumed to be <mmmm><ddddd><yyy>.
+# Years are measured since 1974.
+# Dates are as returned by DATE IOT:
+#   DATE=((YEAR-1964)*12*(MONTH-1))*31+DAY-1
+@month = ("0",  "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
+	 "AUG", "SEP", "OCT", "NOV", "DEC", "13",  "14",  "15");
+
+#
+# From the User's Guide (dec-08-e50ua-a-d), Chapter 9, Section 1:
+@extension = ("   ", "asc", "sav", "bin", "bas", "bac", "fcl", "tmp",
+	      "___", "dat", "lst", "pal", "ua1", "ua2", "ua3", "ua4");
+@coding = ("im", "6bit", "x240", "x237", "os8", "ts8", "bas");
+# Also "bin" and "sav" imply format and checksum.
+# Card reader encodings were "alp", "com", "026", and "029".
+
+#
+# Will we be extracting today?
+$extract = 0;
+if (defined $ARGV[1]) {
+  die "Usage: putrdir [-e] image\n" unless $ARGV[0] eq "-e"; 
+  $extract = 1;
+  shift @ARGV;
+}
+
+#
+# Return a list of the words in the file which starts at the block
+# specified by the argument.
+sub putrfile {
+  local($fblk) = @_;
+  local(@words) = ();
+  local($blk, $nxt, $buf);
+  for ($blk = $fblk; $blk; $blk = $nxt) {
+    seek(INPUT, $blk*2*$bsize, 0) || die "$ARGV[0] file seek: $!";
+    $count = read(INPUT, $buf, 2*$bsize);
+    $fail = 1 unless $count == 2*$bsize;
+    push(@words, unpack($upack, $buf));
+    $nxt = pop @words;
+#warn "$blk then $nxt\n";
+    die "invalid next block: $nxt" if $nxt & 04000;
+  }
+  return @words;
+}
+
+# Open the PUTR media file.
+open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
+binmode(INPUT);
+
+#
+# Read the File Allocation Table, which is a file that starts at block 0200.
+# Make note of the first block in each file, and count the blocks.
+@alloc = &putrfile(0200);
+die "$ARGV[0]: can't read block allocations" if $fail;
+@files = ();
+@sizes = ();
+for ($blk = 0; $blk < 2*($#alloc); $blk++) {
+  $seg = int($blk / 0200); # Segment Number
+  $off = $blk % 0200; # Offset in segment
+  $left = $seg & 1; # Left or right side?
+  $seg = $seg >> 1;
+  $i = $seg*0200 + $off; # Subscript
+  if ($left) {
+    $fid = $alloc[$i] >> 6;
+  } else {
+    $fid = $alloc[$i] & 077;
+  }
+  $files[$fid] = $blk unless defined $files[$fid];
+  $sizes[$fid]++;
+}
+
+#
+# Read in the directory, which is a file that starts at block 0177.
+@dir = &putrfile(0177);
+die "$ARGV[0]: can't read PUTR directory" if $fail;
+
+#
+# Check that it is indeed a TSS/8 PUTR directory.
+$ts8 = 1;
+$ts8 = 0 unless $dir[0] == 00000;
+$ts8 = 0 unless $dir[1] == 06463; # "TS"
+$ts8 = 0 unless $dir[2] == 00200;
+$ts8 = 0 unless $dir[3] == 06463; # "TS"
+$ts8 = 0 unless $dir[4] == 00030; # " 8"
+$ts8 = 0 unless $dir[5] == 00000; # "  "
+$ts8 = 0 unless $dir[6] == 00000;
+$ts8 = 0 unless $dir[7] == 00000;
+die "$ARGV[0]: Not a PUTR DECtape\n" unless $ts8;
+
+#
+# For now, just list the directory.
+printf "NAME______ LEN  _FID  FBLCK  DD-MMM-YYYY\n";
+$d = 0;
+while (@dir) {
+  # Each directory block consists of three words,
+  # followed by 25 entries, each 5 words long.
+  $ts = shift @dir;
+  $ts8l = shift @dir;
+  $ts8f = shift @dir;
+  for ($e = 0; $e < 25; $e++) {
+    $d++;		# Next directory entry
+    $n1 = shift @dir;	# Three words of filename
+    $n2 = shift @dir;
+    $n3 = shift @dir;
+    @c = ($n1>>6, $n1&077, $n2>>6, $n2&077, $n3>>6, $n3&077);
+    grep($_ = ($_ + 040), @c);
+    $name = pack('CCCCCC', @c);
+    $name =~ s/ *$//; # Remove trailing spaces
+    $name =~ y/A-Z/a-z/; # Lowercase
+    # Dates are as returned by "DATE" IOT:
+    #   DATE=((YEAR-1974)*12*(MONTH-1))*31+DAY-1
+    $dat = shift @dir;	# Get date word
+    $dy = ($dat % 31) + 1;
+    $mo = $dat / 31; # Since epoch
+    $yr = 1974 + int($mo / 12);
+    $mo = $month[($mo % 12) + 1]; # This year
+    $dat = "$dy-$month[$mo]-$yr";
+    # This word codes the starting block, which usually matches
+    # the sequence number within the directory.  The use of the
+    # high bits to encode other stuff (file type)
+    # suggests that each file must start in the first 128 blocks,
+    # which in turn suggests there can be only 127 of them.
+    $fid = shift @dir;  	# Extension and Starting block
+#   $typ = $fid >> 8;		# Six bits for extension??
+#   $typ = ($fid>>8) + 1;	# Six bits for extension??
+    $typ = ($fid>>7) & 037;	# Five bits for extension??
+#   $typ = ($fid>>6) & 017;	# Four bits for extension
+                                # Two bits for ??
+    $typ = $extension[$typ];
+    $fid = $fid & 077;  	# Six bits for file id
+    $fid = $d unless $fid;	# Kludge for missing file id
+    $first = $files[$fid];	# Get starting block number
+    $len = $sizes[$fid];	# Get length of file
+    if (($fid > 1) && ($c[0] != 040)) {
+      if ($extract) {
+        # Read in the file.
+        @file = &putrfile($first);
+        # Write out the file.
+        open(OUTPUT, ">$name.$typ") || die "$name.$typ: $!";
+        binmode(OUTPUT);
+        $buf = pack("S*", @file);
+        print OUTPUT $buf;
+      }
+      # Print a line for the directory entry.
+      printf "%-10s %3d  0%03o  0%04o  %02d-%s-%d\n",
+        "$name.$typ", $len, $fid, $first, $dy, $mo, $yr;
+    }
+  }
+}
+
+exit $fail;
