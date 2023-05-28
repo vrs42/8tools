@@ -1035,8 +1035,23 @@ int cplc; /* the current page location counter for current page constants */
 int radix; /* the default number radix */
 int sixbit = 0; /* Only set during SIXBIT */
 
+/*
+ * New Literal storage mechanism (proposed):
+ * As before, pz[] and cp[] store literal values for page zero
+ * of the current field and for the current page, respectively.
+ * The pzlc and cplc indices record the "next" literal to be allocated.
+ *
+ * In addition, pzend[] and cpend[] arrays note which locations
+ * have previously been allocated.  Literals involved in the current
+ * FIELD and PAGE settings then, range from pzloc to pzend[field] and
+ * from cploc to cpend[page].
+*/
 int pz[0200]; /* storehouse for page zero constants */
 int cp[0200]; /* storehouse for current page constants */
+#define FIELDS	(128/4)		/* 128K Max, 4K per field */
+#define PAGES (128*1024/128)	/* 128K Max, 128 per page */
+int pzend[FIELDS];
+int cpend[PAGES];
 
 /* single pass of the assembler */
 
@@ -1260,23 +1275,42 @@ condfalse()
 		error( "< expected" );
 	}
 }
+ 
+/*
+ * When we leave a field or page, putpz() or putcp() are called.
+ * We put the literals which are new, as before, but also update
+ * pzend[field] or cpend[page] to record that some literals have
+ * already been output (and forgotten).  This keeps up from putting
+ * literals on top of each other, though we can still duplicate a
+ * literal, if it is needed on multiple trips through the field/page.
+ *
+ * Best practice, of course, is not to revisit fields or pages which
+ * already have literals and then define new ones.  Most assemblers
+ * will get this horribly wrong, and without warning.
+*/
 
 void
 putpz()
 /* put out page zero data */
 {
 	int loc;
-	if (pzlc < 00177) {
+	if (pzlc < pzend[field]) {
 		if (rimflag != 1) { /* put out origin if not in rim mode */
 			if (obj != NULL) {
 				putorg( pzlc+1 );
 			}
 		}
-		for (loc = pzlc+1; loc <= 00177; loc ++) {
+		for (loc = pzlc+1; loc <= pzend[field]; loc ++) {
 			putout( loc, pz[loc] );
 		}
 	}
-	pzlc = 00177;
+	pzend[field] = pzlc;
+// MUST CALL putcp() BEFORE putpz() if calling both!
+	for (cplc = 0; cplc < PAGES; cplc++)
+		cpend[cplc] = 0177;
+	cplc = 00177; /* points to end of page for () operands */
+//VRS	pzlc = 00177;	/* CALLER IS EXPECTED TO RESET PZLC! */
+	pzlc = 00177;	/* CALLER IS EXPECTED TO RESET PZLC! */
 }
 
 void
@@ -1284,7 +1318,7 @@ putcp()
 /* put out current page data */
 {
 	int loc;
-	if (cplc < 00177) {
+	if (cplc < cpend[lc>>7]) {
 		if (lc-1 > (cplc + (lc & 07600))) { /* overrun constant pool */
 			error( "overrun" );
 		}
@@ -1293,11 +1327,12 @@ putcp()
 				putorg( cplc+1 + (lc & 07600) );
 			}
 		}
-		for (loc = cplc+1; loc <= 00177; loc ++) {
+		for (loc = cplc+1; loc <= cpend[lc>>7]; loc ++) {
 			putout( loc + (lc & 07600), cp[loc] );
 		}
 	}
-	cplc = 00177;
+	cpend[lc>>7] = cplc;
+//VRS	cplc = 00177;	/* CALLER IS EXPECTED TO RESET CPLC! */
 }
 
 int getexprs(); /* forward declaration */
@@ -1318,7 +1353,6 @@ int evalsym()
 	while (to < SYMLEN) {
 		sym[to++] = '\000';
 	}
-
 	return (lookup( sym ));
 }
 
@@ -1355,7 +1389,7 @@ negative(arg)
 short int arg;
 {
 	if (cmode == lmode) return 07777 & ~arg;
-	return -arg;
+	return 07777 & -arg;
 }
 
 short int
@@ -1364,7 +1398,7 @@ short int a, b;
 {
 	int s = 017777 & (a + b);
         if ((s > 07777) && (cmode == lmode)) s++;
-	return s & 077777;
+	return s & 07777;
 }
 
 /*
@@ -1376,6 +1410,9 @@ short int a, b;
  * subsequent lexeme, then advance to that lexeme.
  * Note: This means that on return delimiter should match lexstart,
  * not lexterm!
+ *
+ * VRS 5/27/2023 Modified to return -1 if undefined symbol encountered.
+ *     Be sure to check for it!
 */
 int
 eval()
@@ -1396,7 +1433,6 @@ eval()
 
 		if (val == -1) {
 			error( "undefined" );
-			val = 0;
 		}
 
 	} else if (isdigit(line[lexstart])) {
@@ -1427,7 +1463,19 @@ eval()
 		int loc;
 
 		nextlex(); /* skip bracket */
-		val = getexprs() & 07777;
+		val = getexprs(); /* May return -1 for undefined */
+		/* If we see a [ for an undefined symbol during pass 1, it is 
+		 * a quandry whether (and what) to allocate for it.  If don't 
+		 * allocate, we sometimes mis-align literals during pass 2
+		 * because we didn't allocate enough in pass 1.  If we
+		 * allocate every time, we mis-align literals because we
+		 * create too many in pass 1.  Here we kludge a non-zero 
+		 * allocation, creating a single such literal.  This seems
+		 * to give the same answer as PAL8.
+		*/
+		if (val < 0)
+			val = 0200;
+		val &= 07777;
 		if (pos == lexstart)
 			nextlex(); /* advance */
 		if (line[lexstart] == ']') {
@@ -1441,7 +1489,7 @@ eval()
 		pos = lexterm = lexstart;
 		delimiter = line[lexterm];
 
-		loc = 00177;
+		loc = pzend[field];
 		while ((loc > pzlc) && (pz[loc] != val)) {
 			loc--;
 		}
@@ -1462,7 +1510,7 @@ eval()
 			plc = &pzlc;
 		}
 		nextlex(); /* skip left paren */
-		val = getexprs() & 07777;
+		val = getexprs(); /* May return -1 for undefined */
 		if (pos == lexstart) {
 			nextlex(); /* wtf?? */
 		}
@@ -1472,11 +1520,14 @@ eval()
 			/* error("parens") */ ;
 			//pos = lexterm = lexstart;
 		}
+		if (val < 0)
+			return val;
+		val &= 07777;
 		/* Now rig for caller to see the terminator */
 		pos = lexterm = lexstart;
 		delimiter = line[lexterm];
 
-		loc = 00177;
+		loc = cpend[lc>>7];
 		while ((loc > *plc) && (lit[loc] != val)) {
 			loc--;
 		}
@@ -1512,6 +1563,9 @@ fprintf(stderr, "The illegal character is '%c'\n", line[lexstart]);
  * rest of the operators..
  * Currently "!" functions as an OR that pays no attention to MRI'ness.
  * I gather some assemblers find it useful as a way of forming sixbit.
+ *
+ * VRS 5/27/23 This function may now return undefined (-1).  Be sure to
+ *     check for it!
 */
 int
 getexpr()
@@ -1519,10 +1573,12 @@ getexpr()
 	int value = eval();
 	int op, temp, ostart, oterm;
 
-//This is freshly back from eval().  Have correct delimiter?
 	/* We have set 'value' to the current token at entry, aka
 	 * the left operand, and advanced the token to the operator.
 	 * We need to keep things that way every time through the loop.
+         *
+         * VRS 5/17/23 The value may be undefined (-1), but we continue
+         *     because we want to advance over the expression.
         */
 	while (1) {
 		op = delimiter; /* remember the operator */
@@ -1544,7 +1600,7 @@ getexpr()
 
 // BUGBUG: Want to allow 'X = 2':
 // If the operator is followed by another operator, the first better be
-// a blank.  Also, this would changes '5 -2' to evaluate to 3, not -2.
+// a blank.  Also, this would change '5 -2' to evaluate to 3, not -2.
 // TBD.
 		/*
 		 * Not done, so interpret the next operand.
@@ -1567,10 +1623,14 @@ getexpr()
 		ostart = lexstart;
 		oterm = lexterm;
 		temp = eval();	/* Evaluate second operand */
-if (delimiter != line[lexstart])
-fprintf(stderr, "TOASTY\n");
-
-		if (IsBlank(op)) {
+		/*
+		 * VRS 5/27/23 Regardless of op, if either side is undef,
+                 *     result should be undef.
+                */
+//fprintf(stderr, "%d: value=%o, temp=%o, op='%c'\n", lineno, value, temp, op);
+		if ((value < 0) || (temp < 0)) {
+			value = -1;
+		} else if (IsBlank(op)) {
 			/* interpret space as logical or */
 			if (value <= 07777) { /* normal 12 bit value */
 				value = value | temp;
@@ -1583,6 +1643,7 @@ fprintf(stderr, "TOASTY\n");
 /* BUGBUG: This rescan causes error messages to repeat! */
 				lexstart = ostart;
 				lexterm = pos = oterm;
+//BUGBUG: Check for undef (-1) from getexpr()?
 				temp = getexpr() & 07777;
 				/* Now proceed, dealing with offpage, etc. */
 				if (temp < 0200) { /* page zero MRI */
@@ -1591,6 +1652,8 @@ fprintf(stderr, "TOASTY\n");
 					   && (temp <= (lc | 00177)) ) {
 					/* current page MRI */
 					value = value | 00200 | (temp & 00177);
+				} else if (value & 0400) {
+					error("offpage ind");
 				} else {
 					/* off page MRI */
 					int loc;
@@ -1606,7 +1669,7 @@ fprintf(stderr, "TOASTY\n");
 						errors--; /* warning only */
 					}
 					/* having complained, fix it up */
-					loc = 00177;
+					loc = pzend[field];
 					while ((loc>*plc) && (lit[loc]!=temp)) {
 						loc--;
 					}
@@ -1638,8 +1701,8 @@ fprintf(stderr, "TOASTY\n");
 			value = value & temp;
 		} else if (op == '!') { /* or */
 			/* OPTIONAL PATCH 2
-			 * Change to (value << 6) ! eval()
 			*/
+			/* value = (value << 6) | temp; */
 			value = value | temp;
 		} else {
 			error("expression");
@@ -1665,8 +1728,12 @@ onepass()
 	}
 	reloc = 0;
 	field = 0;
-	cplc = 00177; /* points to end of page for () operands */
+	for (pzlc = 0; pzlc < FIELDS; pzlc++)
+		pzend[pzlc] = 0177;
 	pzlc = 00177; /* points to end of page for [] operands */
+	for (cplc = 0; cplc < PAGES; cplc++)
+		cpend[cplc] = 0177;
+	cplc = 00177; /* points to end of page for () operands */
 	radix = 8;
 	listed = 1;
 	lineno = 0;
@@ -1700,11 +1767,13 @@ restart:
 	if (line[lexstart] == '*') {
 		int newlc;
 		nextlex(); /* skip * (set origin symbol) */
+//BUGBUG: Check for undef (-1) from getexpr()?
 		newlc = getexpr() & 07777;
 		if (cmode == lmode) /* Adjust if LMODE */
 			newlc = (lc & 06000) + (newlc & 01777);
 		if ((newlc & 07600) != (lc & 07600)) { /* we changed pages */
 			putcp();
+			cplc = cpend[newlc>>7];
 		}
 		lc = newlc;
 		/* reloc = 0; /* VRS: Retain existing RELOC */
@@ -1768,6 +1837,9 @@ restart:
 					val += getexprs() & 01777; /* 10 bit address */
 				putout( lc, val );
 				lc = (lc+1) & 07777;
+				if ((lc+1 & 07600) != (lc & 07600))
+					putcp();
+				cplc = cpend[lc>>7];
 				goto restart;
 // BUGBUG: remove	} else if (val & 01000) { /* "B" class */
 // Are A and B format instructions actually parsed differently?
@@ -1776,6 +1848,9 @@ restart:
 					val += getexprs() & 037; /* 4 bit address */
 				putout( lc, val );
 				lc = (lc+1) & 07777;
+				if ((lc+1 & 07600) != (lc & 07600))
+					putcp();
+				cplc = cpend[lc>>7];
 				if (val == 00500) /* IOB */
 					nmode = pmode; /* 1-off PMODE */
 				goto restart;
@@ -1792,6 +1867,7 @@ restart:
 				break;
 			case 2: /* ZBLOCK */
 				val = getexpr();
+//BUGBUG: Check for undef from getexpr()
 				val &= 07777;
 				if (cmode == lmode)
 					val &= 01777;
@@ -1804,14 +1880,22 @@ restart:
 					}
 				}
 				break;
-			case 3: /* PAGE */
-				putcp();
-				if (isdone(line[lexstart])) { /* no arg */
-					lc = ((lc-1) & 07600) + 00200;
-                                } else {
+			case 3: { /* PAGE */
+				    int newlc;
+				    if (isdone(line[lexstart])) { /* no arg */
+					newlc = ((lc-1) & 07600) + 00200;
+                                    } else {
                                         val = getexpr();
-					lc = (val & 037) << 7;
-                                }
+//BUGBUG: Check for undef from getexpr()
+					newlc = (val & 037) << 7;
+                                    }
+				    if ((newlc & 07600) != (lc & 07600)) {
+					/* we changed pages */
+					putcp();
+					cplc = cpend[newlc>>7];
+				    }
+				    lc = newlc;
+				}
 				if (rimflag != 1) {
 					if (obj != NULL) {
 						putorg( lc );
@@ -1892,10 +1976,13 @@ restart:
 				putpz();
 				if ((lc&07600) != 0200) {
 					putcp();
+                                        cplc = cpend[0200>>7];
 				}
 				if (val != field) {
 					putcp();
+                                        cplc = cpend[0200>>7];
 					putpz();
+				        pzlc = pzend[val];
 				}
 				if (rimflag == 1) { /* can't change fields */
 					error("rim mode");
@@ -1909,6 +1996,7 @@ restart:
 				lc = 0;
 				/* OPTIONAL PATCH 4 -- delete next line */
 				lc = 0200;
+				cplc = cpend[lc>>7];
 				if (rimflag != 1) {
 					if (obj != NULL) {
 						putorg( lc );
@@ -1995,33 +2083,48 @@ restart:
 				/* does NOT alter the current relocation offset.	*/
 				/* NB: "lc" does not include field, and must wrap.	*/
 
+				/* RELOC is documented to always push out */
+				/* literals */
+				putcp();
+				/* putcp() may have disturbed "." */
+				if (obj != NULL)
+					putorg(lc);
+
 				if (isdone(line[lexstart])) {
 					/* RELOC without arg */
-					lc += reloc;
-					lc &= 07777;
-					reloc = 0;
+					val = lc + reloc;
 				} else {
 					/* RELOC with an argument */
+//BUGBUG: Check for undef from getexpr()
 					val = getexpr() & 07777;
-					/* Cancel old RELOC. *.
-					/* NOTE: Cannot combine with above, since "."	*/
-					/* may have been used in getexr().		*/
-					lc += reloc;
-					lc &= 07777;
-					reloc = 0;
-					/* Implement new RELOC. */
-					reloc = (lc - val) & 07777;
-					lc = val;
 				}
+				/* Cancel old RELOC. *.
+				 * NOTE: Must have already done getexpr()
+                                 * since "." may have been used there.
+				*/
+				lc += reloc;
+				lc &= 07777;
+				reloc = 0;
+				cplc = cpend[val>>7];
+				/* Implement new RELOC. */
+				if ((val & 07600) != (lc & 07600)) {
+					cplc = cpend[val>>7];
+				}
+				reloc = (lc - val) & 07777;
+				lc = val;
 				break;
 			case 017: /* SEGMNT */
 				putcp();
 				if (isdone(line[lexstart])) { /* no arg */
+//BUGBUG: SEGMNT doesn't dump literals!
 					lc = lc+01777 & 06000;
                                 } else {
                                         val = getexpr();
+//BUGBUG: SEGMNT doesn't dump literals!
+//BUGBUG: Check for undef from getexpr()
 					lc = (val & 003) << 10;
                                 }
+				cplc = cpend[lc>>7];
 				if (rimflag != 1) {
 					if (obj != NULL) {
 						putorg( lc );
@@ -2140,26 +2243,34 @@ restart:
 				/* symbol may be redefined in old code     */
 				/* during pass 1.                          */
 				lc = (lc+1) & 07777;
+cplc = cpend[lc>>7];
 				error("error");
 				break;
 			case 036: /* EXPUNG/E */
 				/* The fixed symbols are fixed. */
 				/* No need to free memory by deleting them. */
-//BUGBUG				/* Delete the user symbols, though */
-//BUGBUG				symtab[firstsym].sym[0] = 0;
+				/* Delete the user symbols, though */
+//VRS Mustn't do this in pass 2, so just never mind for now.
+//VRS				symtab[firstsym].sym[0] = 0;
 				break;
 #ifdef LINC
 			case 06141: /* LINC */
 				/* interpret line load value */
 				putout( lc, 06141);
+				if ((lc+1 & 07600) != (lc & 07600))
+					putcp();
 				lc = (lc+1) & 07777;
+				cplc = cpend[lc>>7];
 				/* FALL THROUGH */
 			case 040: /* LMODE */
 				nmode = cmode = lmode;
 				break;
 			case 043: /* PDP */
 				putout( lc, 00002);
+				if ((lc+1 & 07600) != (lc & 07600))
+					putcp();
 				lc = (lc+1) & 07777;
+				cplc = cpend[lc>>7];
 				/* FALL THROUGH */
 			case 041: /* PMODE */
 				nmode = cmode = pmode;
@@ -2192,9 +2303,11 @@ restart:
 		if ((lc+1 & 07600) != (lc & 07600)) { /* last in page */
 			/* This error case is not detected by putcp(), */
 			/* as it expects lc to be empty. */
-			if (cplc == 0176)
+			/* This seems to detect quite late, when leaving. */
+			if (cplc != 0177)
 				error( "overrun" ); /* overrun constant pool */
 			putcp();
+			cplc = cpend[(lc+1)>>7];
 		}
 		lc = (lc+1) & 07777;
 		nmode = cmode; /* Not an IOB while in LMODE */
