@@ -2260,8 +2260,9 @@ cplc = cpend[lc>>7];
 				if ((lc+1 & 07600) != (lc & 07600))
 					putcp();
 				lc = (lc+1) & 07777;
+//BUGBUG: Don't change cplc unless page break.  Also need to emit literals.
 				cplc = cpend[lc>>7];
-				/* FALL THROUGH */
+				break;
 			case 040: /* LMODE */
 				nmode = cmode = lmode;
 				break;
