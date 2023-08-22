@@ -251,6 +251,9 @@ foreach $x (@ARGV) {
     die "no <image>" unless /^<image name='(.*)' size=(.*)>$/;
     ($iname, $isize) = ($1, $2);
     open(IMAGE, ">$iname") || die "$iname: $!";
+    # Write the last block to force the size.
+    for ($i = 0; $i < 256; $i++) { $dbuf[$i] = 0; }
+    &writeblk($isize-1, @dbuf);
     while (&os8fs) {}
     die "no </image>" unless /^<\/image>$/;
 }
