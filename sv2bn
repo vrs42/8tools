@@ -65,7 +65,7 @@ foreach $f (@todo) {
   $sa = &getword; # Starting Address
   $jsw = &getword; # JSW
   # There are only descriptor slots for 62 core segments.
-  die "$f: Can't have $cs segnemts!\n" unless $cs && $cs < 63;
+  die "$f: Can't have $cs segments!\n" unless $cs && $cs < 63;
   # Now, save each core segment doubleword.
   for ($i = 0; $i < $cs; $i++) {
     push(@co, &getword); # Core Origin
