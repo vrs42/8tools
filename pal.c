@@ -2076,7 +2076,7 @@ restart:
 				/* Refer to the address for code generation, not the	*/
 				/* actual load address.  So, RELOC now sets "lc" to	*/
 				/* the requested value (similar to "*"), and calculates	*/
-				/* "reloc so that "lc+reloc" gives the address we're	*/
+				/* "reloc" so that "lc+reloc" gives the address we're	*/
 				/* loading at.						*/
 				/* NOTE: Combining "*" with RELOC is not advised.  For	*/
 				/* compatibility with existing (PQS8) assemblers, "*"	*/
@@ -2092,7 +2092,7 @@ restart:
 
 				if (isdone(line[lexstart])) {
 					/* RELOC without arg */
-					val = lc + reloc;
+					val = (lc + reloc) & 07777;
 				} else {
 					/* RELOC with an argument */
 //BUGBUG: Check for undef from getexpr()
