@@ -1,0 +1,165 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2023 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+@sixbit = (
+  " ", "!", '"', "\n","\$","%", "?", "\t", # 04x
+  "(", ")", "*", "+", ",", "-", ".", "/",  # 05x
+  "0", "1", "2", "3", "4", "5", "6", "7",  # 06x
+  "8", "9", ":", ";", "<", "=", ">", "?",  # 07x
+  "@", "A", "B", "C", "D", "E", "F", "G",  # 00x
+  "H", "I", "J", "K", "L", "M", "N", "O",  # 01x
+  "P", "Q", "R", "S", "T", "U", "V", "W",  # 02x
+  "X", "Y", "Z", "[", "\\","]", "^", "\r", # 03x
+);
+
+@types = ("ASCII  ", "BINARY ", "FTC BIN", "USER(%d)");
+
+#
+# DMS blocks are 129 words, for consistency between disk and DECtape.
+#
+# Beware the skew, which aligns the blocks with the protection boundary.
+$bsize = 129;
+$bskew = 1;
+
+#
+# Read a block.
+#
+sub rdblk {
+  local($blk) = @_;
+  local($buf);
+  seek(INPUT, 2*$blk*$bsize+2*$bskew, 0);
+  read(INPUT, $buf, 2*$bsize);
+  return unpack("S*", $buf);
+}
+
+#
+# Acquire the SAM.
+#
+sub rdsam {
+  local($link) = @_;
+  local(@buf, $word);
+  while ($link) {
+    @buf = &rdblk($link);
+    $link = pop(@buf);
+    # @buf is packed in a stupid order.  Unpack the words
+    # in the correct order.
+    foreach $word (@buf) {
+      push(@sam, $word & 077);
+    }
+    foreach $word (@buf) {
+      push(@sam, $word >> 6);
+    }
+  }
+}
+
+#
+# Read the directory.  # A directory block consists of:
+# 3 overhead words, non-zero only in block $firstdir.
+# 25 (5*5) 5 word entries (125 words)
+# A link to the next directory block.
+#
+$firstdir = 0177;
+sub rddir {
+  local($link) = @_;
+  local(@buf);
+  while ($link) {
+    @buf = &rdblk($link);
+    if ($link == $firstdir) {
+      if ($buf[0] != 0373) {
+        if ($buf[0] != 0005) {
+          warn "$f: no dir\n";
+          return;
+        }
+      }
+#     warn "not version AF" if $buf[1] != 04146;
+      if ($buf[2] != 0200) {
+        warn "$f: no SAM\n";
+        return;
+      }
+      $scr = $buf[0];
+      $ver = $buf[1];
+      $sam = $buf[2];
+    }
+    # discard overhead
+    shift @buf; shift @buf; shift @buf;
+    $link = pop(@buf);
+    push(@dir, @buf);
+  }
+}
+
+foreach $f (@ARGV) {
+  open(INPUT, $f) || die "$ARGV[0]: $!";
+  binmode(INPUT);
+  $bskew = 1;
+  $bskew = 0 if $f =~ /[.]dt/;
+  $bskew = 0 if $f =~ /[.]tu/;
+  
+  #
+  # Call the above routines to aquire the information we need.
+  @sam = ();
+  @dir = ();
+  &rddir($firstdir);
+  next unless @dir;
+  &rdsam($sam);
+  
+  #
+  # Print the directory.
+  #BUGBUG: Free Block doesn't seem to be what "FB" means.
+  $len = 0;
+  for ($b = 0; $b <= $#sam; $b++) {
+    $len++ if $sam[$b] == 0;
+  }
+  printf "\n$f:\nFB=%04o\n", $len;
+  print "$sixbit[$ver>>6]$sixbit[$ver&077]\n";
+  print "NAME  TYPE   BLKS  FILE LOAD  START\n";
+  for ($i = 5; $dir[$i]; $i += 5) {
+    # Unpack file information.
+    $packed = $dir[$i+4];
+    $type = $packed >> 10;
+    $type = $types[$type];
+    $field = ($packed>>7) & 07;
+    $sys = ($packed>>6) & 01;
+    $type = "SYS (%d)" if $sys;
+    $file = $packed & 077;
+    # Print the file name (4 characters).
+    print $sixbit[$dir[$i+0]>>6], $sixbit[$dir[$i+0]&077];
+    print $sixbit[$dir[$i+1]>>6], $sixbit[$dir[$i+1]&077];
+    # Print the extension.
+    printf ".$type", $field;
+    # Given the file number, compute the file's length.
+    $len = 0;
+    for ($b = 0; $b <= $#sam; $b++) {
+      $len++ if $sam[$b] == $file;
+    }
+    printf " %04o ", $len;
+    printf " %02o  ", $file;
+    printf " %04o  %04o\n", $dir[$i+2], $dir[$i+3];
+  }
+}
+
+exit 0;
