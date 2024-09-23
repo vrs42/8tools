@@ -83,8 +83,10 @@ while (1) {
 	    $checksum -= ($data >> 6) + ($data&077);
             $checksum &= 07777;
             warn "Checksum error: $data <> $checksum\n" unless $data == $checksum;
-	    print "\n";
-	    last;
+	    print "\n" if defined $data;
+	    $checksum = 0;
+	    $data = undef;
+#	    last;
         }
     } else {
 	# Location or Data -- get second byte of frame
@@ -114,5 +116,6 @@ while (1) {
     }
     # Start again with next byte.
     $c1 = getch(INPUT);
+    last unless defined $c1;
 }
 exit 0;

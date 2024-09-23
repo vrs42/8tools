@@ -96,7 +96,7 @@ die "$ARGV[0] looks like COS\n" if $sblk == 0140;
 # The DIAL area breaks down thus:
 # 300-321	EDITOR
 # 322-345	ASSEMBLER
-# 346-247	DIAL Index
+# 346-347	DIAL Index
 # 350-353	FILECOMS
 # 354-355	LOADER
 # 356-360	SAVE BINARY
@@ -132,6 +132,12 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     "8",   "9", ":", ";", "<", "=", ">", "?",  # 07x
   );
   @dir = &getblk($dirblk);
+  # Check for leading entry of 05757.  Retry at 0356 if absent.
+  if (($dir[0] != 05757) || ($dir[1] != 05757)
+   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
+    $dirblk = 0356;
+    @dir = &getblk($dirblk);
+  }
   # Check for leading entry of 05757.  Retry at 0326 if absent.
   if (($dir[0] != 05757) || ($dir[1] != 05757)
    || ($dir[2] != 05757) || ($dir[3] != 05757)) {
