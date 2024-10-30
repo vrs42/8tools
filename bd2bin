@@ -51,6 +51,10 @@ sub dframe {
 sub header {
   die "header read $f: $!\n" unless read(INPUT, $map, $bsize) == $bsize;
   @map = unpack("S*", $map);
+  printf "SA=0%o%04o, %s mode\n",
+         ($map[1]& 070)>>3,
+         $map[3],
+         $map[0] == 2? "pdp8": "linc";
   # Should output a suitable SAVE command to STDOUT.
   for ($i = 0; $i < 0340; $i++) {
     shift @map;
@@ -62,7 +66,7 @@ foreach $f (@ARGV) {
   binmode(INPUT);
   &header;
   $of = $f; $of =~ s/[.]bd$/.bin/;
-  die "$f: Expected .sav" if $f eq $of;
+  die "$f: Expected .bd" if $f eq $of;
   open(OUTPUT, ">$of") || die "$of: $!";
   binmode(OUTPUT);
   &leader;
