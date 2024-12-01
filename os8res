@@ -1,0 +1,187 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2024-2025 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Look at a .dsk image and create a report similar to the RES/E command.
+#
+
+
+#
+# This routine reads the specified blocks of the disk image into the passed
+# array reference.  The array upon return will contain the successive 12 bit
+# words of the specified block.
+#
+sub ReadBlocks {
+  local($first, $last, *a) = @_;
+  local($offset, $count);
+  $offset = 256 * 2 * $first;
+  seek(INPUT, $offset, 0) || die "seek($image): $!";
+  $count = read(INPUT, $buf, ($last-$first+1)*256*2);
+  die "read($image): $!" if $count < 0;
+  die "read($image): wrong count $!" if $count != ($last-$first+1)*256*2;
+  @a = unpack("S*", $buf);
+}
+
+die "usage $0 <image>\n" unless ($image = $ARGV[0]);
+open(INPUT, $image) || die "$image: $!";
+binmode(INPUT);
+
+#
+# Read the first directory block to determine if this is really an OS/8
+# system volume.
+#
+&ReadBlocks(01, 06, *dir);
+die "$image: no OS/8 directory\n" unless $dir[0] & 04000;
+die "$image: not a system volume\n" unless $dir[1] == 0070;
+
+#
+# The USR routine can be found in blocks 013-015.
+# It has tables that can translate device names to
+# device numbers.
+#
+&ReadBlocks(013, 015, *usr);
+
+#
+# Unfortunately the names are hashed for lookup,
+# and the full device name is not recoverable.
+# Here are the full device names; We'll hash them
+# for the reverse lookup.
+#
+@devices = (
+  "026", "029", "AS33", "AS34", "BAT", "BUFF", "BYTE", "CC", "CDP", "CDR",
+  "CLCK", "COM0", "COM1", "COMM", "CR8E", "CRT", "CSA0", "CSA1",
+# "CSAF", # Hash collision
+  "CUMU", "D", "DB8E", "DBL", "DCTP", "DDCM",
+# "DEV", # Hash collision
+  "DEX1", "DEX2", "DEX3",
+  "DEX4", "DEX5", "DEX6", "DEX7", "DF", "DF32",
+# "DIAB", # Hash collision
+# "DIR", # Hash collision
+  "DISP",
+# "DK0", # Hash collision
+  "DKA0", "DKB0",
+# "DSDH", # Hash collision
+  "DSDL", "DSDU", "DSK", "DSK0", "DSK1", "DSK2",
+  "DSK3", "DSK4", "DSK5", "DSK6", "DSK7", "DT", "DTA", "DTA0", "DTA1", "DTA2",
+  "DTA3", "DTA4", "DTA5", "DTA6", "DTA7", "DUMP", "DX0", "DX1", "DX2", "DY0",
+  "DY1", "ETRX", "ETTT", "EXIT", "FD00", "FD01", "FD02", "FD03", "FDSK",
+# "FL23", # Hash collision
+  "FLP0", "FLP1", "FLPY",
+# "HDX", # Hash collision
+  "HN21", "INP", "IPB", "KL8E",
+# "KLAD", # Hash collision
+  "KS33", "KS40", "L645", "LA30", "LINC", "LIST", "LNC", "LPSV",
+  "LPT", "LPTR", "LPTS", "LQP", "LQP0", "LQPR", "LST",
+# "LTA", # Hash collision
+  "LTA0", "LTA1",
+  "LTA2", "LTA3",
+# "LTA4", # Hash collision
+  "LTA5", "LTA6", "LTA7",
+# "LTY", # Hash collision
+  "LV8E", "MDFL",
+  "MDFS", "MDWN", "MDWS", "MIR1", "MIR2", "MIR3", "MIR4", "MIR5", "MIR6",
+  "MIR7", "MTA", "MTA0", "MTA1", "MTA2", "MTA3", "MTA4", "MTA5", "MTA6",
+  "MTA7",
+# "N210", # Hash collision
+  "NULL", "NX12",
+# "OS8F", #Hash collision
+  "OUT", "OUTP", "PDP", "PDP8",
+  "PDR", "PLTR", "PT8E", "PTP", "PTP4", "PTR", "PTR4", "PWRF",
+# "R01E", # Hash collision
+# "R0AB", # Hash collision
+# "R0CD", # Hash collision
+  "R1AB",
+# "R1CD", # Hash collision
+  "R20A", "R20B", "R20C", "R20D", "R20E",
+  "R21A", "R21B", "R21C", "R21D", "R21E",
+# "R2SY", # Hash collision
+  "RBA0", "RD50", "RD51",
+  "RD52", "RD53", "RD5A", "RD5B", "RDSY", "RF", "RF08", "RFD", "RK01",
+  "RK05", "RK08", "RK8", "RK8E", "RKA0", "RKA1", "RKA2", "RKA3", "RKB0",
+  "RKB1", "RKB2", "RKB3", "RL0", "RL0A", "RL0B", "RL0C", "RL1", "RL1A",
+  "RL1B", "RL1C", "RL2", "RL2A", "RL2B", "RL2C", "RL3", "RL3A", "RL3B",
+  "RL3C", "RLC", "RLSY", "ROM", "RTS8", "RX01", "RX02", "RX03", "RX0B",
+  "RX1S", "RX2", "RX20", "RX21", "RX22", "RX23", "RX2A", "RX2B", "RX2S",
+  "RX3", "RX3S", "RX50", "RX51", "RX52", "RX53", "RX5A", "RX5B", "RX8",
+  "RX8A", "RX8B", "RX8C", "RX8D", "RX8E", "RXA0", "RXA1", "RXA2", "RXA3",
+  "RXB0", "RXB1", "RXC0", "RXC1", "RXCS", "RXD0", "RXD1", "RXH0", "S210",
+  "SCAN", "SCOP", "SDA0", "SDA1", "SDA2", "SDA3", "SDB0", "SDB1", "SDB2",
+  "SDB3", "SDIS", "SDNS", "SDSK", "SDSY", "SERL", "SIDK", "SLU", "SLU0",
+  "SLU2", "SLU3", "SNAP", "SRV", "SRV1", "SRV2", "SWAP",
+# "SX12", # Hash collision
+  "SYS",
+  "TA8", "TA8E", "TC", "TC08", "TC12", "TD8", "TD8A",
+# "TD8B", # Hash collision
+  "TD8C",
+  "TD8D", "TD8E",
+# "TEST", # Hash collision
+  "TIME", "TM8C", "TM8E", "TTY", "TUA0", "TURI",
+  "TV", "TVIN", "VAX", "VC8E", "VK8A", "VLU2", "VLU3", "VR12", "VT8E",
+  "VXA0", "WDS2", "WDSK",
+# "WIND", # Hash collision
+  "WNA0", "WNA1", "WNA2", "WNA3", "WNA4",
+  "WNA5", "WNA6", "WNA7", "WNB0", "WNB1", "WNB2", "WNB3", "WNB4", "WNB5",
+  "WNB6", "WNB7", "WSYS", "WW8E", "XTRA",
+);
+foreach $dev (@devices) {
+  @dev = unpack("C*", $dev);
+#warn "got @dev for $dev\n";
+  $hash1 = (077 & shift @dev) << 6;
+  $hash1 += (077 & shift @dev) if @dev;
+#printf STDERR "hash1 value: 0%o\n", $hash1;
+  $hash2 = 0;
+  $hash2 = (077 & shift @dev) << 6 if @dev;
+  $hash2 += (077 & shift @dev) if @dev;
+#printf STDERR "hash2 value: 0%o\n", $hash2;
+  if ($hash2) {
+    $hash1 += $hash2;
+    $hash1 |= 04000;
+  }
+  $hash1 &= 07777;
+  if (defined $devname{$hash1}) {
+    printf STDERR "Hash value: 0%o\n", $hash1;
+    die "Hash collision: $dev and $devname{$hash1}";
+  }
+  $devname{$hash1} = $dev;
+}
+
+#
+# Attempt to enumerate the device drivers ("RES").
+#
+$ntbl = $usr[036];
+$dev = $usr[$ntbl];
+print $devname{$dev};
+for ($i = 1; $i < 15; $i++) {
+  $dev = $usr[$ntbl+$i];
+  print ",", $devname{$dev};
+}
+print "\n";
+#
+# A system volume has device drivers in blocks 016-025.
+# Each driver occupies 128 or 256 words of the 8 block region.
+#
