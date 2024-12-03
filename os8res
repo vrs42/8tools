@@ -427,16 +427,18 @@ for ($i = 0; $i < 15; $i++) {
 #
 print "#  NAME TYPE MODE SIZ BLK KIND U V ENT USER\n";
 for ($i = 0; $i < 15; $i++) {
+  next unless $ntbl[$i];
   printf "%02o ", $i+1;
   $name = &DevName($i, $ntbl[$i]);
   printf "%-5s", $name;
   printf "%-5s", &TypeName($i);
   print  $ttbl[$dev]&01000? " " : "R";
   print  $ttbl[$dev]&02000? " " : "W";
+# BUGBUG: Everything seems to be RWF!!
   print  $ttbl[$dev]&04000? "F" : " ";
   $type =  ($ttbl[$i]&0777) >> 3;
   $size = $devicesize[$type]? 4096-$devicesize[$type]: 0;
-  printf " %4d ", $size;
+  printf " %4s ", $size? $size: " ";
   printf "%02o%s", $btbl[$i], $htbl[$i]&04000? "+": " " if $btbl[$i];
   printf "SYS" unless $btbl[$i];
 # BUGBUG: How is KIND different from TYPE?
@@ -447,6 +449,7 @@ for ($i = 0; $i < 15; $i++) {
   printf "%s ", $unit;
   printf "%c ", $vtbl[$i]? 0100 + $vtbl[$i]: 040;
   printf "%3o ", $etbl[$i];
+# BUGBUG: USER names aren't right!!
   printf "%-5s", &DevName($i, $utbl[$i]) if $utbl[$i];
   printf "\n";
 }
