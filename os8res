@@ -80,10 +80,59 @@ for ($i = 0; $i < 15; $i++) {
 }
 
 #
-# Locate and read in the drivers, then fetch the version numbers.
+# The user assignment table lives at 17741-17757, and are loaded from the
+# last half of the boot block. It appears user assignments aren't written
+# back to disk, so it is unclear if they are useful here.
+#
+# To disambiguate devices below, we'll also need the device types for the
+# various drivers.  These live at 17760-17776, and are loaded from the
+# the boot block.
 #
 &ReadBlocks(0, 0, *boot);
+$utbl = 07741 & 0177;
+$ttbl = 07760 & 0177;
 for ($i = 0; $i < 15; $i++) {
+  $utbl[$i] = $boot[$utbl+$i];
+  $ttbl[$i] = $boot[$ttbl+$i];
+}
+
+#
+# Device types, for differentiation, but also for KIND determination.
+#
+$tty  = 000;
+$ptr  = 001;
+$ptp  = 002;
+$cr8e = 003;
+$lptr = 004;
+$rk8  = 005;
+$rf08a= 006;
+$rf08b= 007;
+$rf08c= 010;
+$rf08d= 011;
+$df32a= 012;
+$df32b= 013;
+$df32c= 014;
+$df32d= 015;
+$tc08 = 016;
+$linc = 017;
+$tm8e = 020;
+$td8e = 021;
+$bat  = 022;
+$rk8e = 023;
+$null = 024;
+$rx8e = 025;
+$ta8e = 027;
+$vr12 = 030;
+$dump = 036;
+$rl02 = 037;
+$sdsk = 064;
+#
+# Locate and read in the drivers, then fetch the version numbers.
+#
+for ($i = 0; $i < 15; $i++) {
+  die "ttbl undef" unless @ttbl;
+  $type =  ($ttbl[$i]&0777) >> 3;
+  $ktbl[$i] = ""; # No KIND yet
   if ($htbl[$i] == 0) {
     # Reference is to SYS
     $btbl[$i] = 0;
@@ -97,28 +146,57 @@ for ($i = 0; $i < 15; $i++) {
     $etbl[$i] = $entry;
 # BUGBUG: Version is only in unit 0 entry point?!?!
     $vtbl[$i] = $driver[$entry];
-    $vtbl[$i] = 0 if $vtbl[$i] > 032;
     # BUGBUG: While we have the driver, use arcane knowledge
     # to determine KIND. (TODO)
+    die "tty undef" unless defined $tty;
+    die "ptr undef" unless defined $ptr;
+    die "ptp undef" unless defined $ptp;
+    die "cr8e undef" unless defined $cr8e;
+    die "lptr undef" unless defined $lptr;
+    die "rk8e undef" unless defined $rk8e;
+    if ($type == $tty) {
+      $ktbl[$i] = "AS33";
+      # The two page handler is KL8E.
+      $ktbl[$i] = "KL8E" if $htbl[$i] & 04000;
+    } elsif (($type == $ptr) || ($type == $ptp)) {
+      $ktbl[$i] = "KS33";
+      foreach $word (@driver) {
+        # If there's an RSF, it is PT8E.
+        if ($word == 06021) {
+          $ktbl[$i] = "PT8E";
+          last;
+        }
+      }
+    } elsif ($type == $cr8e) {
+      # If we recognize the character set, set a type.
+      $ktbl[$i] = "026" if $driver[0104] == 07735;
+      $ktbl[$i] = "029" if $driver[0104] == 03203;
+    } elsif ($type == $lptr) {
+      foreach $word (@driver) {
+        # If there's a 6652, it is L645.
+        if ($word == 06021) {
+          $ktbl[$i] = "L645";
+          last;
+        }
+      }
+      if ($ktbl[$i] eq "") {
+        # Not found, keep working
+#       $ktbl[$i] = "LP08"; # TODO
+#       $ktbl[$i] = "LS8E"; # TODO
+        $ktbl[$i] = "LPSV" if $driver[0001] == 014;
+        $ktbl[$i] = "LV8E" if $driver[0001] == 004;
+      }
+    } elsif ($type == $rk8e) {
+        $ktbl[$i] = "RK05"; # TODO
+# TODO: Add cases for QRK8, PLAT[1-4], QTC08, QLINC, QTD8E, QRK8E, and QTA8E!!
+    }
   }
+  $vtbl[$i] = 0 if $vtbl[$i] > 032;
 #printf STDERR "Driver $i entry is 0%o\n", $etbl[$i];
 #printf STDERR "Driver $i version is 0%o\n", $vtbl[$i];
+#printf STDERR "Driver $i kind is %s\n", $ktbl[$i];
 }
 
-#
-# The user assignment table lives at 17741-17757, and are loaded from the
-# last half of the boot block.
-#
-# To disambiguate devices below, we'll also need the device types for the
-# various drivers.  These live at 17760-17776, and are loaded from the
-# the boot block.
-#
-$utbl = 07741 & 0177;
-$ttbl = 07760 & 0177;
-for ($i = 0; $i < 15; $i++) {
-  $utbl[$i] = $boot[$utbl+$i];
-  $ttbl[$i] = $boot[$ttbl+$i];
-}
 @devicetype = (
 # 00,     01,     02,     03,
   "TTY",  "PTR",  "PTP",  "CR8E",
@@ -173,23 +251,26 @@ sub TypeName {
 # Here are the full device names; We'll hash them
 # for the reverse lookup.
 #
+# One and two character names are recoverable, and
+# need not be in this list.
+#
 @devices = (
   "026", "029", "AS33", "AS34", "BAT",
 # "BUFF", "DSDH", # Hash collision
-  "BYTE", "CC", "CDP", "CDR",
+  "BYTE", "CDP", "CDR",
   "CLCK", "COM0", "COM1", "COMM", "CR8E", "CRT", "CSA0", "CSA1",
 # "CSAF", "RX2A", # Hash collision
-  "CUMU", "D", "DB8E", "DBL", "DCTP", "DDCM",
+  "CUMU", "DB8E", "DBL", "DCTP", "DDCM",
 # "DEV", "WNB7", # Hash collision
   "DEX1", "DEX2", "DEX3",
-  "DEX4", "DEX5", "DEX6", "DEX7", "DF", "DF32",
+  "DEX4", "DEX5", "DEX6", "DEX7", "DF32",
 # "DIAB", "RX23", # Hash collision
 # "DIR", "RXC1", # Hash collision
   "DISP",
 # "DK0", "RXA3", # Hash collision
   "DKA0", "DKB0",
   "DSDL", "DSDU", "DSK", "DSK0", "DSK1", "DSK2",
-  "DSK3", "DSK4", "DSK5", "DSK6", "DSK7", "DT",
+  "DSK3", "DSK4", "DSK5", "DSK6", "DSK7",
 # "DTA", "LTY", # Hash collision
   "DTA0", "DTA1", "DTA2", "DTA3", "DTA4", "DTA5", "DTA6",
 # "DTA7", "R2SY", # Hash collision
@@ -226,7 +307,7 @@ sub TypeName {
   "R21A", "R21B",
   "R21D", "R21E",
   "RD50", "RD51",
-  "RD52", "RD53", "RD5A", "RD5B", "RDSY", "RF", "RF08", "RFD", "RK01",
+  "RD52", "RD53", "RD5A", "RD5B", "RDSY", "RF08", "RFD", "RK01",
   "RK05", "RK08", "RK8", "RK8E", "RKA0", "RKA1", "RKA2", "RKA3", "RKB0",
   "RKB1", "RKB2", "RKB3", "RL0", "RL0A", "RL0B", "RL0C", "RL1", "RL1A",
   "RL1B", "RL1C", "RL2", "RL2A", "RL2B", "RL2C", "RL3",
@@ -249,13 +330,13 @@ sub TypeName {
   "SYS",
   "TA8",
 # "TA8E", "TD8B", # Hash collision
-  "TC", "TC08", "TC12",
+  "TC08", "TC12",
 # "TD8", "VT50", # Hash collision
   "TD8A", "TD8C", "TD8D", "TD8E",
   "TIME",
   "TM8E",
   "TUA0", "TURI",
-  "TV", "TVIN", "VAX",
+  "TVIN", "VAX",
   "VK8A", "VLU2", "VLU3", "VR12", "VT8E",
   "VXA0", "WDS2", "WDSK",
   "WNA0",
@@ -286,15 +367,20 @@ foreach $dev (@devices) {
 #
 # There are enough special cases to warrant a function here.
 # (For instance, TDA0: and SDB0: have the same hash.)
-$tty  = 000; # Device types, for differentiation.
-$tc08 = 016;
-$linc = 017;
-$td8e = 021;
-$rl02 = 037;
-$sdsk = 064;
 sub DevName {
   local($dev, $hash) = @_;
   local($type);
+
+  # If the hash is one or two characters, just return them.
+#printf STDERR "hash = 0%o\n", $hash;
+  if (!($hash & 04000)) {
+    $c1 = $hash >> 6;
+    $c2 = $hash & 077;
+    $c1 += 0100 unless $c1 & 040;
+    $c2 += 0100 unless $c2 & 040;
+    $c2 = 0 if $c2 == 0100;
+    return sprintf("%c%c", $c1, $c2);
+  }
 
   # Deal with the unambiguous cases first.
   return $devname{$hash} if defined $devname{$hash};
@@ -442,7 +528,7 @@ for ($i = 0; $i < 15; $i++) {
   printf "%02o%s", $btbl[$i], $htbl[$i]&04000? "+": " " if $btbl[$i];
   printf "SYS" unless $btbl[$i];
 # BUGBUG: How is KIND different from TYPE?
-  printf " %-4s ", $devicetype[($ttbl[$i]>>3)&077];
+  printf " %-4s ", $ktbl[$i];
   $unit = " ";
   $unit = $1 if $name =~ /[AB](\d)$/;
   $unit = "0" unless $btbl[$i]; # SYS
@@ -482,3 +568,12 @@ print "$txt\n";
 #
 #
 #.
+
+#
+# The actual name reconstruction in RESORC.PA seems to work by trying
+# DT MT LT TD CS RK RF RX and VX, followed by [AB][0-7]. If that does 
+# not work, the following are tried: TTY PTR PTP CDR SYS DSK CDP DEV
+# OUT INP BAT NULL LST DUMP SLU LQP RL0A RL0B RL0C RL1A RL1B RL1C
+# RL2A RL2B RL2C RL3A RL3B RL3C
+# This generates TDA[01] instead of SDB[01], but it isn't clear yet
+# how names like "T4" are generated.
