@@ -50,6 +50,7 @@ sub ReadBlocks {
 die "usage $0 <image>\n" unless ($image = $ARGV[0]);
 open(INPUT, $image) || die "$image: $!";
 binmode(INPUT);
+print "$image:\n";
 
 #
 # Read the first directory block to determine if this is really an OS/8
@@ -86,7 +87,12 @@ for ($i = 0; $i < 15; $i++) {
 #
 # To disambiguate devices below, we'll also need the device types for the
 # various drivers.  These live at 17760-17776, and are loaded from the
-# the boot block.
+# the boot block. Bits in ttbl[]:
+# Bit 0 	File structured device
+# Bit 1 	Read only device
+# Bit 2 	Write only device
+# Bit 3-8	The device type
+# Bit 9-11	Current tentative file dirblk, if any
 #
 &ReadBlocks(0, 0, *boot);
 $utbl = 07741 & 0177;
@@ -146,7 +152,7 @@ for ($i = 0; $i < 15; $i++) {
     $etbl[$i] = $entry;
 # BUGBUG: Version is only in unit 0 entry point?!?!
     $vtbl[$i] = $driver[$entry];
-    # BUGBUG: While we have the driver, use arcane knowledge
+    # While we have the driver, use arcane knowledge
     # to determine KIND. (TODO)
     die "tty undef" unless defined $tty;
     die "ptr undef" unless defined $ptr;
@@ -518,16 +524,14 @@ for ($i = 0; $i < 15; $i++) {
   $name = &DevName($i, $ntbl[$i]);
   printf "%-5s", $name;
   printf "%-5s", &TypeName($i);
-  print  $ttbl[$dev]&01000? " " : "R";
-  print  $ttbl[$dev]&02000? " " : "W";
-# BUGBUG: Everything seems to be RWF!!
-  print  $ttbl[$dev]&04000? "F" : " ";
+  print  $ttbl[$i]&01000? " " : "R";
+  print  $ttbl[$i]&02000? " " : "W";
+  print  $ttbl[$i]&04000? "F" : " ";
   $type =  ($ttbl[$i]&0777) >> 3;
   $size = $devicesize[$type]? 4096-$devicesize[$type]: 0;
   printf " %4s ", $size? $size: " ";
   printf "%02o%s", $btbl[$i], $htbl[$i]&04000? "+": " " if $btbl[$i];
   printf "SYS" unless $btbl[$i];
-# BUGBUG: How is KIND different from TYPE?
   printf " %-4s ", $ktbl[$i];
   $unit = " ";
   $unit = $1 if $name =~ /[AB](\d)$/;
@@ -536,6 +540,8 @@ for ($i = 0; $i < 15; $i++) {
   printf "%c ", $vtbl[$i]? 0100 + $vtbl[$i]: 040;
   printf "%3o ", $etbl[$i];
 # BUGBUG: USER names aren't right!!
+# Apparently they are faithful to the media, but the hash codes there
+# aren't very useful.
   printf "%-5s", &DevName($i, $utbl[$i]) if $utbl[$i];
   printf "\n";
 }
