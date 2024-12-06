@@ -402,9 +402,11 @@ sub DevName {
   # When in doubt, fail through.
   if ($hash == 04004) {
     # Hash collision: PDP and HDX
+    return "PDP";
   }
   if ($hash == 04042) {
     # Hash collision: N210 and LPTR
+    return "LPTR";
   }
   if ($hash == 04365) {
     # Hash collision: R21C and R01E
@@ -414,15 +416,19 @@ sub DevName {
   }
   if ($hash == 04512) {
     # Hash collision: SX12 and RX22
+    return "RX22";
   }
   if ($hash == 04513) {
     # Hash collision: RX23 and DIAB
+    return "RX23";
   }
   if ($hash == 04515) {
     # Hash collision: WIND and RL3A
+    return "RL3A";
   }
   if ($hash == 04524) {
     # Hash collision: LTY and DTA
+    return "DTA";
   }
   if ($hash == 04613) {
     # Hash collision: R2SY and DTA7
@@ -431,10 +437,12 @@ sub DevName {
   }
   if ($hash == 04731) {
     # Hash collision: "OS8F", "RX5A", and "TEST"
+    return "RX5A";
   }
   if ($hash == 05033) {
     # Hash collision: DSDH and BUFF
     return "DSDH" if $type == 050;
+    return "BUFF";
   }
   if ($hash == 05404) {
     # Hash collision: VT50 and TD8
@@ -444,9 +452,11 @@ sub DevName {
   if ($hash == 05406) {
     # Hash collision: TD8B and TA8E
     return "TD8B" if $type == $td8e;
+    return "TA8E";
   }
   if ($hash == 05420) {
     # Hash collision: TM8C and KLAD
+    return "TM8C";
   }
   if ($hash == 05524) {
     # Hash collision: TTY and LTA
@@ -483,14 +493,17 @@ sub DevName {
   }
   if ($hash == 07077) {
     # Hash collision: WNA1 and FL23
+    return "WNA1";
   }
   if ($hash == 07205) {
     # Hash collision: WNB7 and DEV
+    return "WNB7";
   }
   # The original, I think, printed the octal hashcode in parenthesis.
   # We attempt to create some 3 or 4 letter name that would hash
   # correctly, allowing the user to access the device.
   $lh = ($hash >> 6) & 037;
+  $lh += 040 unless $lh > 1;
   $rh = $hash & 077;
   if ($rh == 0) {
     $lh -= 1;
@@ -526,9 +539,11 @@ sub DevName {
   $c1 += 0100 unless $c1 & 040;
   $c2 += 0100 unless $c2 & 040;
   $c3 += 0100 unless $c3 & 040;
+  $c4 += 0100 unless $c4 & 040;
+  $c4 = 0 if $c4 == 0100;
 #printf STDERR "hash = 0%o 0%o 0%o 0%o 0%o \n", $hash, $c1, $c2, $c3, $c4;
-  return sprintf"(%c%c%c)", $c1, $c2, $c3 unless $c4;
-  return sprintf"(%c%c%c%c)", $c1, $c2, $c3, $c4;
+  return sprintf"%c%c%c#", $c1, $c2, $c3 unless $c4;
+  return sprintf"%c%c%c%c#", $c1, $c2, $c3, $c4;
 }
 
 #
