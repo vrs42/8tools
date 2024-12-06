@@ -101,6 +101,10 @@ for ($i = 0; $i < 15; $i++) {
   $utbl[$i] = $boot[$utbl+$i];
   $ttbl[$i] = $boot[$ttbl+$i];
 }
+#
+# BUGBUG: ttbl[] is wrong for some images!!
+#warn "@ntbl";
+#warn "@ttbl";
 
 #
 # Device types, for differentiation, but also for KIND determination.
@@ -430,6 +434,7 @@ sub DevName {
   }
   if ($hash == 05033) {
     # Hash collision: DSDH and BUFF
+    return "DSDH" if $type == 050;
   }
   if ($hash == 05404) {
     # Hash collision: VT50 and TD8
@@ -447,6 +452,7 @@ sub DevName {
     # Hash collision: TTY and LTA
     return "TTY" if $type == $tty;
     return "LTA" if $type == $linc;
+    return "LPAD" if $type == $lptr;
   }
   if ($hash == 05610) {
     # Hash collision: VC8E and LTA4
@@ -455,16 +461,21 @@ sub DevName {
   }
   if ($hash == 06362) {
     # Hash collision: RBA0 and R0AB
+    return "RBA0";
   }
   if ($hash == 06413) {
     # Hash collision: RXA3 and DK0
+    return "RXA3" if $type == $rx8e;
+    return "DK0";
   }
   if ($hash == 06564) {
     # Hash collision: SDB0 and R0CD
+    return "TDA0" if $type == $td8e;
     return "SDB0" if $type == $sdsk;
   }
   if ($hash == 06565) {
     # Hash collision: SDB1 and R1CD
+    return "TDA1" if $type == $td8e;
     return "SDB1" if $type == $sdsk;
   }
   if ($hash == 06611) {
@@ -483,7 +494,7 @@ sub DevName {
   $rh = $hash & 077;
   if ($rh == 0) {
     $lh -= 1;
-    $rh += 1;
+    $rh += 0100;
   }
   # Try to make x.A.
   $c1 = $lh - 1;
@@ -563,8 +574,6 @@ for ($i = 0; $i < 15; $i++) {
   printf "%-5s", &DevName($i, $utbl[$i]) if $utbl[$i];
   printf "\n";
 }
-$txt =~ s/^,//;
-print "$txt\n";
 #.RES/E
 #
 #195 FILES IN 3062 BLOCKS USING 6 SEGMENTS
