@@ -479,27 +479,45 @@ sub DevName {
   # The original, I think, printed the octal hashcode in parenthesis.
   # We attempt to create some 3 or 4 letter name that would hash
   # correctly, allowing the user to access the device.
-  $c2 = $hash & 077; # 3 character name, if possible.
+  $lh = ($hash >> 6) & 037;
+  $rh = $hash & 077;
+  if ($rh == 0) {
+    $lh -= 1;
+    $rh += 1;
+  }
+  # Try to make x.A.
+  $c1 = $lh - 1;
+  $c3 = 1;
+  # First must be alhpabetic
+  if ($c1 > 031) {
+    $c3 += $c1 - 031;
+    $c1 = $lh - $c3;
+  }
+  die unless $lh == $c1 + $c3;
+  # Try to make .x.[0-7]
+  $c2 = $rh; # 3 character name, if possible.
   $c4 = 0;
   # Is c2 alphanumeric?
   if ($c2 > 071) {
     # Make c4 a digit
-    $c4 = $c2 >> 1;
     $c4 = 060 + ($c2 & 07);
     $c2 -= $c4;
   } elsif (($c2 < 057) && ($c2 > 032)) {
-    $c4 = 033 - $c2;
+    # Make c2 alphabetic
+    $c4 = $c2 - 031;
     $c2 -= $c4;
   }
-  $c1 = ($hash&03600) >> 1;
-  $c3 = ($hash&03700) - $c1;
-  $c1 = $c1 >> 6;
-  $c3 = $c3 >> 6;
+  die unless $rh == $c2 + $c4;
+  die "c1: $c1 < 1" if $c1 < 1;
+  die "c2: $c2 < 1" if $c2 < 1;
+  die "c3: $c3 < 1" if $c3 < 1;
+  die "c4: $c4 < 0" if $c4 < 0;
   $c1 += 0100 unless $c1 & 040;
   $c2 += 0100 unless $c2 & 040;
   $c3 += 0100 unless $c3 & 040;
+#printf STDERR "hash = 0%o 0%o 0%o 0%o 0%o \n", $hash, $c1, $c2, $c3, $c4;
+  return sprintf"(%c%c%c)", $c1, $c2, $c3 unless $c4;
   return sprintf"(%c%c%c%c)", $c1, $c2, $c3, $c4;
-  return "???";
 }
 
 #
@@ -581,5 +599,6 @@ print "$txt\n";
 # not work, the following are tried: TTY PTR PTP CDR SYS DSK CDP DEV
 # OUT INP BAT NULL LST DUMP SLU LQP RL0A RL0B RL0C RL1A RL1B RL1C
 # RL2A RL2B RL2C RL3A RL3B RL3C
-# This generates TDA[01] instead of SDB[01], but it isn't clear yet
-# how names like "T4" are generated.
+# Everything else is just printed as if 04000 were clear and two characters
+# were encoded.
+#
