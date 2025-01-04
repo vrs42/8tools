@@ -206,6 +206,8 @@ if ($start == -1) {
 &outWords((-$segment) & 07777, 06203 + (($start >> 9) & 070));
 &outWords($start&07777, $jsw);
 for ($i = 1; $i <= $segment; $i++) {
+  # Force start on an even page!
+  $start[$i]-- if $start[$i] & 1;
   $w1 = ($start[$i] * 0200) & 07400;
 #warn "stop == $stop[$i], start = $start[$i]\n";
   # @start and @stop are page numbers.
