@@ -1,0 +1,146 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2025 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Convert a .SV file into a .BN file
+
+# First, get the header information.
+
+# JSW bits:
+#    0-No 00000-01777
+#    1-No 10000-11777
+#    2-Reload
+#    3-Less 8k
+#   10-No pre CD
+#   11-No pre USR
+
+$half = 0;
+sub getword {
+  if ($half == 0) {
+#   read(INPUT, $ccc, 3) || die "read: $! at ", tell(INPUT); # 3 bytes is two words.
+    read(INPUT, $ccc, 3) || ($ccc = pack("CCC", 0, 0, 0)); # 3 bytes is two words.
+    ($w1, $w2, $c3) = unpack("CCC", $ccc);
+    $w1 += ($c3 & 0xF0) << 4;
+    $w2 += ($c3 & 0x0F) << 8;
+    $half = 1;
+    return $w1;
+  }
+  $half = 0;
+  return $w2;
+}
+
+$f = $ARGV[0];
+open(INPUT, $f) || die "$f: $!";
+binmode(INPUT);
+@co = @pc = @fld = ();
+# The first four words
+$cs = 010000-&getword; # Core Segment Count (stored negative)
+$sf = &getword; # Starting Field (062N3)
+$sa = &getword; # Starting Address
+$jsw = &getword; # JSW
+# There are only descriptor slots for 62 core segments.
+die "$f: Can't have $cs segments!\n" unless $cs && $cs < 63;
+# Now, save each core segment doubleword.
+for ($i = 0; $i < $cs; $i++) {
+  push(@co, &getword); # Core Origin
+  $pc = &getword;
+  push(@pc, $pc >> 6); # Page Count
+  push(@fld, ($pc >> 3) & 07); # Field to load
+}
+$cs--;
+die "origin count $#co != $cs\n" unless $#co == $cs;
+die "page count $#pc != $cs\n" unless $#pc == $cs;
+die "field count $#fld != $cs\n" unless $#fld == $cs;
+#warn "cs == $cs";
+# At this point, we have parsed a seemingly valid header.
+#
+print "#!os8\n# $f";
+#
+# Now iterate over the various blocks and display them.
+seek(INPUT, 3*256/2, 0) || die "seek: $!";
+$pages = 0;
+for ($i = 0; $i <= $cs; $i++) {
+  $base = $fld[$i]*010000 + $co[$i];
+  print "\n\n# Segment $i: $pc[$i] pages";
+  $col = 9;
+  # Load each page
+#warn "Loading $pc[$i] pages\n";
+  for ($j = 0; $j < $pc[$i]; $j++) {
+#warn "Loading page $j from ", tell(INPUT);
+#warn "got here $base";
+    for ($k = 0; $k < 0200; $k++) {
+      if (($col > 8) || ($base != $ma)) {
+        printf "\n%05o)", $base;
+        $col = 1;
+        $ma = $base;
+      }
+      printf "%04o ", &getword;
+      $col++;
+      $base++;
+      $ma++;
+    }
+    $pages++;
+  }
+  # If an odd number of pages, skip unused storage
+  if ($pc[$i] & 0001) {
+    for ($k = 0; $k < 0200; $k++) {
+      &getword;
+    }
+    $pages++;
+  }
+}
+print "\n";
+# At this point we have displayed the loadable bits
+# of the file.  Check that is actually all of the file.
+# BUGBUG: TODO
+$cruft = (-s INPUT) - 3*128*$pages;
+if ($cruft > 0) {
+  $cruft /= 3*128;
+  print "# $cruft pages of overlays\n";
+  $base = $ma = $cruft * 128;
+  for ($i = 0; $i < $cruft; $i++) {
+    for ($k = 0; $k < 0200; $k++) {
+      if (($col > 8) || ($base != $ma)) {
+        printf "\n%05o:", $base;
+        $col = 1;
+        $ma = $base;
+      }
+      printf "%04o ", &getword;
+      $col++;
+      $base++;
+      $ma++;
+    }
+  }
+  print "\n";
+}
+print "\n";
+#
+# Emit the JSW and Starting Address.
+printf "# JSW %04o\n", $jsw;
+printf "# START %05o\n", (($sf & 070) << 9) + $sa;
+exit 0;
