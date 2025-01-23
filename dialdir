@@ -51,7 +51,10 @@ $i += 60;
 # to 16 bits, and stored in two bytes in Perl's packed 'S' format.
 # Consecutive words form blocks, and blocks are stored in logical 
 # order, not the physical order of the original media.
-open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
+$dsk = $ARGV[0];
+$dsk =~ s/[.]linc$//; $dsk =~ s/[.]dsk$//;
+$dsk .= ".dsk";
+open(INPUT, $dsk) || die "$dsk: $!";
 binmode(INPUT);
 
 #
@@ -131,36 +134,8 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     "0",   "1", "2", "3", "4", "5", "6", "7",  # 06x
     "8",   "9", ":", ";", "<", "=", ">", "?",  # 07x
   );
-  @dir = &getblk($dirblk);
-  # Check for leading entry of 05757.  Retry at 0356 if absent.
-  if (($dir[0] != 05757) || ($dir[1] != 05757)
-   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
-    $dirblk = 0356;
-    @dir = &getblk($dirblk);
-  }
-  # Check for leading entry of 05757.  Retry at 0326 if absent.
-  if (($dir[0] != 05757) || ($dir[1] != 05757)
-   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
-    $dirblk = 0326;
-    $lap6 = 1;
-    # Set up character translation for LAP6.
-    @sixbit = (
-      "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
-      "8",   "9", "\n","?", " ", "I", ".", "-",   # 01x
-      "+",   "\\","#", " ", "A", "B", "C", "D",   # 02x
-      "E",   "F", "G", "H", "I", "J", "K", "L",   # 03x
-      "M",   "N", "O", "P", "Q", "R", "S", "T",   # 04x
-      "U",   "V", "W", "X", "Y", "Z", "\n","/",   # 05x
-      "\033","=", "U", ",", ".", "\$","[", "_",   # 06x
-      '"',   '"', "<", ">", "]", "*", ":", "\032",# 07x
-    );
-    @dir = &getblk($dirblk);
-  }
-  if (($dir[0] != 05757) || ($dir[1] != 05757)
-   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
-    die "$ARGV[0]: No DIAL or LAP6 directory found.\n";
-  }
-  push(@dir, &getblk($dirblk+1));
+  &readindex();
+
   printf "\n$ARGV[0]\n";
   printf "%s Name\tTBLK\tTLEN\tBBLK\tBLEN\n", $lap6? "LAP6": "DIAL";
   printf "---------\t----\t----\t----\t----\n";
@@ -287,6 +262,74 @@ sub writefile {
       # Write the file.
       print OUTPUT $buf || die "file write: $!";
     }
+}
+
+#
+# LAP6 documentation states that the index may be at any block
+# number ending in 6, and continues into the block whose number
+# ends in 7.  Im practice, LAP6 distributions provided a standard
+# configuration and ten alternate configurations. Those are the
+# ones we check for:
+# 0426	LAP6	Standard Configuration
+# 0426	LAP6	Config 1 (Unit 1 boot)
+# 0426	LAP6	Config 2 (No working area)
+# 0136	LAP6	Config 3 (No lower File Area, Unused after Index)
+# 0426	LAP6	Config 4 (Unused near Index)
+# 0426	LAP6	Config 5 (Unused near Index, Unit 1 boot)
+# 0326	LAP6	Config 6 (Unused between lower File Area and Index)
+# 0226	LAP6	Config 7 (No lower File Area, Unused at 0-77)
+# 0136	LAP6	Config 8 (No lower File Area, No Unused area)
+# 0136	LAP6	Config 9 (No lower File Area, Unused after Index)
+# 0426	LAP6	Config 10 (No lower File Area, Unused at 0-277)
+# We also check for a couple of DIAL index locations seen in the field.
+#
+# Side Effects:
+#	We set the globals "$lap6" and "@sixbit" to match what
+#	OS we think we've found. The global "@dir" is set to the
+#	actual index content.
+# TODO:
+#	We don't differentiate configurations with their Index
+#	in the same place.  We'll need to do that to implement
+#	the explode function well.
+sub readindex {
+  $lap6{0346} = 0; # DIAL
+  $lap6{0356} = 0; # DIAL
+  $lap6{0426} = 1; # LAP6
+  $lap6{0136} = 1; # LAP6
+  $lap6{0326} = 1; # LAP6  
+  $lap6{0226} = 1; # LAP6  
+  foreach $dirblk (keys %lap6) {
+    @dir = &getblk($dirblk);
+    next if ($dir[0] != 05757) || ($dir[1] != 05757)
+         || ($dir[2] != 05757) || ($dir[3] != 05757);
+    $lap6 = $lap6{$dirblk};
+    if ($lap6) {
+      @sixbit = (
+        "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
+        "8",   "9", "\n","?", " ", "I", ".", "-",   # 01x
+        "+",   "\\","#", " ", "A", "B", "C", "D",   # 02x
+        "E",   "F", "G", "H", "I", "J", "K", "L",   # 03x
+        "M",   "N", "O", "P", "Q", "R", "S", "T",   # 04x
+        "U",   "V", "W", "X", "Y", "Z", "\n","/",   # 05x
+        "\033","=", "U", ",", ".", "\$","[", "_",   # 06x
+        '"',   '"', "<", ">", "]", "*", ":", "\032",# 07x
+      );
+    } else {
+      @sixbit = (
+        "\032","A", "B", "C", "D", "E", "F", "G",   # 00x
+        "H",   "I", "J", "K", "L", "M", "N", "O",   # 01x
+        "P",   "Q", "R", "S", "T", "U", "V", "W",   # 02x
+        "X",   "Y", "Z", "[", "\\","]", "^", "\r",  # 03x
+        " ",   "!", '"', "\n","\$","%", "?", "\t",  # 04x
+        "(",   ")", "*", "+", ",", "-", ".", "/",   # 05x
+        "0",   "1", "2", "3", "4", "5", "6", "7",   # 06x
+        "8",   "9", ":", ";", "<", "=", ">", "?",   # 07x
+      );
+    }
+    push(@dir, &getblk($dirblk+1));
+    return;
+  }
+  die "$ARGV[0]: No DIAL or LAP6 directory found.\n";
 }
 
 exit 0;
