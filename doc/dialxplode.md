@@ -13,7 +13,8 @@ are converted from either the LAP6 or DIAL sixbit
 format to ASCII, and written to a "filename.tx" file.
 Binary files are written as one word every two bytes,
 similar to the .dsk format.  Their file name will have
-".bd" appended.
+".bN" appended, where N is the quarter into which the binary
+is to be loaded.
 
 Deleted files in LAP6/DIAL have the first two characters
 of their names over-written with '//'.  To prevent name
