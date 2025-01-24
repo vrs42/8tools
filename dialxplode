@@ -119,51 +119,10 @@ $parts = $vsize / 1000;
 for ($unit = 0; $unit <= $parts; $unit++) {
   $voffset = $unit * 1000;
   # Read the index.
-  $dirblk = 0346;
-  $lap6 = 0;
-  @sixbit = (
-    "\032","A", "B", "C", "D", "E", "F", "G",  # 00x
-    "H",   "I", "J", "K", "L", "M", "N", "O",  # 01x
-    "P",   "Q", "R", "S", "T", "U", "V", "W",  # 02x
-    "X",   "Y", "Z", "[", "\\","]", "^", "\r", # 03x
-    " ",   "!", '"', "\n","\$","%", "?", "\t", # 04x
-    "(",   ")", "*", "+", ",", "-", ".", "/",  # 05x
-    "0",   "1", "2", "3", "4", "5", "6", "7",  # 06x
-    "8",   "9", ":", ";", "<", "=", ">", "?",  # 07x
-  );
-  @dir = &getblk($dirblk);
-  # Check for leading entry of 05757.  Retry at 0356 if absent.
-  if (($dir[0] != 05757) || ($dir[1] != 05757)
-   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
-    $dirblk = 0356;
-    @dir = &getblk($dirblk);
-  }
-  # Check for leading entry of 05757.  Retry at 0326 if absent.
-  if (($dir[0] != 05757) || ($dir[1] != 05757)
-   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
-    $dirblk = 0326;
-    $lap6 = 1;
-    # Set up character translation for LAP6.
-    @sixbit = (
-      "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
-      "8",   "9", "\n","?", " ", "I", ".", "-",   # 01x
-      "+",   "\\","#", " ", "A", "B", "C", "D",   # 02x
-      "E",   "F", "G", "H", "I", "J", "K", "L",   # 03x
-      "M",   "N", "O", "P", "Q", "R", "S", "T",   # 04x
-      "U",   "V", "W", "X", "Y", "Z", "\n","/",   # 05x
-      "\033","=", "U", ",", ".", "\$","[", "_",   # 06x
-      '"',   '"', "<", ">", "]", "*", ":", "\032",# 07x
-    );
-    @dir = &getblk($dirblk);
-  }
-  if (($dir[0] != 05757) || ($dir[1] != 05757)
-   || ($dir[2] != 05757) || ($dir[3] != 05757)) {
-    die "$ARGV[0]: No DIAL or LAP6 directory found.\n";
-  }
-  push(@dir, &getblk($dirblk+1));
-# printf "\n$ARGV[0]\n";
-# printf "%s Name\tTBLK\tTLEN\tBBLK\tBLEN\n", $lap6? "LAP6": "DIAL";
-# printf "---------\t----\t----\t----\t----\n";
+  &readindex;
+#printf "\n$ARGV[0]\n";
+#printf "%s Name\tTBLK\tTLEN\tBBLK\tBLEN\n", $lap6? "LAP6": "DIAL";
+#printf "---------\t----\t----\t----\t----\n";
   while (@dir) {
     #
     # Shift the next directory entry.
@@ -175,6 +134,8 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $ctxt = shift @dir;
     $sbin = shift @dir;
     $cbin = shift @dir;
+    $quarter = $sbin >> 9;
+    $sbintrim = $sbin & 0777;
     #
     # Pack up the file name.  File names depend on @sixbit.
     @name = ($name1>>6, $name1&077, $name2>>6, $name2&077,
@@ -188,11 +149,23 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $name =~ s:^//:..:; # Deleted file, write as hidden
     #
     # Process text and binary versions, as found.
-    &writetxt($stxt, $stxt+$ctxt, "$name.tx") unless $stxt == 05757;
+    &writetxt($stxt, $stxt+$ctxt-1, "$name.tx") unless $stxt == 05757;
+    if ($stxt > $dirblk) {
+      $distance{"$name.tx"} = $stxt - ($dirblk+1);
+    } else {
+      $distance{"$name.tx"} = $dirblk - ($stxt+$ctxt-1);
+    }
     # BUGBUG: These are currently written as one word per short,
     # which is readable but not efficient.  Could they reasonably
     # be converted to .sv format or something similar?
-    &writefile($sbin, $sbin+$cbin, "$name.bd") unless $sbin == 05757;
+    &writefile($sbintrim, $sbintrim+$cbin-1, "$name.b$quarter")
+      unless $cbin == 05757;
+    # Remember the file and how far from the index it was.
+    if ($sbintrim > $dirblk) {
+      $distance{"$name.b$quarter"} = $sbintrim - $dirblk;
+    } else {
+      $distance{"$name.b$quarter"} = $dirblk - ($sbintrim+$cbin-1);
+    }
 #   #
 #   # Print the directory.
 #   $name =~ y/a-z/A-Z/;
@@ -202,15 +175,22 @@ for ($unit = 0; $unit <= $parts; $unit++) {
 #   } else {
 #     printf "%4o\t%4o\t", $stxt, $ctxt;
 #   }
-#   if ($sbin == 05757) {
+#   if ($cbin == 05757) {
 #     printf "    \t    \n";
 #   } else {
 #     printf "%4o\t%4o\n", $sbin, $cbin;
 #   }
 #   printf "%-8s\t0%04o\t0%04o\n", "${name}.tx", $stxt, $ctxt
 #     unless $stxt == 05757;
-#   printf "%-8s\t0%04o\t0%04o\n", "${name}.bd", $sbin, $cbin
-#     unless $sbin == 05757;
+#   printf "%-8s\t0%04o\t0%04o\n", "${name}.bd", $sbintrim, $cbin
+#     unless $cbin == 05757;
+  }
+  #
+  # Now we have the information we need to write the .order file.
+  sub bydistance { $distance{$a} <=> $distance{$b} }
+  open(OUTPUT, ">$fsname/.order") || die "$fsname/.order: $_";
+  foreach $f (sort bydistance keys %distance) {
+    print OUTPUT "$f\n";
   }
 }
 
@@ -247,7 +227,7 @@ sub writetxt {
 #warn "writetxt($start, $end, $name)\n";
 
     @text = ();
-    while ($start < $end) {
+    while ($start <= $end) {
       # Read in the text.
       seek(INPUT, $start*$bsize, 0) || die "$ARGV[0] file seek: $!";
       # Read the media.  If that fails, it is usually because SIMH didn't
@@ -259,6 +239,14 @@ sub writetxt {
     # Open a file for our results.
     open(OUTPUT, ">$fsname/$name") || die "$fsname/$name: $!";
     binmode(OUTPUT);
+    if (@text >= 2 && $lap6 == 1) {
+      $word1 = shift @text;
+      $word2 = shift @text;
+      if ($word1 != 02065 || $word2 != 05712) {
+         print "Invalid manuscript header on $name\n";
+      }
+    }
+
     #
     # We've got ourselves a text file.  Unpack the beast.
     while (@text) {
@@ -281,7 +269,7 @@ sub writefile {
 #warn "writefile($first, $last, '$name')\n";
     binmode(OUTPUT);
     # Copy out the file.  These are binary, so leave the words in DSK format.
-    for (; $first < $last; $first++) {
+    for (; $first <= $last; $first++) {
       seek(INPUT, $first*$bsize, 0) || die "$ARGV[0] file seek: $!";
       read(INPUT, $buf, $bsize) || die "$ARGV[0] file read: $!";
       # Write the file.
@@ -304,16 +292,90 @@ sub writefile {
 # 366		BUGBUG: What's this?
 # 367		SCRATCH
 #
-&writefile(0300, 0321, ".edit");
-&writefile(0322, 0345, ".asmblr");
-&writefile(0346, 0347, ".index");
-&writefile(0350, 0353, ".filecoms");
-&writefile(0354, 0355, ".loader");
-&writefile(0356, 0360, ".svbinary");
-&writefile(0361, 0362, ".pxdx");
-&writefile(0363, 0363, ".tty");
-&writefile(0364, 0364, ".ps");
-&writefile(0365, 0366, ".unused");
-&writefile(0367, 0367, ".scratch");
+if ($lap6 == 1) {
+   &writefile(0300, 0347, ".lap6");
+   &writetxt(0350, 0425, ".current_manuscript");
+} else {
+   &writefile(0300, 0321, ".edit");
+   &writefile(0322, 0345, ".asmblr");
+   &writefile(0346, 0347, ".index");
+   &writefile(0350, 0353, ".filecoms");
+   &writefile(0354, 0355, ".loader");
+   &writefile(0356, 0360, ".svbinary");
+   &writefile(0361, 0362, ".pxdx");
+   &writefile(0363, 0363, ".tty");
+   &writefile(0364, 0364, ".ps");
+   &writefile(0365, 0366, ".unused");
+   &writefile(0367, 0367, ".scratch");
+}
+
+#
+# LAP6 documentation states that the index may be at any block
+# number ending in 6, and continues into the block whose number
+# ends in 7.  Im practice, LAP6 distributions provided a standard
+# configuration and ten alternate configurations. Those are the
+# ones we check for:
+# 0426	LAP6	Standard Configuration
+# 0426	LAP6	Config 1 (Unit 1 boot)
+# 0426	LAP6	Config 2 (No working area)
+# 0136	LAP6	Config 3 (No lower File Area, Unused after Index)
+# 0426	LAP6	Config 4 (Unused near Index)
+# 0426	LAP6	Config 5 (Unused near Index, Unit 1 boot)
+# 0326	LAP6	Config 6 (Unused between lower File Area and Index)
+# 0226	LAP6	Config 7 (No lower File Area, Unused at 0-77)
+# 0136	LAP6	Config 8 (No lower File Area, No Unused area)
+# 0136	LAP6	Config 9 (No lower File Area, Unused after Index)
+# 0426	LAP6	Config 10 (No lower File Area, Unused at 0-277)
+# We also check for a couple of DIAL index locations seen in the field.
+#
+# Side Effects:
+#	We set the globals "$lap6" and "@sixbit" to match what
+#	OS we think we've found. The global "@dir" is set to the
+#	actual index content.
+# TODO:
+#	We don't differentiate configurations with their Index
+#	in the same place.  We'll need to do that to implement
+#	the explode function well.
+sub readindex {
+  $lap6{0346} = 0; # DIAL
+  $lap6{0356} = 0; # DIAL
+  $lap6{0426} = 1; # LAP6
+  $lap6{0136} = 1; # LAP6
+  $lap6{0326} = 1; # LAP6  
+  $lap6{0226} = 1; # LAP6  
+  foreach $k (keys %lap6) {
+    $dirblk = $k;
+    @dir = &getblk($dirblk);
+    next if ($dir[0] != 05757) || ($dir[1] != 05757)
+         || ($dir[2] != 05757) || ($dir[3] != 05757);
+    $lap6 = $lap6{$dirblk};
+    if ($lap6) {
+      @sixbit = (
+        "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
+        "8",   "9", "\n","?", " ", "I", ".", "-",   # 01x
+        "+",   "\\","#", " ", "A", "B", "C", "D",   # 02x
+        "E",   "F", "G", "H", "I", "J", "K", "L",   # 03x
+        "M",   "N", "O", "P", "Q", "R", "S", "T",   # 04x
+        "U",   "V", "W", "X", "Y", "Z", "\n","/",   # 05x
+        "\033","=", "U", ",", ".", "\$","[", "_",   # 06x
+        '"',   '"', "<", ">", "]", "*", ":", "\032",# 07x
+      );
+    } else {
+      @sixbit = (
+        "\032","A", "B", "C", "D", "E", "F", "G",   # 00x
+        "H",   "I", "J", "K", "L", "M", "N", "O",   # 01x
+        "P",   "Q", "R", "S", "T", "U", "V", "W",   # 02x
+        "X",   "Y", "Z", "[", "\\","]", "^", "\r",  # 03x
+        " ",   "!", '"', "\n","\$","%", "?", "\t",  # 04x
+        "(",   ")", "*", "+", ",", "-", ".", "/",   # 05x
+        "0",   "1", "2", "3", "4", "5", "6", "7",   # 06x
+        "8",   "9", ":", ";", "<", "=", ">", "?",   # 07x
+      );
+    }
+    push(@dir, &getblk($dirblk+1));
+    return;
+  }
+  die "$ARGV[0]: No DIAL or LAP6 directory found.\n";
+}
 
 exit 0;
