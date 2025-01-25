@@ -293,9 +293,35 @@ sub writefile {
 # 367		SCRATCH
 #
 if ($lap6 == 1) {
-   &writefile(0300, 0347, ".lap6");
-   &writetxt(0350, 0425, ".current_manuscript");
+   # Infer the location of .lap6 from $dirblk.
+   $flap6 = $dirblk - 0126;
+   # .lap6 is always at a multiple of 0100.
+   $flap6 &= ~077; 
+   &writefile($flap5, $flap6+047, ".lap6");
+   # The current manuscript lives between .lap6
+   # and $dirblk.
+   &writetxt($flap6+050, $dirblk-1, ".manuscript");
+   # And of course the Index.
+   &writefile($dirblk, $dirblk+1, ".index");
+   # Deduce the extent of the lower and upper
+   # unused areas, if any. We read a block of the FILECOMS
+   # section of .flap6, extracting the relevant boundaries
+   # from the binary. (One is stored complemented.)
+   @fcoms = &getblk($flap6+021);
+   $lu = $fcoms[0166];
+   $uf = 07777 & ~$fcoms[0154];
+#printf STDERR "lu=%o uf=%o\n", $lu, $uf;
+   # Save the content of the lower and upper
+   # "unused" areas, if any.
+   &writefile($lu, $flap6-1, '.unused1');
+   &writefile($dirblk+2, $uf-1, '.unused2');
+   #
+   # Note the beginning block numbers as the configuration.
+   open(OUTPUT, ">$fsname/.config") || die "$fsname/.config: $_";
+   printf OUTPUT "%04o %04o %04o %04o %04o %04o %04o\n",
+     0, $lu, $flap6, $flap6+050, $dirblk, $dirblk+2, $uf;
 } else {
+   # BUGBUG: TODO: Check that these locations are constant.
    &writefile(0300, 0321, ".edit");
    &writefile(0322, 0345, ".asmblr");
    &writefile(0346, 0347, ".index");
@@ -332,6 +358,16 @@ if ($lap6 == 1) {
 #	We set the globals "$lap6" and "@sixbit" to match what
 #	OS we think we've found. The global "@dir" is set to the
 #	actual index content.
+#
+# Notes:
+#	The WorkSpace is always right before the Index, and LAP6
+#	is always right before that. Apparently, the WS can be 056
+#	blocks or 066 blocks. LAP6 starts at 0000, 0100, 0200, or 0300.
+#	Is it acceptable to absorb Unused space into the upper or lower
+#	file regions? Unused areas always follow the Lower File area
+#	or precede the Upper File area.  (The latter is detectable.)
+#	Sizes for L. unused areas are 0010, 0300, 0040, 0100, or 0300.
+#	Sizes for U. unused areas are 0040, or 0100.
 # TODO:
 #	We don't differentiate configurations with their Index
 #	in the same place.  We'll need to do that to implement

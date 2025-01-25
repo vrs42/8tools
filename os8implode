@@ -124,21 +124,29 @@ sub bplate {
     print XML "<file name='$d/.cclo' start=067 end=067 mode=binary></file>\n";
 }
 
+#
+# Volume size options
+$vsize{"rk05"} = 014540;
+$vsize{"rx01"} = 0756;
+$vsize{"rx1"} = 0756;
+$vsize{"rx02"} = 01734;
+$vsize{"rx2"} = 01734;
+$vsize{"dt"} = 01341;
+$vsize{"lt"} = 01341;
+
 $fsize = 06260; $vsize = 014540; # Default to RK05
 foreach $d (@ARGV) {
-    if ($d =~ /^-rk05/) {
-      $fsize = 06260;
-      $vsize = 014540;
-      next;
+    $next = 0;
+    foreach $dev (keys %vsize) {
+      if ($d =~ /^-$dev/) {
+        $fsize = $vsize = $vsize{$dev};
+        $next = 1;
+        last;
+      }
     }
-    if ($d =~ /^-rx1/) {
-      $fsize = $vsize = 0756;
-      next;
-    }
-    if ($d =~ /^-rx2/) {
-      $fsize = $vsize = 01734;
-      next;
-    }
+    next if $next;
+    # BUGBUG: Should probably special case RL drives here.
+    $fsize = 06260 if $fsize > 07777;
     $f =~ s/.xml$//; $f =~ s/.[0-9]$//;
     open(XML, ">$d.xml+") || die "$d.xml+: $!";
     print XML "<image name='$d.new' size=$vsize>\n";
