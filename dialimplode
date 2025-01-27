@@ -1,0 +1,394 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2025 by David Gesswein
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+#
+# Implodes directory of files like created by dialxplode into tape image
+#
+
+# This program converts a directory of files like created by dialxplode
+# into a tape image of 12 bit words, zero extented to 16 bits.
+# It creates index for the files.
+#
+# See doc/dialimplode.md for usage
+#
+$SEEK_SET = 0; 
+$SEEK_END = 2;
+#use Data::Dumper;
+
+sub ceil {
+   if (@_[0] - int(@_[0]) > 0) {
+      return int(@_[0]) + 1;
+   } else {
+      return @_[0];
+   }
+}
+
+sub first_index {
+   local($str, @list) = @_;
+   local $ret = -1;
+
+   for (local $i = 0; $i < @list; $i++) {
+      if ($str eq $list[$i]) {
+         $ret = $i;
+         last;
+      }
+   }
+   return $ret;
+}
+
+# This adds a file to index and tape image
+sub addfile {
+   local($fn, $dirpath) = @_;
+   local $fullfn = "$dirpath/$fn";
+   local $size = -s $fullfn;
+   if ($fn =~ /\.bd$/) {
+      local ($first, $last) = addindex($fn, $size, 0, 0);
+      addbinfile($fullfn, $first, $last);
+   } elsif ($fn =~ /\.b([0-9])$/) {
+      local ($first, $last) = addindex($fn, $size, 0, $1);
+      addbinfile($fullfn, $first, $last);
+   } elsif ($fn =~ /\.tx$/) {
+      # +5 for two words manuscript header and end of file character
+     # DIAL will be +1
+      local ($first, $last) = addindex($fn, $size+5, 1, 0);
+      addtxt($fullfn, $first, $last);
+   } else {
+     die "Unknown file extension $fn\n";
+   }
+}
+
+# This write a binary file to the tape image. Does not add file to
+# index.
+sub addbinfile {
+    local($fn, $first, $last) = @_;
+    #print "Adding bin $fn $first $last\n";
+
+    open(INPUT, "<$fn") || die "$fsname/$name: $!";
+
+    # Copy out the file.  These are binary, so no reformatting needed
+    for (; $first <= $last; $first++) {
+      read(INPUT, $buf, $bsize) || die "$fn file read: $!";
+      # Write the file.
+      seek(OUTPUT, $first*$bsize, SEEK_SET) || die "$fn file seek: $!";
+      print OUTPUT $buf || die "file write: $!";
+    }
+}
+
+# This write a text file to the tape image. Does not add file to
+# index.
+sub addtxt {
+    local($fn, $first, $last) = @_;
+    #print "Adding txt $fn $first $last\n";
+
+    open(INPUT, "<$fn") || die "$fn: $!";
+
+    seek(OUTPUT, $first*$bsize, SEEK_SET) || die "$fn file seek: $!";
+
+    local @sixbitchars = ();
+    # Convert text
+    while (<INPUT>) {
+      foreach $char (split('',$_)) {
+          local $tmp = $sixbitrev[ord($char)];
+          if (defined($tmp)) {
+             push(@sixbitchars, $tmp);
+          } else {
+             die("Undefined character $char in $fn\n");
+          }
+      }
+    }
+    # Add end of file.
+    push(@sixbitchars, $sixbitrev[032]);
+    # If odd number of 6 bit characters add another EOF
+    if (@sixbitchars % 2 == 1) {
+       push(@sixbitchars, $sixbitrev[032]);
+    }
+    if (ceil(@sixbitchars / $bsize) + $first - 1 > $last) {
+       die("File $fn too long\n");
+    }
+    # Write header if LAP6
+    if ($lap6 == 1) {
+       print OUTPUT pack("S1",02065);
+       print OUTPUT pack("S1",05712);
+    }
+    for (local $i = 0; $i < @sixbitchars; $i += 2) {
+       local $v = $sixbitchars[$i] << 6 | $sixbitchars[$i+1];
+       print OUTPUT pack("S1",$v) || die "file write: $!";
+    }
+}
+
+# This adds file to index
+sub addindex {
+    local($fn, $bytes, $istxt, $quarter) = @_;
+
+    local $blocks = ceil($bytes / $bsize);
+    local $highspace = 1;
+    if ($highfiles[1] - $highfiles[0] + 1 < $blocks) {
+       $highspace = 0;
+    }
+    local $lowspace = 1;
+    if ($lowfiles[1] - $lowfiles[0] + 1 < $blocks) {
+       $lowspace = 0;
+    }
+    if ($highspace == 0 && $lowspace == 0) {
+       die "No space for file $fn";
+    }
+    if ($lowspace == 0 ||
+         ($highfiles[0] - $indexblock) < ($indexblock - $lowfiles[1])) {
+       $first = $highfiles[0];
+       $highfiles[0] += $blocks;
+    } else {
+       $first = $lowfiles[1] - $blocks + 1;
+       $lowfiles[1] -= $blocks;
+    }
+
+    # convert .. deleted file name back to //
+    $fn =~ s'^\.\.'//';
+    # remove extension
+    $fn =~ s/\...//;
+    local $values;
+    if (exists $index{$fn}) {
+       $values = $index{$fn};
+    } else {
+       # last value is which entry in index it should be in
+       $values = [05757, 05757, 05757, 05757, (keys %index) + 1];
+    }
+    if ($istxt) {
+       ${$values}[0] = $first;
+       ${$values}[1] = $blocks;
+    } else {
+       ${$values}[2] = $first | ($quarter << 9);
+       ${$values}[3] = $blocks;
+    }
+    $index{$fn} = $values;
+    return($first, $first + $blocks - 1);
+}
+
+# This writes index to tape image
+sub writeindex {
+   seek(OUTPUT, $indexblock*$bsize, SEEK_SET) || die "$fn file seek: $!";
+   print OUTPUT pack("S1",05757);
+   print OUTPUT pack("S1",05757);
+   print OUTPUT pack("S1",05757);
+   print OUTPUT pack("S1",05757);
+   print OUTPUT pack("S1",0) || die "file write: $!";
+   print OUTPUT pack("S1",0) || die "file write: $!";
+   print OUTPUT pack("S1",0) || die "file write: $!";
+   print OUTPUT pack("S1",0) || die "file write: $!";
+   local $entries = 0;
+   # Get entries in order added to index
+   foreach my $key (sort { ${$index{$a}}[4] <=> ${$index{$b}}[4] } keys %index) {
+      local $values = $index{$key};
+      local $padkey = $key;
+      for ($i = length($padkey); $i < 8; $i++) {
+          $padkey = $padkey . "\032";
+      }
+      local @sixbitchars = ();
+      foreach $char (split('',$padkey)) {
+          local $tmp = $sixbitrev[ord(uc($char))];
+          if (defined($tmp)) {
+             push(@sixbitchars, $tmp);
+          } else {
+             die("Undefined character $char in filename $key\n");
+          }
+      }
+      for (local $i = 0; $i < @sixbitchars; $i += 2) {
+          local $v = $sixbitchars[$i] << 6 | $sixbitchars[$i+1];
+          print OUTPUT pack("S1",$v) || die "file write: $!";
+      }
+      print OUTPUT pack("S1",${$values}[0]) || die "file write: $!";
+      print OUTPUT pack("S1",${$values}[1]) || die "file write: $!";
+      print OUTPUT pack("S1",${$values}[2]) || die "file write: $!";
+      print OUTPUT pack("S1",${$values}[3]) || die "file write: $!";
+      $entries = $entries + 1;
+   }
+   if ($entries > $indexentries) {
+      die "Too many index entries $entries maximum $indexentries\n";
+   }
+   print "$entries of $indexentries index entries used\n";
+   local $blocksleft = $lowfiles[1] - $lowfiles[0] + 1 + $highfiles[1] - 
+           $highfiles[0] + 1;
+   print "$blocksleft blocks left\n";
+   # Fill unused entries
+   for (; $entries < $indexentries; $entries++) {
+      print OUTPUT pack("S1",05757);
+      print OUTPUT pack("S1",05757);
+      print OUTPUT pack("S1",05757);
+      print OUTPUT pack("S1",05757);
+      print OUTPUT pack("S1",0) || die "file write: $!";
+      print OUTPUT pack("S1",0) || die "file write: $!";
+      print OUTPUT pack("S1",0) || die "file write: $!";
+      print OUTPUT pack("S1",0) || die "file write: $!";
+   }
+}
+
+
+$tapeblocks = 512;
+# Open output file
+open(OUTPUT,'>', $ARGV[1]) || die "$ARGV[1]: $!";
+binmode(OUTPUT);
+
+# Get files in directory specified
+$dirpath = $ARGV[0];
+opendir $dir, $dirpath or die "Cannot open directory $ARGV[0] $!";
+@files = readdir $dir;
+closedir $dir;
+
+if (open(INPUT, "$dirpath/.config")) {
+   if ($#ARGV >= 2) {
+      die "Tape blocks not valid for LAP6 format";
+   }
+   $lap6 = 1;
+   @nums = split(' ',<INPUT>);
+   @lowfiles = (oct($nums[0]), oct($nums[1])-1);
+   @highfiles = (oct($nums[6]), 0777);
+   $indexblock = oct($nums[4]);
+   %specialfiles = (
+      ".manuscript" => [0350, 0425, 0],
+      ".lap6" =>  [0300, 0347, 1]
+   );
+   %ignorefiles = (
+      ".config" => "",
+      ".index" => "",
+      ".order" => "",
+      ".unused1" => "",
+      ".unused2" => ""
+   );
+   @sixbit = (
+      "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
+      "8",   "9", "\n","?", " ", "I", ".", "-",   # 01x
+      "+",   "\\","#", " ", "A", "B", "C", "D",   # 02x
+      "E",   "F", "G", "H", "I", "J", "K", "L",   # 03x
+      "M",   "N", "O", "P", "Q", "R", "S", "T",   # 04x
+      "U",   "V", "W", "X", "Y", "Z", "\n","/",   # 05x
+      "\033","=", "U", ",", ".", "\$","[", "_",   # 06x
+      '"',   '"', "<", ">", "]", "*", ":", "\032",# 07x
+   );
+} else {
+   if ($#ARGV >= 2) {
+      $tapeblocks = $ARGV[2];
+   }
+   $lap6 = 0;
+   %specialfiles = ( 
+      ".edit" => [0300, 0321, 1],
+      ".asmblr" => [0322, 0345, 1],
+      ".index" => [0346, 0347, 1],
+      ".filecoms" => [0350, 0353, 1], 
+      ".loader" => [0354, 0355, 1],
+      ".svbinary" => [0356, 0360, 1],
+      ".pxdx" => [0361, 0362, 1],
+      ".tty" => [0363, 0363, 1],
+      ".ps" => [0364, 0364, 1],
+      ".unused" => [0365, 0366, 1],
+      ".scratch" => [0367, 0367, 1]
+   );
+   %ignorefiles = (
+      ".config" => "",
+      ".index" => "",
+      ".order" => "",
+      ".unused1" => "",
+      ".unused2" => ""
+   );
+   @lowfiles = (0, 0267);
+   @highfiles = (0470, $tapeblocks-1);
+   $indexblock = 0346;
+   @sixbit = (
+        "\032","A", "B", "C", "D", "E", "F", "G",   # 00x
+        "H",   "I", "J", "K", "L", "M", "N", "O",   # 01x
+        "P",   "Q", "R", "S", "T", "U", "V", "W",   # 02x
+        "X",   "Y", "Z", "[", "\\","]", "^", "\r",  # 03x
+        " ",   "!", '"', "\n","\$","%", "?", "\t",  # 04x
+        "(",   ")", "*", "+", ",", "-", ".", "/",   # 05x
+        "0",   "1", "2", "3", "4", "5", "6", "7",   # 06x
+        "8",   "9", ":", ";", "<", "=", ">", "?",   # 07x
+   );
+}
+
+%index = ();
+$indexentries = 63;
+
+$bsize = 0400 * 2;
+for $i (0 .. $#sixbit) {
+  $sixbitrev[ord($sixbit[$i])] = $i;
+}
+
+# Read list of files to specify order to create files 
+$fn = "$dirpath/.order";
+if (-e $fn) {
+   open(INPUT, "<$fn") || die "$fn: $!";
+   while (<INPUT>) {
+      chomp;
+      push(@fileorder, $_);
+   }
+   delete($files[$entry]);
+}
+
+for $i (0 .. $#fileorder) {
+   $fn = $fileorder[$i];
+   $entry = first_index($fn, @files);
+   if ($entry >= 0) {
+      addfile($fn, $dirpath);
+      delete($files[$entry]);
+   } else {
+      die "Fileinfo file $fn not found\n";
+   }
+}
+
+for $i (0 .. $#files) {
+   if (exists $specialfiles{$files[$i]}) {
+      if ($specialfiles{$files[$i]}[2]) {
+         addbinfile("$dirpath/$files[$i]", $specialfiles{$files[$i]}[0],
+             $specialfiles{$files[$i]}[1]);
+      } else {
+         addtxt("$dirpath/$files[$i]", $specialfiles{$files[$i]}[0],
+             $specialfiles{$files[$i]}[1]);
+      }
+      delete($files[$i]);
+   }
+}
+
+foreach (@files) {
+   if (exists $ignorefiles{$_}) {
+      next;
+   }
+   #print "$_\n";
+   if (defined $_) {
+      $fn = $_;
+      next if ($fn eq ".");
+      next if ($fn eq "..");
+      addfile($fn, $dirpath);
+   }
+}
+
+writeindex();
+
+#Pad to correct size if needed
+seek(OUTPUT, 0, SEEK_END);
+if (tell(OUTPUT) < $tapeblocks * $bsize) {
+   seek(OUTPUT, $tapeblocks * $bsize - 1, SEEK_SET) or die "Failed pad seek $!";
+   print OUTPUT chr(0);
+}

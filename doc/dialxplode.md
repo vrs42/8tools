@@ -13,9 +13,9 @@ and/or a binary file associated with it.  Text files
 are converted from either the LAP6 or DIAL sixbit
 format to ASCII, and written to a "filename.tx" file.
 Binary files are written as one word every two bytes,
-similar to the .dsk format.  Their file name will have
+similar to the .dsk format.  LAP6 file name will have
 ".bN" appended, where N is the quarter into which the binary
-is to be loaded.
+is to be loaded. DIAL file name will have .bd appended.
 
 In addition, a .order file is produced which documents lists
 the files output sorted by their distance from the index.

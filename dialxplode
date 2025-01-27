@@ -134,8 +134,13 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $ctxt = shift @dir;
     $sbin = shift @dir;
     $cbin = shift @dir;
-    $quarter = $sbin >> 9;
-    $sbintrim = $sbin & 0777;
+    if ($lap6 == 1) {
+       $quarter = $sbin >> 9;
+       $sbintrim = $sbin & 0777;
+    } else {
+       $quarter = 'd';
+       $sbintrim = $sbin;
+    }
     #
     # Pack up the file name.  File names depend on @sixbit.
     @name = ($name1>>6, $name1&077, $name2>>6, $name2&077,
@@ -149,22 +154,27 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $name =~ s:^//:..:; # Deleted file, write as hidden
     #
     # Process text and binary versions, as found.
-    &writetxt($stxt, $stxt+$ctxt-1, "$name.tx") unless $stxt == 05757;
-    if ($stxt > $dirblk) {
-      $distance{"$name.tx"} = $stxt - ($dirblk+1);
-    } else {
-      $distance{"$name.tx"} = $dirblk - ($stxt+$ctxt-1);
+    if ($stxt != 05757) {
+       &writetxt($stxt, $stxt+$ctxt-1, "$name.tx");
+       if ($stxt > $dirblk) {
+         $distance{"$name.tx"} = $stxt - $dirblk;
+       } else {
+         $distance{"$name.tx"} = $dirblk - ($stxt+$ctxt-1);
+       }
+       $block{"$name.tx"} = $sbintrim
     }
     # BUGBUG: These are currently written as one word per short,
     # which is readable but not efficient.  Could they reasonably
     # be converted to .sv format or something similar?
-    &writefile($sbintrim, $sbintrim+$cbin-1, "$name.b$quarter")
-      unless $cbin == 05757;
-    # Remember the file and how far from the index it was.
-    if ($sbintrim > $dirblk) {
-      $distance{"$name.b$quarter"} = $sbintrim - $dirblk;
-    } else {
-      $distance{"$name.b$quarter"} = $dirblk - ($sbintrim+$cbin-1);
+    if ($cbin != 05757) {
+       &writefile($sbintrim, $sbintrim+$cbin-1, "$name.b$quarter");
+       # Remember the file and how far from the index it was.
+       if ($sbintrim > $dirblk) {
+         $distance{"$name.b$quarter"} = $sbintrim - $dirblk;
+       } else {
+         $distance{"$name.b$quarter"} = $dirblk - ($sbintrim+$cbin-1);
+       }
+       $block{"$name.b$quarter"} = $sbintrim
     }
 #   #
 #   # Print the directory.
@@ -187,7 +197,8 @@ for ($unit = 0; $unit <= $parts; $unit++) {
   }
   #
   # Now we have the information we need to write the .order file.
-  sub bydistance { $distance{$a} <=> $distance{$b} }
+  # Sort by distance. If identical sort by tape block to have defined order
+  sub bydistance { $distance{$a} <=> $distance{$b} || $block{$a} <=> $block{$b} }
   open(OUTPUT, ">$fsname/.order") || die "$fsname/.order: $_";
   foreach $f (sort bydistance keys %distance) {
     print OUTPUT "$f\n";
@@ -297,7 +308,7 @@ if ($lap6 == 1) {
    $flap6 = $dirblk - 0126;
    # .lap6 is always at a multiple of 0100.
    $flap6 &= ~077; 
-   &writefile($flap5, $flap6+047, ".lap6");
+   &writefile($flap6, $flap6+047, ".lap6");
    # The current manuscript lives between .lap6
    # and $dirblk.
    &writetxt($flap6+050, $dirblk-1, ".manuscript");
