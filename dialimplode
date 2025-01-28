@@ -94,7 +94,7 @@ sub addbinfile {
     for (; $first <= $last; $first++) {
       read(INPUT, $buf, $bsize) || die "$fn file read: $!";
       # Write the file.
-      seek(OUTPUT, $first*$bsize, SEEK_SET) || die "$fn file seek: $!";
+      seek(OUTPUT, $first*$bsize, $SEEK_SET) || die "$fn file seek: $!";
       print OUTPUT $buf || die "file write: $!";
     }
 }
@@ -107,7 +107,7 @@ sub addtxt {
 
     open(INPUT, "<$fn") || die "$fn: $!";
 
-    seek(OUTPUT, $first*$bsize, SEEK_SET) || die "$fn file seek: $!";
+    seek(OUTPUT, $first*$bsize, $SEEK_SET) || die "$fn file seek: $!";
 
     local @sixbitchars = ();
     # Convert text
@@ -169,7 +169,7 @@ sub addindex {
     # convert .. deleted file name back to //
     $fn =~ s'^\.\.'//';
     # remove extension
-    $fn =~ s/\...//;
+    $fn =~ s/\...$//;
     local $values;
     if (exists $index{$fn}) {
        $values = $index{$fn};
@@ -190,7 +190,7 @@ sub addindex {
 
 # This writes index to tape image
 sub writeindex {
-   seek(OUTPUT, $indexblock*$bsize, SEEK_SET) || die "$fn file seek: $!";
+   seek(OUTPUT, $indexblock*$bsize, $SEEK_SET) || die "$fn file seek: $!";
    print OUTPUT pack("S1",05757);
    print OUTPUT pack("S1",05757);
    print OUTPUT pack("S1",05757);
@@ -344,7 +344,7 @@ if (-e $fn) {
       chomp;
       push(@fileorder, $_);
    }
-   delete($files[$entry]);
+#  delete($files[$entry]);
 }
 
 for $i (0 .. $#fileorder) {
@@ -387,8 +387,8 @@ foreach (@files) {
 writeindex();
 
 #Pad to correct size if needed
-seek(OUTPUT, 0, SEEK_END);
+seek(OUTPUT, 0, $SEEK_END);
 if (tell(OUTPUT) < $tapeblocks * $bsize) {
-   seek(OUTPUT, $tapeblocks * $bsize - 1, SEEK_SET) or die "Failed pad seek $!";
+   seek(OUTPUT, $tapeblocks * $bsize - 1, $SEEK_SET) or die "Failed pad seek $!";
    print OUTPUT chr(0);
 }
