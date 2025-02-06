@@ -18,11 +18,11 @@ allocate file in increasing distance from the index. Any files found
 not in the .order file will be added after the files in the .order file.
 
 Files starting with '..' are converted to LAP6/DIAL deleted
-files starting with '//'.
+files starting with '//'. (There probably aren't any of these, as
+dialxplode doesn't usually see position information in the index in
+order to extract them.)
 
 System areas files starting with . are copied to the proper location
 in the volume.
 
-.index file is not used since new index created.
-
-For LAP6 .unused1 and .unused2 are not copied to the volume.
+.index file is not used since a new index is created.

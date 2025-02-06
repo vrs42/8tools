@@ -126,13 +126,17 @@ sub bplate {
 
 #
 # Volume size options
-$vsize{"rk05"} = 014540;
-$vsize{"rx01"} = 0756;
-$vsize{"rx1"} = 0756;
-$vsize{"rx02"} = 01734;
-$vsize{"rx2"} = 01734;
-$vsize{"dt"} = 01341;
-$vsize{"lt"} = 01341;
+# TODO: Add support for RL01, RL02 (up to 5 partitions!)
+$vsize{"rk05"} = 014540; # 2x6060
+$vsize{"rx01"} = 00756; # 494 blocks
+$vsize{"rx1"}  = 00756; # 494 blocks
+$vsize{"rx02"} = 01734; # 988 blocks
+$vsize{"rx2"}  = 01734; # 988 blocks
+$vsize{"dt"}   = 01341; # 737 blocks
+$vsize{"ltb"}  = 01600; # 896 blocks
+$vsize{"ltp"}  = 01400; # 768 blocks
+$vsize{"lts"}  = 01000; # 512 blocks
+$vsize{"lt"}   = 01000; # 512 blocks
 
 $fsize = 06260; $vsize = 014540; # Default to RK05
 foreach $d (@ARGV) {

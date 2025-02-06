@@ -41,10 +41,10 @@ $SEEK_END = 2;
 #use Data::Dumper;
 
 sub ceil {
-   if (@_[0] - int(@_[0]) > 0) {
-      return int(@_[0]) + 1;
+   if ($_[0] - int($_[0]) > 0) {
+      return int($_[0]) + 1;
    } else {
-      return @_[0];
+      return $_[0];
    }
 }
 
@@ -53,7 +53,7 @@ sub first_index {
    local $ret = -1;
 
    for (local $i = 0; $i < @list; $i++) {
-      if ($str eq $list[$i]) {
+      if (defined $list[$i] and $str eq $list[$i]) {
          $ret = $i;
          last;
       }
@@ -73,9 +73,10 @@ sub addfile {
       local ($first, $last) = addindex($fn, $size, 0, $1);
       addbinfile($fullfn, $first, $last);
    } elsif ($fn =~ /\.tx$/) {
+      $overhead = 0;    # DIAL will be +0
       # +5 for two words manuscript header and end of file character
-     # DIAL will be +1
-      local ($first, $last) = addindex($fn, $size+5, 1, 0);
+      $overhead = 5 if $lap6; # LAP6 will be +5
+      local ($first, $last) = addindex($fn, $size+$overhead, 1, 0);
       addtxt($fullfn, $first, $last);
    } else {
      die "Unknown file extension $fn\n";
@@ -88,12 +89,12 @@ sub addbinfile {
     local($fn, $first, $last) = @_;
     #print "Adding bin $fn $first $last\n";
 
-    open(INPUT, "<$fn") || die "$fsname/$name: $!";
+    open(INPUT, "<$fn") || die "$fn: $!";
 
     # Copy out the file.  These are binary, so no reformatting needed
     for (; $first <= $last; $first++) {
       read(INPUT, $buf, $bsize) || die "$fn file read: $!";
-      # Write the file.
+      # Now write the file.
       seek(OUTPUT, $first*$bsize, $SEEK_SET) || die "$fn file seek: $!";
       print OUTPUT $buf || die "file write: $!";
     }
@@ -109,6 +110,10 @@ sub addtxt {
 
     seek(OUTPUT, $first*$bsize, $SEEK_SET) || die "$fn file seek: $!";
 
+    local($bytes);
+    $bytes = $last - $first + 1;
+    $bytes *= 512;
+
     local @sixbitchars = ();
     # Convert text
     while (<INPUT>) {
@@ -116,25 +121,30 @@ sub addtxt {
           local $tmp = $sixbitrev[ord($char)];
           if (defined($tmp)) {
              push(@sixbitchars, $tmp);
+             $bytes--;
           } else {
              die("Undefined character $char in $fn\n");
           }
       }
     }
-    # Add end of file.
-    push(@sixbitchars, $sixbitrev[032]);
-    # If odd number of 6 bit characters add another EOF
-    if (@sixbitchars % 2 == 1) {
-       push(@sixbitchars, $sixbitrev[032]);
-    }
-    if (ceil(@sixbitchars / $bsize) + $first - 1 > $last) {
-       die("File $fn too long\n");
-    }
     # Write header if LAP6
     if ($lap6 == 1) {
+       if (ceil((@sixbitchars + 4) / $bsize) + $first - 1 > $last) {
+          die("File $fn too long\n");
+       }
        print OUTPUT pack("S1",02065);
        print OUTPUT pack("S1",05712);
+       $bytes -= 4;
+    } else {
+       if (ceil(@sixbitchars / $bsize) + $first - 1 > $last) {
+          die("File $fn too long\n");
+       }
     }
+    # Pad the last block out with EOF characters.
+    while ($bytes-- > 0) {
+       push(@sixbitchars, $sixbitrev[032]);
+    }
+    # Write the bytes.
     for (local $i = 0; $i < @sixbitchars; $i += 2) {
        local $v = $sixbitchars[$i] << 6 | $sixbitchars[$i+1];
        print OUTPUT pack("S1",$v) || die "file write: $!";
@@ -158,7 +168,8 @@ sub addindex {
        die "No space for file $fn";
     }
     if ($lowspace == 0 ||
-         ($highfiles[0] - $indexblock) < ($indexblock - $lowfiles[1])) {
+         ($highfiles[0] - $indexblock) < ($indexblock - $lowfiles[1]) &&
+         $highspace != 0) {
        $first = $highfiles[0];
        $highfiles[0] += $blocks;
     } else {
@@ -188,6 +199,14 @@ sub addindex {
     return($first, $first + $blocks - 1);
 }
 
+sub indexsort {
+   if ($sortindex) {
+      return $a cmp $b;
+   } else {
+      return ${$index{$a}}[4] <=> ${$index{$b}}[4]
+   }
+}
+
 # This writes index to tape image
 sub writeindex {
    seek(OUTPUT, $indexblock*$bsize, $SEEK_SET) || die "$fn file seek: $!";
@@ -201,7 +220,7 @@ sub writeindex {
    print OUTPUT pack("S1",0) || die "file write: $!";
    local $entries = 0;
    # Get entries in order added to index
-   foreach my $key (sort { ${$index{$a}}[4] <=> ${$index{$b}}[4] } keys %index) {
+   foreach my $key (sort indexsort keys %index) {
       local $values = $index{$key};
       local $padkey = $key;
       for ($i = length($padkey); $i < 8; $i++) {
@@ -248,6 +267,13 @@ sub writeindex {
 
 
 $tapeblocks = 512;
+
+$sortindex = 0;
+if ($ARGV[0] eq '-s') {
+   shift(@ARGV);
+   $sortindex = 1;
+}
+
 # Open output file
 open(OUTPUT,'>', $ARGV[1]) || die "$ARGV[1]: $!";
 binmode(OUTPUT);
@@ -263,30 +289,33 @@ if (open(INPUT, "$dirpath/.config")) {
       die "Tape blocks not valid for LAP6 format";
    }
    $lap6 = 1;
-   @nums = split(' ',<INPUT>);
-   @lowfiles = (oct($nums[0]), oct($nums[1])-1);
-   @highfiles = (oct($nums[6]), 0777);
-   $indexblock = oct($nums[4]);
+   @configvalues = split(' ',<INPUT>);
+   @lowfiles = (oct($configvalues[0]), oct($configvalues[1])-1);
+   @highfiles = (oct($configvalues[6]), 0777);
+   $indexblock = oct($configvalues[4]);
+   # Negative numbers indicate what field starting with 1 should
+   # be used from .config. The second value will have one subtracted
+   # from the field
    %specialfiles = (
-      ".manuscript" => [0350, 0425, 0],
-      ".lap6" =>  [0300, 0347, 1]
+      ".manuscript" => [-4, -5, 0],
+      ".lap6" =>  [-3, -4, 1],
+      ".unused1" =>  [-2, -3, 1],
+      ".unused2" =>  [-6, -7, 1]
    );
    %ignorefiles = (
       ".config" => "",
       ".index" => "",
-      ".order" => "",
-      ".unused1" => "",
-      ".unused2" => ""
+      ".order" => ""
    );
    @sixbit = (
-      "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
-      "8",   "9", "\n","?", " ", "I", ".", "-",   # 01x
-      "+",   "\\","#", " ", "A", "B", "C", "D",   # 02x
-      "E",   "F", "G", "H", "I", "J", "K", "L",   # 03x
-      "M",   "N", "O", "P", "Q", "R", "S", "T",   # 04x
-      "U",   "V", "W", "X", "Y", "Z", "\n","/",   # 05x
-      "\033","=", "U", ",", ".", "\$","[", "_",   # 06x
-      '"',   '"', "<", ">", "]", "*", ":", "\032",# 07x
+     "0",   "1", "2", "3",   "4", "5", "6", "7",   # 00x
+     "8",   "9", "\n","\010"," ", "i", "p", "-",   # 01x
+     "+",   "|", "#", "\031","A", "B", "C", "D",   # 02x
+     "E",   "F", "G", "H",   "I", "J", "K", "L",   # 03x
+     "M",   "N", "O", "P",   "Q", "R", "S", "T",   # 04x
+     "U",   "V", "W", "X",   "Y", "Z", "\r","/",   # 05x
+     "?",   "=", "u", ",",   ".", "\$","[", "_",   # 06x
+     '"',   "'", "<", ">",   "]", "*", ":", "\032",# 07x
    );
 } else {
    if ($#ARGV >= 2) {
@@ -344,7 +373,6 @@ if (-e $fn) {
       chomp;
       push(@fileorder, $_);
    }
-#  delete($files[$entry]);
 }
 
 for $i (0 .. $#fileorder) {
@@ -352,27 +380,35 @@ for $i (0 .. $#fileorder) {
    $entry = first_index($fn, @files);
    if ($entry >= 0) {
       addfile($fn, $dirpath);
-      delete($files[$entry]);
+      undef $files[$entry];
    } else {
       die "Fileinfo file $fn not found\n";
    }
 }
 
 for $i (0 .. $#files) {
-   if (exists $specialfiles{$files[$i]}) {
-      if ($specialfiles{$files[$i]}[2]) {
-         addbinfile("$dirpath/$files[$i]", $specialfiles{$files[$i]}[0],
-             $specialfiles{$files[$i]}[1]);
-      } else {
-         addtxt("$dirpath/$files[$i]", $specialfiles{$files[$i]}[0],
-             $specialfiles{$files[$i]}[1]);
+   if (defined $files[$i] and exists $specialfiles{$files[$i]}) {
+      $first = $specialfiles{$files[$i]}[0];
+      if ($first < 0) {
+         # Convert negative values to index starting at 0.
+         $first = oct($configvalues[-$first - 1]);
       }
-      delete($files[$i]);
+      $last = $specialfiles{$files[$i]}[1];
+      if ($last < 0) {
+         # Last configvalues is start of next area so need to subtract 1
+         $last = oct($configvalues[-$last - 1]) - 1;
+      }
+      if ($specialfiles{$files[$i]}[2]) {
+         addbinfile("$dirpath/$files[$i]", $first, $last);
+      } else {
+         addtxt("$dirpath/$files[$i]", $first, $last);
+      }
+      undef $files[$i];
    }
 }
 
 foreach (@files) {
-   if (exists $ignorefiles{$_}) {
+   if (defined $_ and exists $ignorefiles{$_}) {
       next;
    }
    #print "$_\n";
