@@ -1,3 +1,4 @@
+#!/usr/bin/perl
 # 
 # Copyright © 2015-2025 by Vincent Slyngstad
 # 
@@ -24,3 +25,21 @@
 # shall not be used in advertising or otherwise to promote the sale, use
 # or other dealings in this Software without prior written authorization
 # from those authors.
+
+#
+# Given a file in .asc format (ascii encoded 3 characters per double-word
+# (TSS bit ordering), each word then recorded as 16 bits), output the text
+# as ASCII, stripping mark parity, if set.
+foreach $f (@ARGV) {
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+  while (read(INPUT, $buf, 4)) {
+    # Unpack the double-word.
+    ($c1, $c3) = unpack("SS", $buf);
+    $c3 += $c1 << 12;
+    # Extrace $c1 and $c2.
+    $c1 = ($c3 >> 16);
+    $c2 = ($c3 >>  8);
+    print pack("CCC", $c1 & 0177, $c2 & 0177, $c3 & 0177);
+  }
+}
