@@ -134,7 +134,8 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $ctxt = shift @dir;
     $sbin = shift @dir;
     $cbin = shift @dir;
-    if ($lap6 == 1) {
+    $cbin &= 0777;
+    if ($lap6) {
        $quarter = $sbin >> 9;
        $sbintrim = $sbin & 0777;
     } else {
@@ -151,6 +152,7 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $name =~ s/[?]*$//; # Remove trailing "?"
     $name =~ s/[\032]*$//; # Remove trailing EOF
     next if $name eq '////////'; # Empty
+    next if ($lap6 == 2) && $name =~ /^\//;
     $name =~ s:^//:..:; # Deleted file, write as hidden
     #
     # Process text and binary versions, as found.
@@ -250,11 +252,13 @@ sub writetxt {
     # Open a file for our results.
     open(OUTPUT, ">$fsname/$name") || die "$fsname/$name: $!";
     binmode(OUTPUT);
-    if (@text >= 2 && $lap6 == 1) {
+    if (@text >= 2 && $lap6) {
       $word1 = shift @text;
       $word2 = shift @text;
       if ($word1 != 02065 || $word2 != 05712) {
-         print "Invalid manuscript header on $name\n";
+         print "Invalid manuscript header on $name: $word1 $word2\n";
+         unshift(@text, $word2);
+         unshift(@text, $word1);
       }
     }
 
@@ -282,7 +286,8 @@ sub writefile {
     # Copy out the file.  These are binary, so leave the words in DSK format.
     for (; $first <= $last; $first++) {
       seek(INPUT, $first*$bsize, 0) || die "$ARGV[0] file seek: $!";
-      read(INPUT, $buf, $bsize) || die "$ARGV[0] file read: $!";
+#     read(INPUT, $buf, $bsize) || die "$fsname/$name file read: $!";
+      read(INPUT, $buf, $bsize) || ($buf = pack("S$bsize", 0));
       # Write the file.
       print OUTPUT $buf || die "file write: $!";
     }
@@ -303,7 +308,7 @@ sub writefile {
 # 366		BUGBUG: What's this?
 # 367		SCRATCH
 #
-if ($lap6 == 1) {
+if ($lap6) {
    # Infer the location of .lap6 from $dirblk.
    $flap6 = $dirblk - 0126;
    # .lap6 is always at a multiple of 0100.
@@ -388,14 +393,23 @@ sub readindex {
   $lap6{0356} = 0; # DIAL
   $lap6{0426} = 1; # LAP6
   $lap6{0136} = 1; # LAP6
-  $lap6{0326} = 1; # LAP6  
-  $lap6{0226} = 1; # LAP6  
+  $lap6{0326} = 1; # LAP6
+  $lap6{0226} = 1; # LAP6
+  $lap6{0476} = 1; # LAP6
+  $lap6{0376} = 2; # LAP6 # lasner, nagel
+  $lap6{0476} = 1; # LAP6 # eeg1
   foreach $k (keys %lap6) {
     $dirblk = $k;
-    @dir = &getblk($dirblk);
-    next if ($dir[0] != 05757) || ($dir[1] != 05757)
-         || ($dir[2] != 05757) || ($dir[3] != 05757);
     $lap6 = $lap6{$dirblk};
+    @dir = &getblk($dirblk);
+    next if ($dir[0] != 05757) ; #|| ($dir[1] != 05757)
+    if ($lap6 == 2) {
+      next if $dir[1] != 0;
+    } else {
+      next if ($dir[1] != 05757)
+      || ($dir[2] != 05757) || ($dir[3] != 05757);
+    }
+#warn sprintf "Index found in block %04o\n", $dirblk;
     if ($lap6) {
       @sixbit = (
         "0",   "1", "2", "3",   "4", "5", "6", "7",   # 00x

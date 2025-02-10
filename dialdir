@@ -158,6 +158,7 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $name =~ s/[?]*$//; # Remove trailing "?"
     $name =~ s/[\032]*$//; # Remove trailing EOF
     next if $name eq '////////'; # Empty
+    next if ($lap6 == 2) && $name =~ /^\//;
     $name =~ s:^//:..:; # Deleted file, write as hidden
 #   #
 #   # Process text and binary versions, as found.
@@ -294,13 +295,20 @@ sub readindex {
   $lap6{0356} = 0; # DIAL
   $lap6{0426} = 1; # LAP6
   $lap6{0136} = 1; # LAP6
-  $lap6{0326} = 1; # LAP6  
-  $lap6{0226} = 1; # LAP6  
+  $lap6{0326} = 1; # LAP6
+  $lap6{0226} = 1; # LAP6
+  $lap6{0376} = 2; # LAP6 # lasner, nagel
+  $lap6{0476} = 1; # LAP6 # eeg1
   foreach $dirblk (keys %lap6) {
-    @dir = &getblk($dirblk);
-    next if ($dir[0] != 05757) || ($dir[1] != 05757)
-         || ($dir[2] != 05757) || ($dir[3] != 05757);
     $lap6 = $lap6{$dirblk};
+    @dir = &getblk($dirblk);
+    next if ($dir[0] != 05757) ; #|| ($dir[1] != 05757)
+    if ($lap6 == 2) {
+      next if $dir[1] != 0;
+    } else {
+      next if ($dir[1] != 05757)
+      || ($dir[2] != 05757) || ($dir[3] != 05757);
+    }
     if ($lap6) {
       @sixbit = (
         "0",   "1", "2", "3", "4", "5", "6", "7",   # 00x
