@@ -149,8 +149,11 @@ foreach $f (@ARGV) {
     # Print the file name (4 characters).
     print $sixbit[$dir[$i+0]>>6], $sixbit[$dir[$i+0]&077];
     print $sixbit[$dir[$i+1]>>6], $sixbit[$dir[$i+1]&077];
+    $name = $sixbit[$dir[$i+0]>>6] . $sixbit[$dir[$i+0]&077]
+          . $sixbit[$dir[$i+1]>>6] . $sixbit[$dir[$i+1]&077];
     # Print the extension.
     printf ".$type", $field;
+    $name .= sprintf ".$type", $field;
     # Given the file number, compute the file's length.
     $len = 0;
     for ($b = 0; $b <= $#sam; $b++) {
@@ -159,7 +162,58 @@ foreach $f (@ARGV) {
     printf " %04o ", $len;
     printf " %02o  ", $file;
     printf " %04o  %04o\n", $dir[$i+2], $dir[$i+3];
+    &dmsfile($file, $name);
   }
+}
+
+sub dmsfile {
+  local($file, $name) = @_;
+  local(@buf, $link, $words);
+  $link = undef;
+  # Find the first block, to start the chain.
+  for ($b = 0; $b <= $#sam; $b++) {
+    next unless $sam[$b] == $file;
+    $link = $b unless defined $link;
+    last;
+  }
+  $name =~ s/[ ()]//g;
+  $name =~ y/A-Z/a-z/;
+  $dirname = $f;
+  $dirname =~ s/[.]dsk$//;
+  $dirname =~ s/[.]dms$//;
+  $dirname .= ".0";
+  mkdir $dirname unless -d $dirname;
+  open(OUTPUT, ">$dirname/$name") || die "$name: $!";
+  binmode(OUTPUT);
+  next unless defined $link;
+  # Follow the chain to copy out the data.
+  while ($link) {
+#warn "Link is $link\n";
+    @buf = &rdblk($link);
+    if ($name =~ /[.]a/) {
+      # Text file -- convert sixbit to ASCII
+      @chars = ();
+      foreach $word (@buf) {
+        push(@chars, $word >> 6, $word & 077);
+      }
+      while (@chars) {
+        $char = shift @chars;
+        if ($char == 077) {
+          $char = shift @chars;
+        } else {
+          $char += $char < 040? 0100: 0;
+        }
+        printf OUTPUT "%c", $char;
+      }
+      $link = pop(@buf);
+    } else {
+      # Write the data
+      $words = $bsize - 1;
+      print OUTPUT pack("S${words}", @buf);
+      $link = pop(@buf);
+    }
+  }
+  close(OUTPUT);
 }
 
 exit 0;
