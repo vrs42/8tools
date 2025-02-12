@@ -304,7 +304,7 @@ sub readindex {
     @dir = &getblk($dirblk);
     next if ($dir[0] != 05757) ; #|| ($dir[1] != 05757)
     if ($lap6 == 2) {
-      next if $dir[1] != 0;
+#     next if $dir[1] != 0;
     } else {
       next if ($dir[1] != 05757)
       || ($dir[2] != 05757) || ($dir[3] != 05757);

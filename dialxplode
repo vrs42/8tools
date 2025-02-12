@@ -134,7 +134,6 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     $ctxt = shift @dir;
     $sbin = shift @dir;
     $cbin = shift @dir;
-    $cbin &= 0777;
     if ($lap6) {
        $quarter = $sbin >> 9;
        $sbintrim = $sbin & 0777;
@@ -169,6 +168,7 @@ for ($unit = 0; $unit <= $parts; $unit++) {
     # which is readable but not efficient.  Could they reasonably
     # be converted to .sv format or something similar?
     if ($cbin != 05757) {
+       $cbin &= 0777;
        &writefile($sbintrim, $sbintrim+$cbin-1, "$name.b$quarter");
        # Remember the file and how far from the index it was.
        if ($sbintrim > $dirblk) {
@@ -325,7 +325,9 @@ if ($lap6) {
    # from the binary. (One is stored complemented.)
    @fcoms = &getblk($flap6+021);
    $lu = $fcoms[0166];
+   $lu = $flap6 if $lu > $flap6;
    $uf = 07777 & ~$fcoms[0154];
+   $uf = $dirblk+2 if $uf > 01400;
 #printf STDERR "lu=%o uf=%o\n", $lu, $uf;
    # Save the content of the lower and upper
    # "unused" areas, if any.
@@ -404,7 +406,7 @@ sub readindex {
     @dir = &getblk($dirblk);
     next if ($dir[0] != 05757) ; #|| ($dir[1] != 05757)
     if ($lap6 == 2) {
-      next if $dir[1] != 0;
+#     next if $dir[1] != 0;
     } else {
       next if ($dir[1] != 05757)
       || ($dir[2] != 05757) || ($dir[3] != 05757);
