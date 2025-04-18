@@ -76,7 +76,7 @@ while (1) {
 	    printf "\nFIELD %o\n", ($c1 & 070)>>3;
         } else {
             # Better be trailer!
-            die "Invalid trailer code" unless $c1 == 0200;
+            die "Invalid trailer code $c1" unless $c1 == 0200;
 	    # ($checksum & 07777) must equal last frame read.
             # $data has the checksum as read, which should not
 	    # have been added in, but was.  Subtract it out.
@@ -117,5 +117,6 @@ while (1) {
     # Start again with next byte.
     $c1 = getch(INPUT);
     last unless defined $c1;
+    last if $c1 == 0232;
 }
 exit 0;
