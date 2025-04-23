@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # 
-# Copyright © 2015-2020 by Vincent Slyngstad
+# Copyright © 2015-2025 by Vincent Slyngstad
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -29,6 +29,13 @@
 #
 # Examine files, and try to find BIN format segments.
 # Convert them to .od format as we find them.
+#
+# Apr 22 2025
+#	Changed the output filenames for multi-part tapes to
+#	$f<n>.od, instead of $f.od<n>.
+#
+# 	Fixed a bug where segments were being treated as leader.
+#
 # BUGBUG: Embedded labels (text at the beginning) will be lost.
 # BUGBUG: Comments (text between rubouts) are not accepted.
 
@@ -57,7 +64,7 @@ for $f (@ARGV) {
         print OUTPUT $lbl;
         close(OUTPUT);
       } else {
-        warn "$of: file exists\n";
+        warn "$of: file exists ($byte)\n";
       }
     }
     # Ignore cruft until leader is found.
@@ -119,13 +126,8 @@ for $f (@ARGV) {
         $segment[$segments] .= $ch;
       }
       # At this point one trailer byte has been processed.
-      while ($byte == 0200) {
-        if (!read(INPUT, $ch, 1)) {
-          $done = 1;
-          last;
-        }
-        $byte = unpack("C", $ch);
-        $segment[$segments] .= $ch if $byte == 0200;
+      for ($i = 0; $i < 20; $i++) {
+        $segment[$segments] .= $ch;
       }
       # Validate the segment, but warn if the checksum was wrong.
       $segments++;
@@ -140,8 +142,10 @@ for $f (@ARGV) {
   print "$f: $segments segments found\n" if $segments != 1;
   close(INPUT);
   for ($s = 0; $s < $segments; $s++) {
+    # Create one file if one segment.
     $of = "$f.od";
-    $of .= $s+1 if $s;
+    # Create segment files if more than one segment.
+    $of = $f . ($s+1) . ".od" if $segments > 1;
     if (!-f $of) {
       print "Writing $of\n";
       open(OUTPUT, ">$of") || die "$of: $!";

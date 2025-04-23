@@ -14,12 +14,13 @@ Each such segment found is written to a corresponding
 that look like BIN format is output instead to a
 corresponding .lbl file.
 
-The first segment will be written as .od; subsequent 
-segments will be written as .od2, etc.  Existing files
-will not be over-written.  All .od* files are written
-in the format expected by mktapes (though all but the
-first would have to be renamed to be recognized as .od
-files).
+The output file naming has been changed:
+Previously, the first segment was written as .od; subsequent 
+segments were written as .od2, etc.  Now, all output segments
+are written as .od, with the segment number preceding the ".od".
+
+Existing files will not be over-written.  All .od files are
+written in the format expected by mktapes.
 
 Warnings will be issued for BIN segments that have an 
 incorrect checksum or format errors.
