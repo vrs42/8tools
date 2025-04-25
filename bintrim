@@ -130,7 +130,7 @@ for $f (@ARGV) {
         $segment[$segments] .= $ch;
       }
       # Validate the segment, but warn if the checksum was wrong.
-      $segments++;
+      $segments++ if $byte == 0200;
       $sum &= 07777;
       warn "$f: Checksum of BIN segment $segments is invalid"
         unless $sum == $ck;
