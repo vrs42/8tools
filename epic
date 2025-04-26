@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # 
-# Copyright © 2015-2020 by Vincent Slyngstad
+# Copyright © 2015-2025 by Vincent Slyngstad
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -124,6 +124,7 @@ sub readEPIC {
   # Open the input file in binary mode and read it in.
   open(INPUT, $file) || die "$file: $!";
   binmode(INPUT);
+  $f = undef;
   for (;;) {
     # First, ignore leader.
     while (read(INPUT, $top, 1)) {
@@ -175,9 +176,11 @@ sub readEPIC {
           printf(".");
           $e1e2 = &sixbit($e1e2);
           printf(", block %d\n", $blk);
-          if ($blk == 0) {
+          if (!defined $f) {
             $f = "$c1c2.$e1e2";
-            open(OUTPUT, ">$f") || die "$f: $!";
+            open(OUTPUT, "+<$f")
+            || open(OUTPUT, ">$f")
+            || die "$f: $!";
             binmode(OUTPUT);
           }
           seek(OUTPUT, $blk*2*0300, 0) || die "$f seek: $!";
