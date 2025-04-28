@@ -160,7 +160,7 @@ sub readBin {
   }
   close(INPUT);
   # Punch the checksum for the BIN output file
-  &punchword($bsum);
+  &punchword($bsum & 07777);
   # Punch the trailer for the BIN output file
   for ($i = 0; $i < 100; $i++) { print pack("C", 0200) };
 }
