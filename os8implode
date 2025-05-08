@@ -127,7 +127,8 @@ sub bplate {
 #
 # Volume size options
 # TODO: Add support for RL01, RL02 (up to 5 partitions!)
-$vsize{"rk05"} = 014540; # 2x6060
+$vsize{"rk05"} = 014540; # 2x3248 blocks
+$vsize{"rk"}   = 014540; # 2x3248 blocks
 $vsize{"rx01"} = 00756; # 494 blocks
 $vsize{"rx1"}  = 00756; # 494 blocks
 $vsize{"rx02"} = 01734; # 988 blocks

@@ -58,3 +58,7 @@ to the RL01/RL02 used equal length partitions, but the
 RL02 doesn't.  In addition, images not actually extracted
 from vintage media don't necessarily have the correct
 size, as reported by stat().
+
+As a work-around, current versions support "-rk05", "-rx1", and "-rx2"
+flags, which change the default expectations about the volume size,
+and therefore also the number of file-system directories expected.

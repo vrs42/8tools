@@ -39,6 +39,27 @@ $epoch = 70 + ($i&030);
 $i += 70;
 @month = ("0",  "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
 	 "AUG", "SEP", "OCT", "NOV", "DEC", "13",  "14",  "15");
+ 
+# Volume size options
+# TODO: Add support for RL01, RL02 (up to 5 partitions!)
+$vsize{"rk05"} = 014540; # 2x3248 blocks
+$vsize{"rk"}   = 014540; # 2x3248 blocks
+$vsize{"rx01"} = 00756; # 494 blocks
+$vsize{"rx1"}  = 00756; # 494 blocks
+$vsize{"rx02"} = 01734; # 988 blocks
+$vsize{"rx2"}  = 01734; # 988 blocks
+$vsize{"dt"}   = 01341; # 737 blocks
+$vsize{"ltb"}  = 01600; # 896 blocks
+$vsize{"ltp"}  = 01400; # 768 blocks
+$vsize{"lts"}  = 01000; # 512 blocks
+$vsize{"lt"}   = 01000; # 512 blocks
+undef $size;
+if ($ARGV[0] =~ /^-(.*)/) {
+  if (defined $vsize{$1}) {
+    $size = $vsize{$1};
+    shift @ARGV;
+  }
+}
 
 open(INPUT, $ARGV[0]) || die "$ARGV[0]: $!";
 binmode(INPUT);
@@ -47,7 +68,7 @@ binmode(INPUT);
 # Determine the volume size in blocks.
 # Use that to guage the number of volumes.
 # Adjust the volume size for equal sized volumes.
-$size = (-s $ARGV[0]) / 512;
+$size = (-s $ARGV[0]) / 512 unless defined $size;
 $vols = 1 + int(($size-1) / 010000);
 $vsiz = int($size / $vols);
 #printf "Volume size is 0%04o blocks\n", $vsiz;

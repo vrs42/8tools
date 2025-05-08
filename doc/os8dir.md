@@ -9,3 +9,7 @@ and a seperate directory will be printed for each.
 
 The directory is written to the standard output, in a 
 format meant to be similar to the OS/8 DIR command.
+
+As a work-around to SIMH file size issues, current versions support
+"-rk05", "-rx1", and "-rx2" flags, which change the default expectations
+about the volume size, and also the number of file-system directories expected.
