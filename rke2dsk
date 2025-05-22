@@ -1,0 +1,84 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2025 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Convert ".rke" format to ".dsk" format.
+#
+
+foreach $f (@ARGV) {
+  open(INPUT, $f) || die "$f: $!";
+  binmode(INPUT);
+
+  $o = $f;
+  $o =~ s/.rke$//;
+  $o .= ".dsk";
+  open(OUTPUT, ">$o") || die "$o: $!";
+  binmode(OUTPUT);
+
+  #
+  # Read in the file header.
+  read(INPUT, $buf, 0x16D) || die "$f header: $!";
+  ($magic, $version, $name, $desc, $date, $cont, $br, $nc, $ns, $nh, $us)
+    = unpack("a10a4a11a200a20a100NNNNN", $buf);
+#warn "$magic, $version, $name, $desc, $date, $cont, $br, $nc, $ns, $nh, $us\n";
+  die "$f: not rke format " unless $magic == "\x89RK05\r\n\x1A";
+  die "$f: cyls != 203" unless $nc == 203;
+  die "$f: spt != 16" unless $ns == 16;
+  die "$f: heads != 2" unless $nh == 2;
+  # At this point it looks like PDP-8 RK05 media.
+
+  #
+  # Now, iterate over the data sectors, emitting only the
+  # 12 bit data words, each as 16 bits in SIMH .dsk format.
+  #
+  while (read(INPUT, $buf, 4) == 4) {
+    ($tts, $dbits) = unpack("SS", $buf);
+    #
+    # Read a data bit blob of length $dbits.
+    #
+    $words = $dbits / 16;
+    $words++ if $dbits % 16; # RKE pads to 16 bit multiple
+    read(INPUT, $buf, 2*$words) || die "$f data read: $!";
+    @buf = unpack("C*", $buf);
+    #
+    # Discard 16 bits for header (cyl<<5)
+    #
+    shift @buf; shift @buf;
+    die "$#buf" unless @buf > 384;
+    for ($i = 0; $i < 128; $i++) { # 128 word pairs per sector
+      # Unpack a doubleword (3 bytes)
+      $b1 = shift @buf;
+      $b2 = shift @buf;
+      $b3 = shift @buf;
+      $w1 = ($b3 << 16) + ($b2 << 8) + $b1;
+      $w2 = $w1 >> 12;
+      $w1 = $w1 & 07777;
+      printf OUTPUT pack("SS", $w1, $w2);
+    }
+  }
+}
