@@ -113,10 +113,11 @@ foreach $f (@ARGV) {
   while (read(INPUT, $buf, 2*256) == 512) {
     @buf = unpack("S*", $buf);
     $sector++;
-    if ($sector > $ns * $nh) {
+    if ($sector >= $ns * $nh) {
       $sector = 0;
       $cyl++;
     }
+#warn "sector $sector, cyl $cyl\n";
     #
     # Write the two shorts describing the preamble and data length.
     # While we are at it, write 16 bits for header (cyl<<5)
@@ -124,6 +125,7 @@ foreach $f (@ARGV) {
     $obuf = pack("SSS", 210, 3140, $cyl<<5); 
     print OUTPUT $obuf;
     $crc = 0; # Initialize CRC
+#   &crc(($cyl <<5) & 0xFF, $cyl >> 3);
     #
     # Write the data bits for 128 double-words.
     #
