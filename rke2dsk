@@ -61,8 +61,9 @@ foreach $f (@ARGV) {
     #
     # Read a data bit blob of length $dbits.
     #
-    $words = $dbits / 16;
+    $words = $dbits >> 4;
     $words++ if $dbits % 16; # RKE pads to 16 bit multiple
+#warn "reading $words words\n";
     read(INPUT, $buf, 2*$words) || die "$f data read: $!";
     @buf = unpack("C*", $buf);
     #
