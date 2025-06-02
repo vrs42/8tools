@@ -4,7 +4,7 @@ Arguments are taken to be the names of files or directories to be
 scanned.  Directories are scanned recursively, looking for additional
 files.  Sub-directories whose names start with "." are skipped.
 
-Each file is read as if it were a paper taple.  That is,
+Each file is read as if it were a paper tape.  That is,
 bytes with values of 0000 and 0200 are ignored, and a value
 of 0232 terminates the "tape".
 

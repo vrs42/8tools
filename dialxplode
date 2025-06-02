@@ -162,7 +162,7 @@ for ($unit = 0; $unit <= $parts; $unit++) {
        } else {
          $distance{"$name.tx"} = $dirblk - ($stxt+$ctxt-1);
        }
-       $block{"$name.tx"} = $sbintrim
+       $block{"$name.tx"} = $stxt
     }
     # BUGBUG: These are currently written as one word per short,
     # which is readable but not efficient.  Could they reasonably
