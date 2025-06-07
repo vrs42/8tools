@@ -101,7 +101,7 @@ foreach $f (@ARGV) {
   #
   # Write the file header.
   $obuf = pack("a10a4a11a200a20a100NNNNN",
-    $magic, $version, $name, $desc, $date, $cont, $br, $nc, $ns, $nh, $us);
+    $magic, $version, $f, $desc, $date, $cont, $br, $nc, $ns, $nh, $us);
   print OUTPUT $obuf || die "$f header: $!";
   $sector = $ns * $nh;
   $cyl = -1;
