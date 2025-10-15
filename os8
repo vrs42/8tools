@@ -1,0 +1,1435 @@
+#!/usr/bin/perl
+
+#
+# First objective: Open the PDP-8 code file and load it.
+#
+
+# $0 points to this script.
+# $ARGV[0] names to the OS/8 code, which could be anywhere along $ENV{'PATH'}.
+$code = shift @ARGV;
+if ($code =~ /^[.]/) {
+  $dir = "." if $code =~ /^[.]/;
+} elsif ($code !~ m?^[./]?) {
+  # No leading slash, look along $ENV{'PATH'}.
+  foreach (split(/:/, $ENV{'PATH'})) {
+    $dir = $_;
+    last if -x "$dir/$code";
+  }
+}
+die "$dir/$code: not executable" unless -x "$dir/$code";
+
+#
+# Wave a wand to set all uninitialized memory to HLT.
+@core = ();
+for ($loc = 0; $loc < 0100000; $loc++) {
+  $core[$loc] = 07402;
+}
+
+#
+# Initialize the OS/8 sub-system.
+&os8init;
+
+#
+# Open the code file and load into the simulated core.
+$loc = -1;
+open(CODE, "$dir/$code") || die "$dir/$code: $!";
+while (<CODE>) {
+  if (/^# JSW ([0-7]+)/) {
+    $core[07746] = oct($1);
+    $usrin = 0 unless $core[07746] & 02000;
+  } elsif (/^# START ([0-7]+)/) {
+    $sa = oct($1);
+    $core[07745] = $sa & 07777;
+    $core[07744] = 06203 + (($sa >> 12) << 3);
+  }
+  s/#.*$//;
+  while (/./) {
+    if (s/^([0-7]+)\)//) {
+      $loc = oct($1);
+    } elsif (s/^([0-7]+)\s+//) {
+      $core[$loc++] = oct($1);
+    }
+  }
+}
+
+#
+# Memory is loaded; begin emulation.
+
+# Boilerplate startup.
+use Term::ReadKey;
+ReadMode 'ultra-raw';
+# Use ^E for force hlt.
+
+#
+# IF is in $pc, CIF sets $ib.
+$df = $ib = $sa >> 12;
+$pc = $sa;
+# BUGBUG: SWR Implementation??
+$swr = 07777;
+# LINK is in $lac.
+$hlt = $ion = $ionn = $um = $rib = $lac = $mq = $modeb = $sc = 0;
+# I/O Devices.
+$ttof = $ttofn = 0; # Teleprinter flag is clear
+$ttie = 1;
+# Run-time behavior.
+$interact = 0;
+$trace = 0;
+$echar = 0205; # Usually ^E
+
+#
+# Run-time Command line parsing.  Command lines can use:
+# =0nnnnn to specify a starting address.
+# %0nnnnn to specify switch register contents.
+# !0nnnnn to specify an exit character other than ^E.
+# -i to activate interaction after HLT.
+# -t to activate trace output on STDERR.
+# Other stuff on the command line is retained with the intent
+#   to eventually add code to pass file specs to USR when OS/8
+#   support is added.
+@usr = ();
+foreach (@ARGV) {
+  $pc = oct($1) if /^\=([0-7]+)$/;
+  $swr = oct($1) if /^\%([0-7]+)$/;
+  $echar = oct($1) if /^\!([0-7]+)$/;
+  next if /^[=\%!]([0-7]+)$/;
+  die "Number is not octal: '$1'\n" if /^[=\%!]/;
+  $interact = 1 if $_ eq "-i";
+  next if $_ eq "-i";
+  $trace++ if $_ eq "-t";
+  next if $_ eq "-t";
+  die "Unsupported option '$1'\n" if /^-(.*)/;
+  next if /^-(.*)/;
+  s/_/</; # Sneaks '<' past the shell
+  y/A-Z/a-z/; # Monocase for USR
+  push(@usr, $_);
+}
+
+#
+# Emulate the instruction;
+sub emul8 {
+  # Have a look at the instruction.
+  $inst = $core[$pc];
+  $op = $inst >> 9;
+  if ($op < 6) {
+    #
+    # Operation refences memory
+    # Note: Direct EA is always in the current field!
+    $ea = $pc & 070000;
+    $ea += $inst & 0177;
+    $ea += $pc & 07600 if $inst & 0200; # Page bit set
+    $pc = ($pc&070000) + (($pc+1) & 07777);
+    if ($inst & 0400) { # Indirect reference
+      if (($ea&07770) == 0010) { # Autoindex
+        $core[$ea] = 0000 if ++$core[$ea] == 010000;
+      }
+      printf STDERR " %05o)%04o", $ea, $core[$ea] if $trace;
+      if ($op < 4) {
+        # Use DF for indirect non-branch
+        $ea = ($df<<12)+$core[$ea];
+      } else {
+        # Use IB for indirect branch
+        $ea = ($ib<<12)+$core[$ea];
+      }
+    }
+    if ($op == 0) { # AND
+      $lac &= (010000|$core[$ea]);
+    } elsif ($op == 1) { # TAD
+      $lac += $core[$ea];
+      $lac &= 017777;
+    } elsif ($op == 2) { # ISZ
+      if (++$core[$ea] == 010000) {
+        $core[$ea] = 0;
+        $pc = ($pc&070000) + (($pc+1) & 07777);
+      }
+    } elsif ($op == 3) { # DCA
+      $core[$ea] = $lac & 07777; $lac &= 010000;
+    } elsif ($op == 4) { # JMS
+      if (($ea&077600) == 07600) {
+        &os8driver;
+        $ib = $pc >> 12; # Fix up "return"
+        $inh = 0;
+      } elsif (($ea == 017700) || (($ea == 010200) & $usrin)) {
+        &os8usr;
+        $ib = $pc >> 12; # Fix up "return"
+        $inh = 0;
+      } else { # not magic
+        $core[$ea] = $pc & 07777;
+        $pc = ($ea&070000) + (($ea+1) & 07777);
+        $inh = 0;
+      }
+    } else { # JMP
+      $pc = $ea;
+      $inh = 0;
+    }
+    printf STDERR " %05o)%04o", $ea, $core[$ea] if $trace && $op != 5;
+  } elsif ($op == 6) {
+    $pc = ($pc&070000) + (($pc+1) & 07777);
+    #
+    # IOT -- hair ensues.
+    # TODO: Should do more here.
+    if (($inst&07770) == 06000) { # Interrupt control
+      $pc += $ion, $ion = $ionn = 0 if ($inst&07) == 00; # SKON
+      $ionn = 1 if ($inst&07) == 01; # ION
+      $ion = $ionn = 0 if ($inst&07) == 02; # IOF
+      $pc += $irq if ($inst&07) == 03; # SRQ
+      $lac = ($lac&010000)+(($lac>>1)&04000)+($gt<<10)+($irq<<9)+($inh<<8)+($ion<<7)+$rif if ($inst&07) == 04; # GTF
+      if (($inst&07) == 05) { # RTF
+        # Contrary to documentation, RTF ignores IE and enables interrupts.
+        ($l, $gt, $inh, $ionn, $rif) = ($lac&04000, !!($lac&02000), !!($lac&0400), 1|!!($lac&0200), $lac&0177);
+        $lac = ($l<<1) | ($lac&07777);
+      }
+      $pc += $gt if ($inst&07) == 06; # SGT
+      $lac = $ion = $ionn = $ttof = $ttofn = $ttif = 0 if ($inst&07) == 07; # CAF
+    } elsif (($inst&07700) == 06200) { # MMU
+      $fld = ($inst>>3) & 07;
+      if ($inst & 04) { # More decoding based on $fld
+        $lac |= $df<<3 if $fld == 01; # RDF
+        $lac |= $pc>>12 if $fld == 02; # RIF
+        $lac |= $ib if $fld == 03; # RIB
+        ($um, $ib, $df) = ($rif>>6, ($rif>>3)&07, $rif&07) if $fld == 04; # RMF
+      } else { # $fld is new IB, DF, or both
+        $df = $fld if $inst & 01; # CDF
+        if ($inst & 02) { # CIF
+          $ib = $fld; # Save for next JMP, JMS
+          $inh = 1; # CIF sets inhibit to delay interrupts.
+        }
+      }
+    } elsif (($inst&07770) == 06010) { # High speed reader
+    } elsif (($inst&07770) == 06030) { # Keyboard device
+      $ttif = 0 if $inst == 06030; # Clear input flag, no rrun
+      $pc += $ttif if $inst & 01; # Skip if ready
+      $lac &= 010000, $ttif = 0 if $inst & 02; # Clear flag, set rrun
+      $lac |= $ttib if ($inst&05) == 04; # OR in the last character
+      $ttie = $lac & 01 if ($inst&05) == 05; # TTY interrupt enable
+    } elsif (($inst&07770) == 06040) { # Teleprinter device
+      $ttof = $ttofn = 1 if $inst == 06040; # Set printer flag
+      $pc += $ttof if $inst == 06041; # Skip if ready
+      $ttof = $ttofn = 0 if $inst == 06042; # Clear flag
+      if ($inst & 04) { # Output a character
+        print pack("C", $lac&0177);
+        $ttofn = 1;
+      }
+    } elsif (($inst&07770) == 06070) { # VC8/I
+    } elsif (($inst&07770) == 06100) { # Memory Parity, Power Low
+    } elsif (($inst&07740) == 06140) { # 6140-6177 LINC, Type 338 display
+    } elsif (($inst&07770) == 06330) { # LAB-8
+    } elsif (($inst&07770) == 06340) { # LAB-8
+    } elsif (($inst&07760) == 06760) { # 6760-6777 DECTape
+    } else {
+      $inst = sprintf("%05o", $inst);
+      warn "IOT $inst treated as NOP\r\n";
+    }
+  } else { # $op == 7
+    $pc = ($pc&070000) + (($pc+1) & 07777);
+    # Must be an OPR.
+    if (($inst & 0400) == 0000) {
+      #
+      # Group 1 -- shifts, clears, complements
+      # These are clearest when printed in chronological order.
+      # The timing is model dependent, with the PDP-8I having the
+      # strictest ordering.
+      $lac &= 010000 if $inst & 0200; # T1 CLA
+      $lac &= 07777  if $inst & 0100; # T1 CLL
+      $lac ^= 010000 if $inst & 0020; # T2 CML
+      $lac ^= 07777  if $inst & 0040; # T2 CMA
+      $lac++  if ($inst & 0001) == 001; # T3 IAC
+      $lac = ($lac<<1) + (($lac>>12)&1) if ($inst & 0006) == 004; # T4 RAL
+      $lac = ($lac<<2) + (($lac>>11)&3) if ($inst & 0006) == 006; # T4 RTL
+      $lac = (($lac&017777)>>1) + (($lac&1)<<12) if ($inst & 0012) == 010; # T4 RAR
+      $lac = (($lac&017777)>>2) + (($lac&3)<<11) if ($inst & 0012) == 012; # T4 RTR
+      $lac = ($lac&010000) + (($lac&077)<<6) + (($lac>>6)&077) if ($inst & 0016) == 002; # T4 BSW
+      $lac &= 017777;
+    } elsif (($inst & 0401) == 0400) {
+      #
+      # Group 2 -- Skips, hlt, read switches
+      # These are clearest when printed in chronological order.
+      # The timing here is not model dependent.
+      $skp = 0  if ($inst & 0170) != 0000; # T1 may skip
+      $skp = !($lac&07777)  if $inst & 0040; # T1 SZA
+      $skp |= ($lac&04000)  if $inst & 0100; # T1 SMA
+      $skp |= ($lac&010000) if $inst & 0020; # T1 SNL
+      $skp = !$skp  if $inst & 0010; # T1 SKP
+      $pc += !!$skp  if ($inst & 0170) != 0000; # T1 SKP
+      $lac &= 010000 if $inst & 0200; # T2 CLA
+      $lac |= $swr if $inst & 0004; # T3 OSR
+      printf STDERR "HLT at %05o AC=%04o", $pc, $lac&07777 if $inst & 0002;
+      $hlt = 1 if $inst & 0002; # T4 HLT
+    } else {
+      #
+      # Group 3 -- Extended Arithmetic Unit
+      # Where to find the operand (if any) depends on the mode (A or B).
+      $lac &= 010000 if $inst & 0200; # T1 CLA
+      if (($inst & 0120) == 0100) {
+        $lac |= $mq; # T2 MQA
+      } elsif (($inst & 0120) == 0020) {
+        $mq = $lac & 07777; # T2 MQL
+        $lac &= 010000;
+      } elsif (($inst & 0120) == 0120) {
+        ($lac, $mq) = (($lac&010000)+$mq, $lac & 07777); # T2 SWP
+      }
+# TODO: This EAE stuff is basically unimplemented as yet!
+      if ($modeb) {
+# TODO: Fetch an operand from the instruction stream.
+# Addresses in the next word.
+        $inst = sprintf("%05o", $inst);
+        warn "EAE Mode B $inst treated as NOP";
+      } else { # mode A
+# TODO: Fetch an operand from the instruction stream.
+# Operands in the next word.
+        $lac |= $sc if $inst & 0040; # T2 SCA
+        if (($inst & 016) == 002) { # T3 SCL
+          print '$sc = (~$core[++$pc]) & 037; ';
+        } elsif (($inst & 016) == 004) { # T3 MUY
+          ++$pc;
+          print '($lac, $mq) = (($mq*$core[',$pc,']+$lac)>>12, ($mq*$core[',$pc,']+$lac)&07777; ';
+        } elsif (($inst & 016) == 006) { # T3 DVI
+          ++$pc;
+          print '$lnktmp = $lac < $core[',$pc,']? 010000 : 0; $lac &= 07777; ';
+          print '($lac, $mq) = ((int(($lac<<12)+$mq) / $core[',$pc,']), (($lac<<12+$mq) % $core[',$pc,'])); ';
+          print '$lac += $lnktmp; '
+        } elsif (($inst & 016) == 010) { # T3 NMI
+        } elsif (($inst & 016) == 012) { # T3 SHL
+        } elsif (($inst & 016) == 014) { # T3 ASR
+        } elsif (($inst & 016) == 016) { # T3 LSR
+        }
+      }
+    }
+  }
+}
+
+#
+# The main execution loop.
+sub fetch {
+  while (1) {
+    # Return if we are halted
+    $hlt = 1 if $pc == 07605;
+#   $hlt = 1 if ++$vrs > 100000;
+#$hlt = 1 if ++$vrs > 1000;
+    return $lac if $hlt;
+    # This cruft is here because interrupt based programs don't
+    # necessarily poll the input device.
+    # What we want is to allow (but not encourage) over-run, 
+    # with the new character replacing the old.
+    # Note that we don't get here at all until the program
+    # asks about keyboard ready..
+    $ttit = ReadKey(-1); # Get a character, if any.
+    if (defined $ttit) {
+      $ttib = 0200 | ord($ttit); # Remember the character
+      $ttif = 1; # ... and set the flag.
+      if ($ttib == 0224) { # Type ^T to toggle trace
+        $trace = !$trace;
+        $ttif = 0;
+      }
+      if ($ttib == 0205) { # Type ^E to hlt
+        print "^E\r\n";
+        ReadMode 'normal';
+        $hlt++;
+      }
+    }
+    $irq = ($ttie&$ttof) | ($ttie&$ttif); # TODO: OR in others here too.
+    if ($ion && !$inh) {
+      # Interrupts are allowed, so do them.
+      if ($irq) {
+        # Interrupt does a JMS 00000.
+        $rib = ($um<<6)+($ib<<3)+$df;
+        $core[00000] = $pc& 07777;
+        $pc = 00001; $ib = 0;
+        $ion = $ionn = 0;
+      } 
+    } 
+    $ion = $ionn; # Allow one instruction after ION.
+    $ttof = $ttofn; # Allow at least one inst. after TLS, before interrupt.
+    if ($trace) {
+      # Trace prints register contents, then instruction, then execute it.
+      printf STDERR "\r\n%05o %04o %02o %05o:%04o", $lac, $mq, $sc, $pc, $core[$pc];
+    }
+    # Trace may also print defer/execute (after execution) memory contents.
+    &emul8;
+  }
+}
+
+#
+# Start things up!
+&fetch(); 
+
+#
+# BUGBUG: TODO: Export "dirty" files here!
+# BUGBUG: "dirty" not set when files replaced in CLOSE!!
+@foo = keys %dirty;
+#warn "dirty: @foo\r\n";
+foreach $fn (sort keys %dirty) {
+  if (!defined($dir{$fn})) {
+#   warn "DELETED: $fn\n";
+    unlink($fn);
+  } else {
+#   warn "NEW: $fn\r\n";
+    $fblk = $fblk[$dir{$fn}];
+    $size = $size[$dir{$fn}];
+    # TODO: write the stuff in $sys to the file.
+    $fblk *= 0400;
+    $size *= 0400;
+    open(OUTPUT, ">$fn") || die "$fn: $!";
+    for ($i = $fblk; $i < $fblk+$size; $i += 2) {
+      # Each word pair becomes three bytes.
+      # BUGBUG: Fuss here about with the binary/text distinction??
+      $c1 = $sys[$i  ] & 0377;
+      $c2 = $sys[$i+1] & 0377;
+      $c3 = ((($sys[$i] >> 8) << 4) + ($sys[$i+1] >> 8));
+      print OUTPUT pack("CCC", $c1, $c2, $c3);
+    }
+  }
+}
+
+#
+# Return means a HLT was done.
+ReadMode 'normal';
+exit $lac&07777; 
+
+#
+# That's the basic PDP-8 simulation. OS/8 adds to the "virtual machine"
+# several routines and tables:
+# 07600	Save memory, then exit to the O/S.
+# 07605	Exit to the O/S.
+# 07607 Subroutine: System I/O handler.
+#	Device handlers are entered with DF set to the calling field.
+#	AC should be zero.
+#	Parameters follow the calling JMS instruction:
+#	wpppppfffddd	w is set for a write operation
+#			ppppp is the number of pages to transfer
+#			fff is the field of the buffer
+#			ddd is device dependent (usually 0)
+#	aaaaaaaaaaaa	The buffer address
+#	bbbbbbbbbbbb	The block number at which to start
+#	<error return>	AC < 0 is fatal error
+#			AC >= 0 is end-of-file
+#	On normal return, AC is zero and DF is restored.
+# 07744 Starting Field: 62n3
+# 07745 Starting Address: nnnn in the Starting Field
+# 07746 Job Staus Word:
+#	0		Does not load 00000-01777
+#	1		Does not load 10000-11777
+#	2		May not be restarted
+#	3		Does not use highest field
+#	4		File linked using overlays
+#	5		May not use R, RUN, or GET (OS/78)
+#	6-9		Reserved
+#	10		Do not save 00000-01777
+#	11		Do not save 10000-11777
+# 07747 Always 0000
+#	BUGBUG:		In later versions, this contains the block
+#			number of the .SV file.
+# 07777 Core Size: brrrrrnnnrrr
+#	b = 1 if BATCH is running
+#	nnn = 0 is "all available"
+#
+# The command decoder output tables for normal mode:
+# 17600 Up to three output file descriptions:
+#	lllllllldddd	File length, Device number
+#	aaaaaabbbbbb	File Name (sixbit, 6 characters)
+#	ccccccdddddd
+#	eeeeeeffffff
+#	aaaaaabbbbbb	File Extension (sixbit, 2 characters)
+# 17617 Up to nine input file descriptions:
+#	lllllllldddd	Negative file length, Device number
+#			(File length of 0 means >= 256 blocks)
+#			(Zero if end of input file list)
+#	bbbbbbbbbbbb	Starting block number
+# 17641 Always 0000 (terminates input list if nine entries)
+# 17642 ehhhhhhhhhhh	High order 12 bits of =nnnn
+#			(E is set if ESC/ALTMODE terminator was used)
+# 17643 abcdefghijkl	Option bits for corresponding letters
+# 17644 mnopqrstuvwx	Option bits for corresponding letters
+# 17645 yz0123456789	Option bits for corresponding letters/digits
+# 17646 llllllllllll	Low order 12 bits of =nnnn
+#
+# The command decoder tables for special mode:
+# 17600 One output file description:
+#	lllllllldddd	File length, Device number
+#	aaaaaabbbbbb	File Name (sixbit, 6 characters)
+#	ccccccdddddd
+#	eeeeeeffffff
+#	aaaaaabbbbbb	File Extension (sixbit, 2 characters)
+# 17605	Up to five input file descriptions:
+#	00000000dddd	Always zero, Device number, zero terminates list
+#	aaaaaabbbbbb	File Name (sixbit, 6 characters), zero if no more
+#	ccccccdddddd
+#	eeeeeeffffff
+#	aaaaaabbbbbb	File Extension (sixbit, 2 characters)
+# Locations 17642-17646 as above.
+# 17647-17665 Device Handler Residency Table
+#	When a device handler is loaded, the entry points are filled in
+#	for the devices implemented with that handler.
+# 17666 Date Word: mmmmdddddyyy
+# 17700 Subroutine: User Service Routine (USR).
+# 10200 Subroutine: USR (when resident)
+# 17741-17757 User Device Name Table
+#	Assigned devices are hashed by adding the two sixbit words of the name.
+#	The high bit of the first word is set if the second word is nonzero.
+#	The Device Name table is 15 (017) words long.
+# 17760-17776 Device Control Word Table (15 words):
+#	frwttttttddd	f is set if the device is file structured.
+#			r is set if the device is read only.
+#			w is set if the device is write only.
+#			tttttt is the device type
+#			ddd is the directory block of tentative file (or 0)
+#
+# Batch uses these locations in the highest field when running:
+# h7000	JMP to abort the batch job
+# h7200	JMS to allow spooling, extension in AC
+# h7400	JMS to print the character in AC to the batch log
+#
+# When USR is loaded, more system tables are available:
+# 10036	Pointer to Permanent Device Name Table
+#	Device names are the sum of the two words of the sixbit name
+#	The high bit of the first word is set if the second word is nonzero.
+#	The Device Name table is 15 (017) words long.
+# 10037	Pointer to the Handler Information Table (15 words):
+#	tbbbbeeeeeee	t is set for a two page handler.
+#			bbbb is the block number for the handler - 015
+#			eeeeeee is the offset of the handler entry point
+#
+
+#
+# That was a bit TMI, so let's begin to make it concrete by loading up
+# the resident OS/8, which is to say, the 07600 and 17600 pages.
+# (This should be called after HLT initialization, and before the user
+# image is parsed.)
+sub os8init {
+  $core[07600] = 04207;	# JMS SYS
+  $core[07601] = 05000;	# Write, 010 pages, field 0
+  $core[07602] = 00000;	# Start at 00000
+  $core[07603] = 00033;	# Start at block 33
+  $core[07604] = 07602;	# CLA HLT if error
+
+# $core[07600] = 05205;	# Skip the save, for now.
+
+  # Getting to 07605 causes an exit!
+  # JMS to 07607 causes an I/O on SYS:!
+
+  # These must be set as the user image is loaded!
+  # $core[07744] = 06203 + ($fld<<3);
+  # $core[07745] = $sa & 07777;
+  # $core[07746] = $jsw;
+  $core[07747] = 0;
+
+  $core[07777] = 0000; # Not BATCH, all available memory
+
+  # No command decoder info yet.
+  for ($i = 017600; $i < 17647; $i++) {
+    $core[$i] = 0;
+  }
+
+  # Handler residency table.
+  # The plan is to have one handler, always resident, eventually
+  # with multiple entry points.
+  $core[017647] = 07607; # SYS
+  $core[017650] = 07607; # DSK
+  $core[017651] = 07776; # TTY
+  $core[017652] = 0; # Not resident
+  $core[017653] = 0; # Not resident
+  $core[017654] = 0; # Not resident
+  $core[017655] = 0; # Not resident
+  $core[017656] = 0; # Not resident
+  $core[017657] = 0; # Not resident
+  $core[017660] = 0; # Not resident
+  $core[017661] = 0; # Not resident
+  $core[017662] = 0; # Not resident
+  $core[017663] = 0; # Not resident
+  $core[017664] = 0; # Not resident
+  $core[017665] = 0; # Not resident
+
+  # Date word: mmmmdddddyyy
+  ($_, $_, $_, $dy, $mo, $yr, $_) = localtime(time);
+  $yr += 1900;
+  # $yr is now typically something like 2025 (03751).
+  # These formulae imply an epoch starting in 03740, aka 2016.
+  $core[017666] = (($mo+1)<<8) + ($dy<<3) + ($yr&07);
+  # Set OS/8 epoch bits (32 years starting in 2016)
+  $core[07777] |= ($yr & 030) << 4;
+
+  # JMS to 17700 causes an call to USR!
+
+  # 17741-17757 User Device Name Table
+  $core[017741] = (02331 + 02300) | 04000; # SYS
+  $core[017742] = (00423 + 01300) | 04000; # DSK
+  $core[017743] = (02424 + 03100) | 04000; # TTY
+  $core[017744] = 0;
+  $core[017745] = 0;
+  $core[017746] = 0;
+  $core[017747] = 0;
+  $core[017750] = 0;
+  $core[017751] = 0;
+  $core[017752] = 0;
+  $core[017753] = 0;
+  $core[017754] = 0;
+  $core[017755] = 0;
+  $core[017756] = 0;
+  $core[017757] = 0;
+
+# Device Control Word Table
+  $core[017760] = 04000+(023<<3); # RK8E-ish
+  $core[017761] = 04000+(023<<3); # RK8E-ish
+  $core[017762] = 0000; # TTY
+  $core[017763] = 0;
+  $core[017764] = 0;
+  $core[017765] = 0;
+  $core[017766] = 0;
+  $core[017767] = 0;
+  $core[017770] = 0;
+  $core[017771] = 0;
+  $core[017772] = 0;
+  $core[017773] = 0;
+  $core[017774] = 0;
+  $core[017775] = 0;
+  $core[017776] = 0;
+
+  # Initialize "SYS:"
+  &loaddir;
+
+  # DIRECT.SV seems to assume USR is still resident
+  # if it wasn't loaded over.
+  &usrin;
+}
+
+#
+# The driver will perform transfers to/from the "sys" array.
+# Os8init will initialize this array to contain a files area
+# similar to the current working directory.
+# Files in sys array have each byte x-ored with 0200 and unpacked
+# into words, two words for every 3 bytes. 
+# This complements the mark parity bit for text files, while preserving
+# information in the binary case.
+sub os8driver {
+  if ($ea == 07607) {
+    &os8sys;
+  } elsif ($ea == 07776) {
+    # TTY: Driver called
+    $args = $pc;
+    $wpppppfffddd = $core[$args+0];
+    $bufadr = $core[$args+1];
+    $blknum = $core[$args+2];
+    $pc = ($args + 4) & 077777; # Error return ignored
+    $write = $wpppppfffddd >> 11;
+    $size = ($wpppppfffddd >> 6) & 037;
+    $size *= 0200; # in words
+    $fld = ($wpppppfffddd >> 3) & 07;
+    $fld = $fld << 12;
+#printf STDERR "\r\nTTY: write %o words\r\n", $size;
+#printf STDERR "args %05o, return %05o\r\n", $args, $pc;
+#printf STDERR "bufadr %05o\r\n", $fld+$bufadr;
+    if ($write) {
+      for ($i = 0; $i < $size; $i += 2) {
+        $c1 = $core[$fld+$bufadr++];
+        $bufadr &= 07777;
+        $c2 = $core[$fld+$bufadr++];
+        $bufadr &= 07777;
+        $c3 = ($c1 >> 8) << 4;
+        $c3 += $c2 >> 8;
+        $c1 &= 0177;
+        last if $c1 == 032;
+        printf "%c", $c1;
+        $c2 &= 0177;
+        last if $c2 == 032;
+        printf "%c", $c2;
+        $c3 &= 0177;
+        last if $c3 == 032;
+        printf "%c", $c3;
+#       printf "%3o %3o %3o ", $c1, $c2, $c3;
+      }
+    } else {
+# BUGBUG: TODO: Implement TTY reads!!
+&err("TTY: read not implemented yet\n");
+      for ($i = 0; $i < $size; $i++) {
+        $core[$bufadr] = $sys[$dptr++];
+        $bufadr = ($bufadr+1) & 07777;
+      }
+    }
+  } else {
+    &err("Illegal handler call\n");
+  }
+}
+
+sub os8sys {
+  $args = $pc;
+  $wpppppfffddd = $core[$args+0];
+  $bufadr = $core[$args+1];
+  $blknum = $core[$args+2];
+  $pc = ($pc + 4) & 077777; # Error return ignored
+  $write = $wpppppfffddd >> 11;
+  $size = ($wpppppfffddd >> 6) & 037;
+  $size *= 0200; # in words
+  $fld = ($wpppppfffddd >> 3) & 07;
+  $fld = $fld << 12;
+  $dptr = $blknum * 0400;
+#warn "SYS: blk $blknum dptr $dptr\n";
+  if ($write) {
+printf STDERR "\rSYS: write %o words\r\n", $size if $trace;
+    for ($i = 0; $i < $size; $i++) {
+      $sys[$dptr++] = $core[$fld+$bufadr];
+      $bufadr = ($bufadr+1) & 07777;
+    }
+  } else {
+printf STDERR "\rSYS: read %o words\r\n", $size if $trace;
+printf STDERR "args %05o, return %05o\r\n", $args, $pc if $trace;
+printf STDERR "bufadr %05o\r\n", $fld+$bufadr if $trace;
+    for ($i = 0; $i < $size; $i++) {
+printf STDERR "%04o\n", $sys[$dptr] if $trace > 1;
+      $core[$fld+$bufadr] = $sys[$dptr++];
+      $bufadr = ($bufadr+1) & 07777;
+    }
+  }
+  $lac &= 010000; # Clear AC for return.
+}
+
+#
+# The USR "subroutine" here looks up and does file oriented stuff for OS/8.
+# This version also looks at the current directory, and will bodge files
+# into the virtual disk image as needed.
+sub os8usr {
+  $args = $pc;
+  $function = $core[$args+0];
+  if ($function == 001) {
+    printf STDERR " FETCH" if $trace;
+    &os8fetch();
+  } elsif ($function == 002) {
+    printf STDERR " LOOKUP" if $trace;
+    &os8lookup();
+  } elsif ($function == 003) {
+    printf STDERR " ENTER" if $trace;
+    &os8enter();
+  } elsif ($function == 004) {
+    printf STDERR " CLOSE" if $trace;
+    &os8close();
+  } elsif ($function == 005) {
+    printf STDERR " DECODE" if $trace;
+    &os8decode();
+  } elsif ($function == 006) {
+    printf STDERR " CHAIN" if $trace;
+    &os8chain();
+  } elsif ($function == 007) {
+    printf STDERR " ERROR" if $trace;
+    &os8error();
+  } elsif ($function == 010) {
+    printf STDERR " USRIN" if $trace;
+    &os8usrin();
+  } elsif ($function == 011) {
+    printf STDERR " USROUT" if $trace;
+    &os8usrout();
+  } elsif ($function == 012) {
+    printf STDERR " INQUIRE" if $trace;
+    # Since all drivers are in memory permanently, INQUIRE
+    # is equivalent to FETCH.
+    &os8fetch();
+  } elsif ($function == 013) {
+    printf STDERR " RESET" if $trace;
+    os8reset();
+  } else {
+    &err("MONITOR ERROR 4, function: $function\n");
+    exit 1;
+  }
+  $lac &= 010000; # Clear AC
+  $pc++; # Normal return;
+}
+
+#
+# Fetch a device driver.
+# Made easier by all handlers being permanently resident.
+sub os8fetch {
+  if ($lac & 07777) {
+    # By device number
+    $devno = $lac & 017; # Device number is in AC
+  } else {
+    # If by name, device name follows function code (1)
+    $hash = $core[$args+1];
+    if ($core[$args+2]) {
+      $hash += $core[$args+2];
+      $hash |= 04000;
+    }
+    $devno = &devno;
+    $args += 2; # Skip over device name
+    $core[$args] = $devno;
+    if (!defined $devno) {
+      # Take error return -- no such device
+      $pc = $args+2; # Point at error return
+      $lac &= 010000; # Clear AC
+      return;
+    }
+  }
+  # Now see about the load. For now, we just fix up the entry
+  # point or fail the call. First, is the device number valid?
+  &err("MONITOR ERROR 4 devno: $devno\n") unless $devno & 017;
+  &err("MONITOR ERROR 4 devno: $devno\n") if $devno > 017;
+  $core[$args+1] = $core[017646+$devno];
+  $args++ if $core[$args+1]; # Skip error return if OK
+  $pc = $args+1; # Point at return
+}
+
+#
+# Look up and return the location of a file.
+sub os8lookup {
+  $devno = $lac & 07777; # Device number is in AC
+  $devno = $lac & 017; # Device number is in AC
+  &err("MONITOR ERROR 4 devno: $devno\n") unless $devno & 017;
+  &err("MONITOR ERROR 4 devno: $devno\n") if $devno > 017;
+  $nptr = $pc & 070000;
+  $nptr += $core[$args+1]; # Pointer to name
+  @fname = ($core[$nptr] >> 6, $core[$nptr++] & 077);
+  push(@fname, ($core[$nptr] >> 6, $core[$nptr++] & 077));
+  push(@fname, ($core[$nptr] >> 6, $core[$nptr++] & 077));
+  push(@fname, 056);
+  push(@fname, ($core[$nptr] >> 6, $core[$nptr++] & 077));
+  grep(($_ = $_ & 40? $_: $_ + 0100), @fname);
+  $fname = pack("C*", @fname);
+  $fname =~ s/@//g;
+  $i = $dir{$fname};
+  $pc = $args + 3; # Point at error return
+  $lac &= 010000; # Clear AC
+  return unless defined $i;
+  $core[$args+1] = $fblk[$i]; # Set file position
+  $core[$args+2] = $size[$i]; # Set file length
+  $pc++; # Point at normal return
+}
+
+#
+# Create a tentative (output) file.
+sub os8enter {
+  $devno = $lac & 017;
+  &err("MONITOR ERROR 4 devno: $devno\n") unless $devno & 017;
+  &err("MONITOR ERROR 4 devno: $devno\n") if $devno > 017;
+  $size = ($lac & 07760) >> 4;
+  if ($core[017757+$devno] & 04000) {
+    # Device is file structured -- must be SYS:
+    $nptr = $pc & 070000;
+    $nptr += $core[$args+1];
+    $name = &name($nptr);
+    # The awkwardness of the directory format rears it's head.
+    # To simplify matters, we defer rippling the directory content
+    # to create a directory entry for a zero length file right before
+    # the entry for the hole, and updating word 3 of the directory segment.
+    # We update the Device Control Word table in memory, remember the
+    # details for the tentative file, and return the dimensions of the hole.
+    if ($tent) {
+      # Fail the request if there's already a tentative file.
+      $pc = $args + 2; # Take error return
+      return;
+    }
+    # Find an hole big enough to contain the requested size.
+    if ($size == 0) {
+      # Find the biggest hole
+      $hole = 0;
+      for ($i = 1; $i <= $#holeln; $i++) {
+        $hole = $i if $holeln[$i] > $holeln[$hole];
+      }
+    } else {
+      # Find the smalles hole that will fit $size
+      $hole = 0;
+      for ($i = 1; $i <= $#holeln; $i++) {
+        next unless $holeln[$i] >= $size;
+        $hole = $i if $holeln[$i] < $holeln[$hole];
+      }
+      if ($holeln[$hole] < $size) {
+        # No hole is large enough
+        $pc = $args + 2; # Take error return
+        return;
+      }
+    }
+    # Remember the tentative file
+    $tent = $holedp[$hole];
+    $tent = $hole;
+#warn "hole: $hole";
+    # Return it's extent.
+    $core[$args+1] = $holest[$hole];
+    $core[$args+2] = $holeln[$hole];
+  } else {
+    # Not a file structured device
+    $core[$args+1] = $core[$args+2] = 0;
+  }
+  $pc = $args + 3; # return success
+  $lac &= 010000; # Clear AC
+}
+
+#
+# Close a tentative file, making it permanent.
+# Alternatively, delete a file.
+sub os8close {
+  $devno = $lac & 017;
+  &err("MONITOR ERROR 4 devno: $devno\n") unless $devno & 017;
+  &err("MONITOR ERROR 4 devno: $devno\n") if $devno > 017;
+  $nptr = $pc & 070000;
+  $nptr += $core[$args+1];
+  $name = &name($nptr);
+  $size = $core[$args+2];
+#warn "CLOSE(devno $devno, name $name, size $size)\r\n";
+  if ($devno > 2) {
+    $pc = $args + 3; # Skip error return
+    return;
+  }
+warn "..new file $name\r\n" unless defined $dir{$name};
+  $dirty{$name} = 1;
+#warn "dirty set for $name\r\n" if $dirty{$name};
+  $ok = 0;
+  # Remember the position of the old file
+  $fblk = 0; # No valid file block yet
+  ($fblk, $flen) = ($fblk[$dir{$name}], $size[$dir{$name}])
+    if defined $dir{$name};
+#@foo = %dir;
+#warn "CLOSE: dir was @foo\r\n";
+  if ($size) {
+    # Replace the old file with the new one.
+#warn "Allocating dirslot $#fblk+1\r\n" unless defined $dir{$name};
+    $dir{$name} = $#fblk+1 unless defined $dir{$name};
+    ($fblk[$dir{$name}], $size[$dir{$name}]) = ($holest[$tent], $size);
+    # Shrink the hole which contains the new file.
+#warn "tent: $tent";
+#warn "tent was $holest[$tent], len $holeln[$tent]\r\n";
+    $holest[$tent] += $size;
+    $holeln[$tent] -= $size;
+#warn "tent now $holest[$tent], len $holeln[$tent]\r\n";
+    if ($holeln[$tent] == 0) {
+      # Remove the now zero length hole.
+      for ($i = $tent; $i < $#holest; $i++) {
+        $holest[$i] = $holest[$i+1];
+        $holeln[$i] = $holeln[$i+1];
+      }
+      pop @holest;
+      pop @holeln;
+      $ok = 1;
+    }
+  }
+#warn "holest @holest\r\n";
+#warn "holeln @holeln\r\n";
+#warn "fblk @fblk\r\n";
+#warn "size @size\r\n";
+#warn "holemerge: ok is $ok at start\r\n";
+  # Remove the old file, if any.
+  if ($fblk) {
+    # Find the frst hole that follows the file.
+    # $fblk, $flen were set above
+    for ($i = 0; $i <= $#holest; $i++) {
+      if ($fblk+$size == $holest[$i]) {
+#warn "holemerge: We can merge at the beginning\r\n";
+        # We can merge at the beginning
+        $holest[$i] -= $flen;
+        $holeln[$i] += $flen;
+        $ok = 1;
+        last;
+      } elsif ($holest[$i]+$holesz[$i] == $fblk) {
+#warn "holemerge: We can merge at the end\r\n";
+        # We can merge at the end
+        $holeln[$i] += $flen;
+        $ok = 1;
+        last;
+      } elsif ($holest[$i] > $fblk) {
+#warn "holemerge: We must insert a new hole here ($fblk, $flen)\r\n";
+        # We must insert a new hole here
+        # Swap the new hole for the old, and continue,
+        # in order to keep the holes sorted.
+        ($fblk, $flen, $holest[$i], $holeln[$i])
+          = ($holest[$i], $holeln[$i], $fblk, $flen)
+      }
+    }
+#warn "holemerge: ok is $ok after merge\r\n";
+    if (!$ok) {
+      # We must create a new hole
+      $holest[$#holest+1] = $fblk;
+      $holeln[$#holest] = $flen;
+#warn "holest @holest\r\n";
+#warn "holeln @holeln\r\n";
+      $ok = 1;
+    }
+    # BUGBUG: This creates a hole in the file extent arrays
+    # that may want to get closed if there's no new file!!
+    undef $dir{$name} unless $size;
+  }
+  undef $tent if $ok;
+  # Finally, update the "on-disk" directory.
+#@foo = %dir;
+#warn "CLOSE: dir now @foo\r\n";
+  &writedir;
+# warn sprintf("\r\nUSR called from %05o\r\n", $pc) if $trace;
+  $pc = $args + 2 + $ok; # Skip error return
+#warn "CLOSE returns\r\n";
+}
+
+#
+# Decode the command line.
+# On a PDP-8, "<" was generally prefered to separate input and output specs.
+# Here, "_" is probably easier to use, as it doesn't need quotes to prevent
+# interpretation by the host shell.  Similarly, "(abc)" to enclose options is
+# more awkward than "/a/b/c".
+sub os8decode {
+  # Bit 10 of the JSW is currently ignored, as we
+  # Don't actually bring an overlay into 00000-01777.
+  $inext = $core[$args+1];
+  # Destroy tentative file, if any.
+  undef $tent;
+  $args-- if $core[$args+2];
+  $devno = 2; # Assume DSK: unless told otherwise.
+  $ispec = "@usr";
+  $ispec =~ y/a-z/A-Z/;
+  # Process (and remove) switches
+  # First, clear all switch words
+  $core[017643] = $core[017644] = $core[017645] = 0;
+  # Expand the () switch constructs #(
+  while ($ispec =~ /[(]([^)]*)[)]/) {
+    $exp = $1;
+    &err("Invalid () option: $exp\n") unless $exp =~ /^[A-Z0-9]*$/;
+    $exp =~ s:(.):/\1:g;
+    $ispec =~ s/[(]([^)]*)[)]/$exp/;
+  }
+  # Set bits for the options
+  while ($ispec =~ s:/(.)::) {
+    $sw = $1;
+    &err("Illegal switch '$sw'\n") unless $sw =~ /[A-Z0-9]/;
+    $sw = (ord($sw) & 077) - 1;
+    $sw -= 060 - 032 if $sw > 056;
+    # Set the switch
+    $word = $sw / 12;
+    $bit = 11 - $sw % 12;
+    $core[017643+$word] += 1 << $bit;
+  }
+  $nnn =0; $nnn = $1 if $ispec =~ s/=(\d*)//;
+  &err("$nnn not octal!\n") if $nnn =~ /[89]/;
+  $nnn = oct($nnn);
+  $core[017642] = 07777 & ($nnn >> 12);
+  $core[017642] |= 04000 unless $ispec =~ s/\$$//;
+  $core[017646] = 07777 & $nnn;
+  $ispec =~ s/_/</;
+  $ospec = "";
+  $ospec = $1 if $ispec =~ s/(.*)<//;
+  # Note: Output specs are always DSK: by default.
+  @ospec = split(/,/, $ospec);
+  $optr = 017600;
+# BUGBUG: Old cruft left in memory here if no ospec.
+  foreach $ospec (@ospec) {
+    $len = 0; $len = $1 if $ospec =~ s/\[(\d+)\]//;
+    $devno = 2; # Default to DSK:
+    $devno = 0 if $ospec eq "";
+    # Fall through in the "" case to fill with 0000
+    if ($ospec =~ s/^([A-Z0-9]*)://) {
+      $dev = $1;
+      $devno = &devno($dev); # Translate $dev to $devno
+die "no such device $dev" unless $devno;
+    }
+die "no such device $devno" unless $devno;
+    $core[$optr++] = ($len << 4) + $devno; # Length, device
+    $fname = $ospec;
+    $fname =~ y/a-z/A-Z/;
+    @fname = unpack("C*", $fname);
+    $c1 = $c2 = 0;
+    $c1 = shift @fname unless $fname[0] == 056;
+    $c2 = shift @fname unless $fname[0] == 056;
+    $core[$optr++] = (($c1 & 077) << 6) + ($c2 & 077); # Name
+    $c1 = $c2 = 0;
+    $c1 = shift @fname unless $fname[0] == 056;
+    $c2 = shift @fname unless $fname[0] == 056;
+    $core[$optr++] = (($c1 & 077) << 6) + ($c2 & 077);
+    $c1 = $c2 = 0;
+    $c1 = shift @fname unless $fname[0] == 056;
+    $c2 = shift @fname unless $fname[0] == 056;
+    $core[$optr++] = (($c1 & 077) << 6) + ($c2 & 077);
+    shift @fname if $fname[0] == 056;
+    $c1 = $c2 = 0;
+    $c1 = shift @fname unless $fname[0] == 056;
+    $c2 = shift @fname unless $fname[0] == 056;
+  }
+  # Note: Input specs DSK: by default for the first, then
+  # default to the same device as the previous specification.
+  $devno = 2;
+  $optr = 017617;
+  $optr = 017605 if $inext == 05200;
+# BUGBUG: Old cruft left in memory here if no ispec.
+  @ispec = split(/,/, $ispec);
+  foreach $ispec (@ispec) {
+#warn "ispec: $ispec";
+    # Process device name, if any
+    if ($ispec =~ s/^(\[A-Z0-9]*)://) {
+      $dev = $1;
+      $devno = &devno($dev);
+# BUGBUG: TODO: Fail if no such device!!
+die "no such device $DEV" unless $devno;
+    }
+    if ($inext != 05200) {
+      # Regular mode looks up each file
+      $fname = $ispec;
+      $fname =~ y/A-Z/a-z/;
+      $i = $dir{$fname};
+#warn "got here :$fname:$i:";
+# BUGBUG: Take error return if not found?
+      &err("$ispec: not found\n") unless defined $i;
+      $core[$optr++] = 07777 & (($size[$i] <<4) + $devno);
+      $core[$optr++] = $fblk[$i];
+      &err("Too many input specs: $ispec\n") if $optr > 017617+044;
+    } else {
+      # Special mode makes them look like output specs
+      $core[$optr++] = $devno; # 0, device
+      $fname = $ispec;
+      $fname =~ y/a-z/A-Z/;
+      @fname = unpack("C*", $fname);
+      $c1 = $c2 = 0;
+      $c1 = shift @fname unless $fname[0] == 056;
+      $c2 = shift @fname unless $fname[0] == 056;
+      $core[$optr++] = (($c1 & 077) << 6) + ($c2 & 077); # Name
+      $c1 = $c2 = 0;
+      $c1 = shift @fname unless $fname[0] == 056;
+      $c2 = shift @fname unless $fname[0] == 056;
+      $core[$optr++] = (($c1 & 077) << 6) + ($c2 & 077);
+      $c1 = $c2 = 0;
+      $c1 = shift @fname unless $fname[0] == 056;
+      $c2 = shift @fname unless $fname[0] == 056;
+      $core[$optr++] = (($c1 & 077) << 6) + ($c2 & 077);
+      shift @fname if $fname[0] == 056;
+      $c1 = $c2 = 0;
+      $c1 = shift @fname unless $fname[0] == 056;
+      $c2 = shift @fname unless $fname[0] == 056;
+      $core[$optr++] = (($c1 & 077) << 6) + ($c2 & 077);
+      &err("Too many input specs: $ispec\n") if $optr > 017617+020;
+    }
+  }
+#print STDERR "$ispec\r\n";
+#for ($i = 017600; $i < 020000; $i++) {
+#  printf STDERR "%04o ", $core[$i];
+#}#exit 0;
+  $pc = $args + 2;
+}
+
+#
+# The user wants to CHAIN to another program.
+# (Not yet sypported.)
+sub os8chain {
+# TODO: Fix this
+  warn sprintf("\r\nCHAIN at %05o\r\n", $pc);
+  $hlt = 1;
+}
+
+#
+# Print an error code, as requested by the user.
+# (Also, force an exit.)
+sub os8error {
+  warn sprintf("\r\nUSER ERROR %o AT %05o\r\n", $core[$args+1], $pc);
+  $hlt = 1;
+}
+
+#
+# Swap the user code out, and the USR tables in
+sub os8usrin {
+  return if $usrin; # Already done
+  if (($core[07746] & 02001) == 00000) {
+    # Swap out memory
+    $dptr = 027 * 0400; # Block 027
+    for ($i = 010000; $i <= 011777; $i++) {
+      $sys[$dptr++] = $core[$i];
+    }
+  }
+  # Regenerate USR tables from scratch, rather than read them
+  &usrin;
+}
+
+#
+# Swap the USR tables out, and the user code in.
+sub os8usrout {
+  return unless $usrin; # Already done
+  $usrin = 0;
+  if (($core[07746] & 02001) == 00000) {
+    # Swap in memory
+    $dptr = 027 * 0400; # Block 027
+    for ($i = 010000; $i <= 011777; $i++) {
+      $core[$i] = $sys[$dptr++];
+    }
+  }
+}
+
+#
+# Unload loaded device drivers, and possibly delete the
+# tenative file. (This is made easy by having all the
+# driveers co-resident with SYS:.)
+sub os8reset {
+  if ($core[$args+1]) {
+    $core[017760] &= ~07;
+    $core[017761] &= ~07;
+    $core[017762] &= ~07;
+    undef $tent;
+  } else {
+    $pc = $args;
+  }
+}
+
+#
+# Given a hashed sixbit for a device, look up and return
+# the device number. (If not found, return undef.)
+sub devno {
+  # Check system device table
+  for ($i = 0; $i < 16; $i++) {
+    return $i + 1 if $pdnt[$i] == $hash;
+  }
+  # Check user defined names too.
+  for ($i = 017741; $i < 017760; $i++) {
+    return $i - 017740 if $core[$i] == $hash;
+  }
+  return undef;
+}
+
+#
+# Given that $nptr points to a filename and extension as
+# packed sixbit characters, collect the characters, add the
+# "." if needed, and return the file name as a string.
+sub name {
+  @fname = ($core[$nptr] >> 6, $core[$nptr++] & 077);
+  push(@fname, ($core[$nptr] >> 6, $core[$nptr++] & 077));
+  push(@fname, ($core[$nptr] >> 6, $core[$nptr++] & 077));
+  push(@fname, 056) if $core[$nptr];
+  push(@fname, ($core[$nptr] >> 6, $core[$nptr++] & 077));
+  grep(($_ = $_ & 040? $_: $_ + 0140), @fname);
+  $fname = pack("C*", @fname);
+  $fname =~ s/\`//g;
+  return $fname;
+}
+
+#
+# Make a sorted list of files suitable for inclusion.
+# Copy them into the SYS "image".
+sub loaddir {
+  $fsize = 06260; # Default to RK05
+  $sysfs = 1;
+  opendir(DIR, ".") || die ".: $!";
+  foreach $f (readdir(DIR)) {
+      $f =~ y/A-Z/a-z/;
+      next unless $f =~ /^[a-z0-9]{1,6}([.][a-z0-9]?[a-z0-9]?)?$/;
+      next unless -f $f;
+      die "Upper/lower case collision on $f" if defined $dir{$f};
+      $dir{$f} = 1;
+  }
+  $fblk = 070;
+  $f = -1;
+  @dir = sort keys %dir;
+  foreach $fname (@dir) {
+    $dir{$fname} = ++$f;
+    # Have name, get size
+    $size = -s $fname;
+    $size++ unless $size; # Length 0 not allowed
+    $extra = $size % 384;
+    $size = int($size/384);
+    $size += 1 if $extra;
+    next unless $size; # No zero length files!
+    $wptr = $fblk * 0400;
+    # Have size, make directory entry.
+    $fblk[$f] = $fblk;
+    $fblk += $size;
+    die "SYS: full" unless $fblk < $fsize;
+    $size[$f] = $size;
+    # Read the file into the "image".
+    open(INPUT, $fname) || die "$fname: $!";
+    read(INPUT, $buf, $size*384);
+    # Convert to bytes
+    @buf = unpack("C*", $buf);
+    push(@buf, 032, 032); # In case file didn't fill last block
+    for ($i = 0; $i < $size; $i++) {
+      for ($j = 0; $j < 0400; $j += 2) {
+         $c1 = 0200 ^ shift @buf;
+         $c2 = 0200 ^ shift @buf;
+         $c3 = 0200 ^ shift @buf;
+         $c1 += ($c3 & 0360) << 4;
+         $c2 += ($c3 & 017) << 8;
+         $sys[$wptr++] = $c1;
+         $sys[$wptr++] = $c2;
+      }
+    }
+    ($_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $mt, $_) = stat($fname);
+    ($_, $_, $_, $dy, $mo, $yr, $_, $_) = localtime($mt);
+    $yr += 1900;
+    $yr &= 07; # Only 3 LSB go in the AIW
+    # Cobble an OS/8 date word
+    $date[$f] = (($mo+1)<<8) + ($dy<<3) + $yr;
+  }
+  # Make an empty file for the remaining space.
+  @holest = ($fblk);
+  @holeln = ($fsize - $fblk);
+  @holedp = ($dirblk*0400+$dirptr - 2);
+# BUGBUG: dirblk undef means holedp[] is useless!
+#warn "$dirblk holedp @holedp";
+  die "Too Many Files" unless $dirblk < 7;
+#warn "got here: $f files in $dirblk dir blocks";
+#warn "got here: $fsize next block is $fblk ", $fblk - $fsize;
+  &writedir;
+}
+
+#
+# Load up the tables which must exist when USR is in memory, 
+# When USR is loaded, more system tables are available:
+# 10036	Pointer to Permanent Device Name Table
+#	Device names are the sum of the two words of the sixbit name
+#	The high bit of the first word is set if the second word is nonzero.
+#	The Device Name table is 15 (017) words long.
+# 10037	Pointer to the Handler Information Table (15 words):
+#	tbbbbeeeeeee	t is set for a two page handler.
+#			bbbb is the block number for the handler - 015
+#			eeeeeee is the offset of the handler entry point
+sub usrin {
+  $pdnt = 010400; # Need to match this address? (010564)
+  $pdnt[00] = $core[$pdnt+00] = (02331 + 02300) | 04000; # SYS
+  $pdnt[01] = $core[$pdnt+01] = (00423 + 01300) | 04000; # DSK
+  $pdnt[02] = $core[$pdnt+02] = (02424 + 03100) | 04000; # TTY
+  $pdnt[03] = $core[$pdnt+03] = 0;
+  $pdnt[04] = $core[$pdnt+04] = 0;
+  $pdnt[05] = $core[$pdnt+05] = 0;
+  $pdnt[06] = $core[$pdnt+06] = 0;
+  $pdnt[07] = $core[$pdnt+07] = 0;
+  $pdnt[010] = $core[$pdnt+010] = 0;
+  $pdnt[011] = $core[$pdnt+011] = 0;
+  $pdnt[012] = $core[$pdnt+012] = 0;
+  $pdnt[013] = $core[$pdnt+013] = 0;
+  $pdnt[014] = $core[$pdnt+014] = 0;
+  $pdnt[015] = $core[$pdnt+015] = 0;
+  $pdnt[016] = $core[$pdnt+016] = 0;
+  $core[010036] = $pdnt;
+
+  $hit = 010600; # Need to match this address? (010772)
+  $core[$hit+00] = 00007; # SYS
+  $core[$hit+01] = 00007; # DSK
+  $core[$hit+02] = 00176; # TTY (4576)
+  $core[$hit+03] = 0;
+  $core[$hit+04] = 0;
+  $core[$hit+05] = 0;
+  $core[$hit+06] = 0;
+  $core[$hit+07] = 0;
+  $core[$hit+010] = 0;
+  $core[$hit+011] = 0;
+  $core[$hit+012] = 0;
+  $core[$hit+013] = 0;
+  $core[$hit+014] = 0;
+  $core[$hit+015] = 0;
+  $core[$hit+016] = 0;
+  $core[010037] = $hit;
+
+  $usrin = 1;
+}
+
+#
+# Basically just "die", but restores TTY settings first.
+sub err {
+  ReadMode 'normal';
+  warn "\r\n";
+  warn @_;
+  exit 1;
+}
+
+#
+# Write the OS/8 directory.
+# Internally, the directory is maintained thus:
+# $dir{$fn}	Returns the integer file number.
+# $fblk[$fi]	Returns the first block number of a file.
+# $size[$fi]	Returns the size in blocks of a file.
+# $date[$fi]	Returns the date word for the file.
+# $holest[$i]	Returns the first block number of a hole.
+# $holeln[$i]	Returns the length in blocks of a file.
+# $tent		If defined, the index of the hole for the tentative file.
+sub writedir {
+  local(@i2fn);
+
+  $fblk = 070; # Assume SYS: is a system volume
+  $dirblk = 1;
+  $sys[$dirblk*0400+0] = 0; # No files yet
+  $sys[$dirblk*0400+1] = $fblk;
+  $sys[$dirblk*0400+2] = 0; # No link yet
+  $sys[$dirblk*0400+3] = 0; # No flags yet
+  $sys[$dirblk*0400+4] = 07777; # One AIW
+  $dirptr = 5;
+  $f = -1;
+  # Sort file names into positional order.
+  @i2fn = sort { $fblk[$dir{$a}] <=> $fblk[$dir{$b}] } keys %dir;
+#warn "writedir: i2fn == @i2fn\r\n";
+  # Merge @fblk and @holest to form the directory.
+  $hi = $fi = 0;
+  while (defined $i2fn[$fi] || defined $holest[$hi]) {
+    # file or hole remains
+    if (!defined $i2fn[$fi] || $fblk[$fi] > $holest[$hi]) {
+      # It must be a hole.  Check for room in this dirblk
+      if ($dirptr+2 > 0377) {
+        # Won't fit, need to wrap up this directory block.
+        $sys[$dirblk*0400+2] = $dirblk + 1; # Point to next dirblk
+        # Need to start another directory block.
+        $dirblk++; # Begin next dirblk
+        $dirptr = 5;
+        $sys[$dirblk*0400+0] = 0; # No files yet
+        $sys[$dirblk*0400+1] = $fblk;
+        $sys[$dirblk*0400+2] = 0; # No link yet
+        $sys[$dirblk*0400+3] = 0; # No flags yet
+        $sys[$dirblk*0400+4] = 07777; # One AIW
+#warn "dirblk now $dirblk\r\n";
+      }
+# warn "holest @holest\r\n";
+# warn "holeln @holeln\r\n";
+# warn "fblk @fblk\r\n";
+# warn "size @size\r\n";
+#@foo = %dir;
+# warn "writedir @foo\r\n";
+if ($holest[$hi] != $fblk) {
+  warn "fblk fblk != holest[$hi]!\r\n";
+} else {
+# warn "fblk fblk == holest[$hi]!\r\n";
+}
+      # Make dirent for a hole
+      &err("hole: $fblk != $holest[$hi]") unless $holest[$hi] == $fblk;
+      $sys[$dirblk*0400+$dirptr++] = 0;
+      # Write the negative length in blocks
+      $sys[$dirblk*0400+$dirptr++] = $holeln[$hi] & 07777;
+#warn "hole $fblk $holeln[$hi]\r\n";
+      # Bump the entry count
+      $sys[$dirblk*0400] = ($sys[$dirblk*0400] - 1) & 07777;
+      $fblk += $holeln[$hi];
+      $hi++;
+    } else {
+      # Make dirent for a file
+      $fname = $i2fn[$fi];
+      # Have name, get fb, size
+      $fb = $fblk[$dir{$fname}];
+      $size = $size[$dir{$fname}];
+#warn "file '$fname' $index $fb $size\r\n";
+      if ($dirptr+6 > 0377) {
+	# Won't fit, need to wrap up this directory block.
+	$sys[$dirblk*0400+2] = ++$dirblk; # Point to next dirblk
+	# Need to start another directory block.
+	$dirptr = 5;
+	$sys[$dirblk*0400+0] = 0; # No files yet
+	$sys[$dirblk*0400+1] = $fblk;
+	$sys[$dirblk*0400+2] = 0; # No link yet
+	$sys[$dirblk*0400+3] = 0; # No flags yet
+	$sys[$dirblk*0400+4] = 07777; # One AIW
+      }
+      &err("file: $fblk != $fb") unless $fb == $fblk;
+      die unless $size; # No zero length files!
+      # Have size, make directory entry.
+      $fname =~ y/a-z/A-Z/;
+      @fname = unpack("C*", $fname);
+      $c1 = $c2 = 0;
+      $c1 = shift @fname unless $fname[0] == 056;
+      $c2 = shift @fname unless $fname[0] == 056;
+      $sys[$dirblk*0400+$dirptr++] = (($c1 & 077) << 6) + ($c2 & 077);
+      $c1 = $c2 = 0;
+      $c1 = shift @fname unless $fname[0] == 056;
+      $c2 = shift @fname unless $fname[0] == 056;
+      $sys[$dirblk*0400+$dirptr++] = (($c1 & 077) << 6) + ($c2 & 077);
+      $c1 = $c2 = 0;
+      $c1 = shift @fname unless $fname[0] == 056;
+      $c2 = shift @fname unless $fname[0] == 056;
+      $sys[$dirblk*0400+$dirptr++] = (($c1 & 077) << 6) + ($c2 & 077);
+      shift @fname if $fname[0] == 056;
+      $c1 = $c2 = 0;
+      $c1 = shift @fname unless $fname[0] == 056;
+      $c2 = shift @fname unless $fname[0] == 056;
+      $sys[$dirblk*0400+$dirptr++] = (($c1 & 077) << 6) + ($c2 & 077);
+      # Write the OS/8 date word
+      $sys[$dirblk*0400+$dirptr++] = $date[$fi];
+      # Write the negative length in blocks
+      $sys[$dirblk*0400+$dirptr++] = (-$size) & 07777;
+      # Bump the entry count
+      $sys[$dirblk*0400] = ($sys[$dirblk*0400] - 1) & 07777;
+      $fblk += $size;
+      $fi++;
+    }
+  }
+  die "end: $fblk != $fsize" unless $fblk == $fsize;
+  die "Too Many Files" unless $dirblk < 7;
+#warn "got here: $f files in $dirblk dir blocks";
+#warn "got here: $fsize next block is $fblk ", $fblk - $fsize;
+}
