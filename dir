@@ -1,4 +1,5 @@
-#!os8
+#!/bin/sh
+exec os8 $0 $*
 # direct.sv
 
 # Segment 0: 12 pages

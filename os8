@@ -5,7 +5,7 @@
 #
 
 # $0 points to this script.
-# $ARGV[0] names to the OS/8 code, which could be anywhere along $ENV{'PATH'}.
+# $ARGV[0] names the OS/8 code, which could be anywhere along $ENV{'PATH'}.
 $code = shift @ARGV;
 if ($code =~ /^[.]/) {
   $dir = "." if $code =~ /^[.]/;
@@ -34,6 +34,7 @@ for ($loc = 0; $loc < 0100000; $loc++) {
 $loc = -1;
 open(CODE, "$dir/$code") || die "$dir/$code: $!";
 while (<CODE>) {
+  next if /^exec/;
   if (/^# JSW ([0-7]+)/) {
     $core[07746] = oct($1);
     $usrin = 0 unless $core[07746] & 02000;
