@@ -864,7 +864,7 @@ sub os8close {
     $pc = $args + 3; # Skip error return
     return;
   }
-warn "..new file $name\r\n" unless defined $dir{$name};
+#warn "..new file $name\r\n" unless defined $dir{$name};
   $dirty{$name} = 1;
 #warn "dirty set for $name\r\n" if $dirty{$name};
   $ok = 0;
