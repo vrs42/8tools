@@ -1,5 +1,4 @@
-#!/bin/sh
-exec os8 $0 $*
+#!/usr/bin/env os8
 # /home/vrs/pdp8/Images/os8_v3d_bin_1.0/pal8.sv
 
 # Segment 0: 4 pages

@@ -34,9 +34,3 @@ It should be noted that there's no "ccl".  What's done instead, is that the
 OS/8 image is invoked as for an OS/8 "r" command.  The arguments from the
 command line are passed to the first USR DECODE call, as if they were typed
 at the "*" prompt, and followed by an <ESC> character.
-
-An issue arises because the OS/8 "binaries" need to be able to find "os8".
-The current implementation used "#!os8", which requires the "os8" script to
-be available in the current working directory.  For now, you can do
-	ln -s `which os8` .
-

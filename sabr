@@ -1,5 +1,4 @@
-#!/bin/sh
-exec os8 $0 $*
+#!/usr/bin/env os8
 # fortx.0/sabr.sv
 
 # Segment 0: 3 pages

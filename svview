@@ -79,7 +79,7 @@ die "field count $#fld != $cs\n" unless $#fld == $cs;
 #warn "cs == $cs";
 # At this point, we have parsed a seemingly valid header.
 #
-print "#!os8\n# $f";
+print "#!/usr/bin/env os8\n# $f";
 #
 # Now iterate over the various blocks and display them.
 seek(INPUT, 3*256/2, 0) || die "seek: $!";
