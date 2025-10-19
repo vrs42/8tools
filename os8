@@ -1032,6 +1032,8 @@ die "no such device $devno" unless $devno;
     $c1 = $c2 = 0;
     $c1 = shift @fname unless $fname[0] == 056;
     $c2 = shift @fname unless $fname[0] == 056;
+    $core[$optr++] = (($c1 & 077) << 6) + ($c2 & 077);
+    &err("Too many output specs: $ospec\n") if $optr > 017617+020;
   }
   # Note: Input specs DSK: by default for the first, then
   # default to the same device as the previous specification.
@@ -1041,15 +1043,27 @@ die "no such device $devno" unless $devno;
 # BUGBUG: Old cruft left in memory here if no ispec.
   @ispec = split(/,/, $ispec);
   foreach $ispec (@ispec) {
-#warn "ispec: $ispec";
+#warn "ispec: $ispec\r\n";
+# BUGBUG: According to the documentation, each ispec is allowed
+# to contain only alphanumeric characters.
     # Process device name, if any
     if ($ispec =~ s/^(\[A-Z0-9]*)://) {
       $dev = $1;
       $devno = &devno($dev);
-# BUGBUG: TODO: Fail if no such device!!
-die "no such device $DEV" unless $devno;
+      die "no such device $DEV" unless $devno;
     }
+# BUGBUG: Where was $inext set??
     if ($inext != 05200) {
+      if ($ispec !~ /[.]/) {
+        # Apply the default extension
+# BUGBUG: Technically, we should try the extension, and fall
+# back to no extension if that open fails!
+#warn "inext: $inext\n";
+        @inext = (056, $inext >> 6, $inext & 077);
+        grep(($_ = $_ & 040? $_: $_ + 0140), @inext);
+        $ispec .= pack("C*", @inext);
+        $ispec =~ s/[`]*$//;
+      }
       # Regular mode looks up each file
       $fname = $ispec;
       $fname =~ y/A-Z/a-z/;

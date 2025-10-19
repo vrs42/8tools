@@ -75,6 +75,7 @@ if ($help) {
   die "No help for $ARGV[0]\n" unless $found;
   while (<HELP>) {
     s/^@//;
+    next if /^[&]/;
     last if /^\f/;
     print;
   }
