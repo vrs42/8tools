@@ -372,6 +372,7 @@ foreach $fn (sort keys %dirty) {
     $xor = 0200; # Assume a text file
     $xor = 0 if $fn =~ /[.]bn/i; # Unless it's .bn
     $xor = 0 if $fn =~ /[.]rl/i; # Unless it's .rl
+    $xor = 0 if $fn =~ /[.]sv/i; # Unless it's .sv
     for ($i = $fblk; $i < $fblk+$size; $i += 2) {
       # Each word pair becomes three bytes.
       # BUGBUG: Fuss here about with the binary/text distinction??
@@ -844,7 +845,8 @@ sub os8enter {
     # Remember the tentative file
     $tent = $holedp[$hole];
     $tent = $hole;
-#warn "hole: $hole";
+#warn "hole: $hole\r\n";
+#warn "enter: returning $holest[$hole]/$holeln[$hole]\r\n";
     # Return it's extent.
     $core[$args+1] = $holest[$hole];
     $core[$args+2] = $holeln[$hole];
@@ -860,6 +862,7 @@ sub os8enter {
 # Close a tentative file, making it permanent.
 # Alternatively, delete a file.
 sub os8close {
+#warn sprintf("\r\nUSR CLOSE entered from %05o\r\n", $pc);
   $devno = $lac & 017;
   &err("MONITOR ERROR 4 devno: $devno\n") unless $devno & 017;
   &err("MONITOR ERROR 4 devno: $devno\n") if $devno > 017;
@@ -956,7 +959,7 @@ sub os8close {
   &writedir;
 # warn sprintf("\r\nUSR called from %05o\r\n", $pc) if $trace;
   $pc = $args + 2 + $ok; # Skip error return
-#warn "CLOSE returns\r\n";
+#warn "CLOSE returns ok = $ok\r\n";
 }
 
 #
@@ -1248,6 +1251,7 @@ sub loaddir {
     $xor = 0200; # Assume a text file
     $xor = 0 if $fname =~ /[.]bn/i; # Unless it's .bn
     $xor = 0 if $fname =~ /[.]rl/i; # Unless it's .rl
+    $xor = 0 if $fname =~ /[.]sv/i; # Unless it's .sv
     for ($i = 0; $i < $size; $i++) {
       for ($j = 0; $j < 0400; $j += 2) {
          $c1 = $xor ^ shift @buf;
@@ -1365,6 +1369,7 @@ sub writedir {
 #warn "writedir: i2fn == @i2fn\r\n";
   # Merge @fblk and @holest to form the directory.
   $hi = $fi = 0;
+#warn "size @size\r\n";
   while (defined $i2fn[$fi] || defined $holest[$hi]) {
     # file or hole remains
     if (!defined $i2fn[$fi] || $fblk[$fi] > $holest[$hi]) {
@@ -1382,12 +1387,12 @@ sub writedir {
         $sys[$dirblk*0400+4] = 07777; # One AIW
 #warn "dirblk now $dirblk\r\n";
       }
-# warn "holest @holest\r\n";
-# warn "holeln @holeln\r\n";
-# warn "fblk @fblk\r\n";
-# warn "size @size\r\n";
+#warn "holest @holest\r\n";
+#warn "holeln @holeln\r\n";
+#warn "fblk @fblk\r\n";
+#warn "size @size\r\n";
 #@foo = %dir;
-# warn "writedir @foo\r\n";
+#warn "writedir @foo\r\n";
 if ($holest[$hi] != $fblk) {
   warn "fblk fblk != holest[$hi]!\r\n";
 } else {
@@ -1409,7 +1414,7 @@ if ($holest[$hi] != $fblk) {
       # Have name, get fb, size
       $fb = $fblk[$dir{$fname}];
       $size = $size[$dir{$fname}];
-#warn "file '$fname' $index $fb $size\r\n";
+#warn "file '$fname' $index $fb: $size\r\n";
       if ($dirptr+6 > 0377) {
 	# Won't fit, need to wrap up this directory block.
 	$sys[$dirblk*0400+2] = ++$dirblk; # Point to next dirblk
