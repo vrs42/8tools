@@ -33,10 +33,13 @@ for ($loc = 0; $loc < 0100000; $loc++) {
 # Open the code file and load into the simulated core.
 $loc = -1;
 open(CODE, "$dir/$code") || die "$dir/$code: $!";
+# Several OS/8 utilities assume USR is still in core without 02000 set!
+# So, we set usrin here, and unset it if it gets overlain.
+&usrin if $core[07746] & 02000;
 while (<CODE>) {
   if (/^# JSW ([0-7]+)/) {
     $core[07746] = oct($1);
-    $usrin = 0 unless $core[07746] & 02000;
+#   $usrin = 0 unless $core[07746] & 02000; # Don't trust this!
   } elsif (/^# START ([0-7]+)/) {
     $sa = oct($1);
     $core[07745] = $sa & 07777;
@@ -47,6 +50,8 @@ while (<CODE>) {
     if (s/^([0-7]+)\)//) {
       $loc = oct($1);
     } elsif (s/^([0-7]+)\s+//) {
+      # If loading this word clobbers USR, unset $usrin!
+      $usrin = 0 if ($loc & 076000) == 010000;
       $core[$loc++] = oct($1);
     }
   }

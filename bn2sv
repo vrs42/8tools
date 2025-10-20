@@ -68,6 +68,7 @@ sub readBin {
     }
     # EOF leaves $top eq ''
     last if $top eq '';
+    last if $top == 0232; # explicit EOF
     # At the top of this loop the first character has been read
     for (;;) {
       last if $top == 0200;	# Trailer
