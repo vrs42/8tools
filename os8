@@ -369,13 +369,21 @@ foreach $fn (sort keys %dirty) {
     $fblk *= 0400;
     $size *= 0400;
     open(OUTPUT, ">$fn") || die "$fn: $!";
+    $xor = 0200; # Assume a text file
+    $xor = 0 if $fn =~ /[.]bn/i; # Unless it's .bn
+    $xor = 0 if $fn =~ /[.]rl/i; # Unless it's .rl
     for ($i = $fblk; $i < $fblk+$size; $i += 2) {
       # Each word pair becomes three bytes.
       # BUGBUG: Fuss here about with the binary/text distinction??
       $c1 = $sys[$i  ] & 0377;
       $c2 = $sys[$i+1] & 0377;
       $c3 = ((($sys[$i] >> 8) << 4) + ($sys[$i+1] >> 8));
-      print OUTPUT pack("CCC", $c1, $c2, $c3);
+      last if $xor && $c1 == 0232;
+      print OUTPUT pack("C", $xor ^ $c1);
+      last if $xor && $c2 == 0232;
+      print OUTPUT pack("C", $xor ^ $c2);
+      last if $xor && $c3 == 0232;
+      print OUTPUT pack("C", $xor ^ $c3);
     }
   }
 }
@@ -1052,13 +1060,12 @@ die "no such device $devno" unless $devno;
       $devno = &devno($dev);
       die "no such device $DEV" unless $devno;
     }
-# BUGBUG: Where was $inext set??
     if ($inext != 05200) {
       if ($ispec !~ /[.]/) {
         # Apply the default extension
 # BUGBUG: Technically, we should try the extension, and fall
 # back to no extension if that open fails!
-#warn "inext: $inext\n";
+#warn "inext: $inext\r\n";
         @inext = (056, $inext >> 6, $inext & 077);
         grep(($_ = $_ & 040? $_: $_ + 0140), @inext);
         $ispec .= pack("C*", @inext);
@@ -1103,7 +1110,8 @@ die "no such device $devno" unless $devno;
 #print STDERR "$ispec\r\n";
 #for ($i = 017600; $i < 020000; $i++) {
 #  printf STDERR "%04o ", $core[$i];
-#}#exit 0;
+#}
+#&err("debug\r\n") if $beenhere++;
   $pc = $args + 2;
 }
 
@@ -1237,11 +1245,14 @@ sub loaddir {
     # Convert to bytes
     @buf = unpack("C*", $buf);
     push(@buf, 032, 032); # In case file didn't fill last block
+    $xor = 0200; # Assume a text file
+    $xor = 0 if $fname =~ /[.]bn/i; # Unless it's .bn
+    $xor = 0 if $fname =~ /[.]rl/i; # Unless it's .rl
     for ($i = 0; $i < $size; $i++) {
       for ($j = 0; $j < 0400; $j += 2) {
-         $c1 = 0200 ^ shift @buf;
-         $c2 = 0200 ^ shift @buf;
-         $c3 = 0200 ^ shift @buf;
+         $c1 = $xor ^ shift @buf;
+         $c2 = $xor ^ shift @buf;
+         $c3 = $xor ^ shift @buf;
          $c1 += ($c3 & 0360) << 4;
          $c2 += ($c3 & 017) << 8;
          $sys[$wptr++] = $c1;
