@@ -74,7 +74,7 @@ $swr = 07777;
 # LINK is in $lac.
 $hlt = $ion = $ionn = $um = $rib = $lac = $mq = $modeb = $sc = 0;
 # I/O Devices.
-$ttof = $ttofn = 0; # Teleprinter flag is clear
+$ttof = $ttofn = 1; # Teleprinter flag is set (by OS/8)
 $ttie = 1;
 # Run-time behavior.
 $interact = 0;
@@ -877,6 +877,7 @@ sub os8close {
   $size = $core[$args+2];
 #warn "CLOSE(devno $devno, name $name, size $size)\r\n";
   if ($devno > 2) {
+    # Not file structured
     $pc = $args + 3; # Skip error return
     return;
   }
@@ -884,8 +885,9 @@ sub os8close {
   $dirty{$name} = 1;
 #warn "dirty set for $name\r\n" if $dirty{$name};
   $ok = 0;
-  # Remember the position of the old file
-  $fblk = 0; # No valid file block yet
+  # Remember the position of the old file, if any
+  # (We will need to merge it with @holest, @holeln.)
+  $fblk = 0; # No old file block yet
   ($fblk, $flen) = ($fblk[$dir{$name}], $size[$dir{$name}])
     if defined $dir{$name};
 #@foo = %dir;
@@ -895,7 +897,7 @@ sub os8close {
 #warn "Allocating dirslot $#fblk+1\r\n" unless defined $dir{$name};
     $dir{$name} = $#fblk+1 unless defined $dir{$name};
     ($fblk[$dir{$name}], $size[$dir{$name}]) = ($holest[$tent], $size);
-    # Shrink the hole which contains the new file.
+    # Shrink the hole which contained the new file.
 #warn "tent: $tent";
 #warn "tent was $holest[$tent], len $holeln[$tent]\r\n";
     $holest[$tent] += $size;
@@ -919,17 +921,25 @@ sub os8close {
 #warn "holemerge: ok is $ok at start\r\n";
   # Remove the old file, if any.
   if ($fblk) {
+#warn "holemerge before: fblk: @fblk\r\n";
+#warn "holemerge before: size: @size\r\n";
+#@foo = %dir;
+#warn "holemerge before: dir is @foo\r\n";
+#warn "holemerge before: holest @holest\r\n";
+#warn "holemerge before: holeln @holeln\r\n";
+#warn "fblk $fblk\r\n";
+#warn "flen $flen\r\n";
     # Find the frst hole that follows the file.
     # $fblk, $flen were set above
     for ($i = 0; $i <= $#holest; $i++) {
-      if ($fblk+$size == $holest[$i]) {
+      if ($fblk+$flen == $holest[$i]) {
 #warn "holemerge: We can merge at the beginning\r\n";
         # We can merge at the beginning
         $holest[$i] -= $flen;
         $holeln[$i] += $flen;
         $ok = 1;
         last;
-      } elsif ($holest[$i]+$holesz[$i] == $fblk) {
+      } elsif ($holest[$i]+$holeln[$i] == $fblk) {
 #warn "holemerge: We can merge at the end\r\n";
         # We can merge at the end
         $holeln[$i] += $flen;
@@ -949,8 +959,8 @@ sub os8close {
       # We must create a new hole
       $holest[$#holest+1] = $fblk;
       $holeln[$#holest] = $flen;
-#warn "holest @holest\r\n";
-#warn "holeln @holeln\r\n";
+#warn "holemerge after: holest @holest\r\n";
+#warn "holemerge after: holeln @holeln\r\n\n";
       $ok = 1;
     }
     # BUGBUG: This creates a hole in the file extent arrays
@@ -977,10 +987,13 @@ sub os8decode {
   # Bit 10 of the JSW is currently ignored, as we
   # Don't actually bring an overlay into 00000-01777.
   $inext = $core[$args+1];
+  # Special magic: if $core[arg+2] is zero, it is an argument.
+  # Otherwise, it's the return address!
   # Destroy tentative file, if any.
-  undef $tent;
-  $args-- if $core[$args+2];
+  undef $tent unless $core[$args+2] == 0;
+  $args-- if $core[$args+2]; # Already have $inext
   $devno = 2; # Assume DSK: unless told otherwise.
+  # Onward!
   $ispec = "@usr";
   $ispec =~ y/a-z/A-Z/;
   # Process (and remove) switches
@@ -993,7 +1006,7 @@ sub os8decode {
     $exp =~ s:(.):/\1:g;
     $ispec =~ s/[(]([^)]*)[)]/$exp/;
   }
-  # Set bits for the options
+  # set bits for the options
   while ($ispec =~ s:/(.)::) {
     $sw = $1;
     &err("Illegal switch '$sw'\n") unless $sw =~ /[A-Z0-9]/;
@@ -1009,6 +1022,7 @@ sub os8decode {
   $nnn = oct($nnn);
   $core[017642] = 07777 & ($nnn >> 12);
   $core[017642] |= 04000 unless $ispec =~ s/\$$//;
+#warn "$ispec: 017642 is $core[017642]\r\n";
   $core[017646] = 07777 & $nnn;
   $ispec =~ s/_/</;
   $ospec = "";
@@ -1360,6 +1374,13 @@ sub err {
 sub writedir {
   local(@i2fn);
 
+#warn "\r\n";
+#warn "writedir: holest @holest\r\n";
+#warn "writedir: holeln @holeln\r\n";
+#warn "writedir: fblk @fblk\r\n";
+#warn "writedir: size @size\r\n";
+#@foo = %dir;
+#warn "writedir: dir @foo\r\n";
   $fblk = 070; # Assume SYS: is a system volume
   $dirblk = 1;
   $sys[$dirblk*0400+0] = 0; # No files yet
@@ -1377,7 +1398,8 @@ sub writedir {
 #warn "size @size\r\n";
   while (defined $i2fn[$fi] || defined $holest[$hi]) {
     # file or hole remains
-    if (!defined $i2fn[$fi] || $fblk[$fi] > $holest[$hi]) {
+
+    if (!defined $i2fn[$fi] || $fblk[$dir{$i2fn[$fi]}] > $holest[$hi]) {
       # It must be a hole.  Check for room in this dirblk
       if ($dirptr+2 > 0377) {
         # Won't fit, need to wrap up this directory block.
@@ -1392,12 +1414,12 @@ sub writedir {
         $sys[$dirblk*0400+4] = 07777; # One AIW
 #warn "dirblk now $dirblk\r\n";
       }
-#warn "holest @holest\r\n";
-#warn "holeln @holeln\r\n";
-#warn "fblk @fblk\r\n";
-#warn "size @size\r\n";
+#warn "writedir hole: holest @holest\r\n";
+#warn "writedir hole: holeln @holeln\r\n";
+#warn "writedir hole: fblk @fblk\r\n";
+#warn "writedir hole: size @size\r\n";
 #@foo = %dir;
-#warn "writedir @foo\r\n";
+#warn "writedir hole: dir @foo\r\n";
 if ($holest[$hi] != $fblk) {
   warn "fblk fblk != holest[$hi]!\r\n";
 } else {
