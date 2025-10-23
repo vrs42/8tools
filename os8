@@ -283,14 +283,14 @@ sub emul8 {
 # Operands in the next word.
         $lac |= $sc if $inst & 0040; # T2 SCA
         if (($inst & 016) == 002) { # T3 SCL
-          print '$sc = (~$core[++$pc]) & 037; ';
+          warn 'SCL: $sc = (~$core[++$pc]) & 037; ' . "\r\n";;
         } elsif (($inst & 016) == 004) { # T3 MUY
           ++$pc;
-          print '($lac, $mq) = (($mq*$core[',$pc,']+$lac)>>12, ($mq*$core[',$pc,']+$lac)&07777; ';
+          warn 'MUY: ($lac, $mq) = (($mq*$core[',$pc,']+$lac)>>12, ($mq*$core[',$pc,']+$lac)&07777; ' . "\r\n";
         } elsif (($inst & 016) == 006) { # T3 DVI
           ++$pc;
-          print '$lnktmp = $lac < $core[',$pc,']? 010000 : 0; $lac &= 07777; ';
-          print '($lac, $mq) = ((int(($lac<<12)+$mq) / $core[',$pc,']), (($lac<<12+$mq) % $core[',$pc,'])); ';
+          warn 'DVI: $lnktmp = $lac < $core[',$pc,']? 010000 : 0; $lac &= 07777; ' . "\r\n";
+          warn 'DVI: ($lac, $mq) = ((int(($lac<<12)+$mq) / $core[',$pc,']), (($lac<<12+$mq) % $core[',$pc,'])); ' . "\r\n";
           print '$lac += $lnktmp; '
         } elsif (($inst & 016) == 010) { # T3 NMI
         } elsif (($inst & 016) == 012) { # T3 SHL
@@ -884,12 +884,12 @@ sub os8close {
 #warn "..new file $name\r\n" unless defined $dir{$name};
   $dirty{$name} = 1;
 #warn "dirty set for $name\r\n" if $dirty{$name};
-  $ok = 0;
   # Remember the position of the old file, if any
   # (We will need to merge it with @holest, @holeln.)
   $fblk = 0; # No old file block yet
   ($fblk, $flen) = ($fblk[$dir{$name}], $size[$dir{$name}])
     if defined $dir{$name};
+  $ok = !defined $dir{$name}; # Hole still to be merged into list!
 #@foo = %dir;
 #warn "CLOSE: dir was @foo\r\n";
   if ($size) {
@@ -905,6 +905,7 @@ sub os8close {
 #warn "tent now $holest[$tent], len $holeln[$tent]\r\n";
     if ($holeln[$tent] == 0) {
       # Remove the now zero length hole.
+# BUGBUG: A splice would probably be faster here.
       for ($i = $tent; $i < $#holest; $i++) {
         $holest[$i] = $holest[$i+1];
         $holeln[$i] = $holeln[$i+1];
@@ -912,6 +913,22 @@ sub os8close {
       pop @holest;
       pop @holeln;
       $ok = 1;
+    }
+  } else {
+    if (defined $dir{$name}) {
+      # Delete the file
+      $fi = $dir{$name};
+#warn "delete: $fname, $fi\r\n";
+      # This will create holes in the file extent arrays
+      # that we need to close.
+      delete $dir{$name};
+      # Close the holes in @fblk and @size.
+#warn "delete was: fblk @fblk\r\n";
+#warn "delete was: size @size\r\n";
+      splice(@fblk, $fi, 1);
+      splice(@size, $fi, 1);
+#warn "delete now: fblk @fblk\r\n";
+#warn "delete now: size @size\r\n";
     }
   }
 #warn "holest @holest\r\n";
@@ -963,12 +980,11 @@ sub os8close {
 #warn "holemerge after: holeln @holeln\r\n\n";
       $ok = 1;
     }
-    # BUGBUG: This creates a hole in the file extent arrays
-    # that may want to get closed if there's no new file!!
-    undef $dir{$name} unless $size;
   }
   undef $tent if $ok;
   # Finally, update the "on-disk" directory.
+#warn "closed: fblk: @fblk\r\n";
+#warn "closed: size: @size\r\n";
 #@foo = %dir;
 #warn "CLOSE: dir now @foo\r\n";
   &writedir;
