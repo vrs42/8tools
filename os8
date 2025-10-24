@@ -358,8 +358,7 @@ sub fetch {
 &fetch(); 
 
 #
-# BUGBUG: TODO: Export "dirty" files here!
-# BUGBUG: "dirty" not set when files replaced in CLOSE!!
+# Export "dirty" files here
 @foo = keys %dirty;
 #warn "dirty: @foo\r\n";
 foreach $fn (sort keys %dirty) {
@@ -374,13 +373,13 @@ foreach $fn (sort keys %dirty) {
     $fblk *= 0400;
     $size *= 0400;
     open(OUTPUT, ">$fn") || die "$fn: $!";
+    # Fuss here about with the binary/text distinction
     $xor = 0200; # Assume a text file
     $xor = 0 if $fn =~ /[.]bn/i; # Unless it's .bn
     $xor = 0 if $fn =~ /[.]rl/i; # Unless it's .rl
     $xor = 0 if $fn =~ /[.]sv/i; # Unless it's .sv
     for ($i = $fblk; $i < $fblk+$size; $i += 2) {
       # Each word pair becomes three bytes.
-      # BUGBUG: Fuss here about with the binary/text distinction??
       $c1 = $sys[$i  ] & 0377;
       $c2 = $sys[$i+1] & 0377;
       $c3 = ((($sys[$i] >> 8) << 4) + ($sys[$i+1] >> 8));
@@ -651,7 +650,7 @@ sub os8driver {
 #       printf "%3o %3o %3o ", $c1, $c2, $c3;
       }
     } else {
-# BUGBUG: TODO: Implement TTY reads!!
+# BUGBUG: TODO: Implement TTY: reads!!
 &err("TTY: read not implemented yet\n");
       for ($i = 0; $i < $size; $i++) {
         $core[$bufadr] = $sys[$dptr++];
@@ -905,13 +904,8 @@ sub os8close {
 #warn "tent now $holest[$tent], len $holeln[$tent]\r\n";
     if ($holeln[$tent] == 0) {
       # Remove the now zero length hole.
-# BUGBUG: A splice would probably be faster here.
-      for ($i = $tent; $i < $#holest; $i++) {
-        $holest[$i] = $holest[$i+1];
-        $holeln[$i] = $holeln[$i+1];
-      }
-      pop @holest;
-      pop @holeln;
+      splice(@holest, $tent, 1);
+      splice(@holeln, $tent, 1);
       $ok = 1;
     }
   } else {
@@ -927,6 +921,9 @@ sub os8close {
 #warn "delete was: size @size\r\n";
       splice(@fblk, $fi, 1);
       splice(@size, $fi, 1);
+      foreach $fname (keys %dir) {
+        $dir{$fname}-- if $dir{$fname} > $fi;
+      }
 #warn "delete now: fblk @fblk\r\n";
 #warn "delete now: size @size\r\n";
     }
