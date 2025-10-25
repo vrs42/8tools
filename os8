@@ -791,13 +791,15 @@ sub os8lookup {
   push(@fname, ($core[$nptr] >> 6, $core[$nptr++] & 077));
   push(@fname, 056);
   push(@fname, ($core[$nptr] >> 6, $core[$nptr++] & 077));
-  grep(($_ = $_ & 40? $_: $_ + 0100), @fname);
+  grep(($_ = $_ & 040? $_: $_ + 0140), @fname);
   $fname = pack("C*", @fname);
-  $fname =~ s/@//g;
+  $fname =~ s/`//g;
+#warn "LOOKUP: $fname\r\n";
   $i = $dir{$fname};
-  $pc = $args + 3; # Point at error return
+  $pc = $args + 2; # Point at error return
   $lac &= 010000; # Clear AC
   return unless defined $i;
+#warn "LOOKUP: file# $i\r\n";
   $core[$args+1] = $fblk[$i]; # Set file position
   $core[$args+2] = $size[$i]; # Set file length
   $pc++; # Point at normal return
@@ -1156,6 +1158,7 @@ die "no such device $devno" unless $devno;
 sub os8chain {
 # TODO: Fix this
   warn sprintf("\r\nCHAIN at %05o\r\n", $pc);
+#warn "Block $core[$args+1]\r\n";
   $hlt = 1;
 }
 
