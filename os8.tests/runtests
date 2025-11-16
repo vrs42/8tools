@@ -1,0 +1,15 @@
+#!/usr/bin/expect -f
+
+spawn pdp8
+set timeout -1
+expect {
+	{..$} { exp_continue }
+        {.$} { send "SET SYS NO INIT\r" }
+}
+expect -re {\n\.$}
+send "SUBMIT SYS:TESTS/T\r"
+#expect -re {\n$END$}
+sleep 2
+expect -re {\n\.$}
+close
+exit 0

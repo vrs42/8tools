@@ -1,0 +1,98 @@
+#
+# A battery of regression tests for the OS/8 binaries.
+#
+# There are crashes with some binaries due to corruption
+# of the internal representation of the directory for SYS:.
+#
+# The code for directory maintenance (mostly USR CLOSE) still seems
+# fragile.
+
+# Regressions tests for basic
+#echo basic tests:
+#echo BASIC requires you to type in caps "(hold SHIFT down)"
+#echo basic tests: OLD HELLO, then run for HELLO WORLD, then BYE
+#basic
+
+# Regressions tests for pal8
+# BUGS:
+#	Reports DE errors unless .bn, .ls files pre-exist!
+#	E8 source split because IC and PH errors occur if input too large.
+echo pal8 tests:
+rm -f short.bn short.ls
+pal8 short,short_short
+pal8 short,short_short
+echo These tests will take a while...
+rm -f e8all.bn e8all.ls
+pal8 e8all,e8all_e8a.pa,e8b.pa
+pal8 e8all,e8all_e8a.pa,e8b.pa
+
+# Regressions tests for map
+# BUGS:
+#	ERROR ON OUTPUT DEVICE unless .mp pre-exists!
+echo map tests:
+rm -f e8all.mp
+map e8all_e8all
+map e8all_e8all
+
+# Regressions tests for cref
+echo cref tests:
+cref e8all_e8all
+
+# Regressions tests for dir
+# BUGS:
+#	Output to file gives wierd handling of high bits.
+echo dir tests:
+dir
+dir /e/f
+dir dir_
+
+# Regressions tests for sabr
+echo sabr tests:
+rm -f accept.rl accept.ls
+sabr accept,accept_accept
+sabr accept,accept_accept
+
+# Regressions tests for ralf
+# BUGS:
+#	Reports IO errors unless .rl, .ls files pre-exist!
+echo ralf tests:
+rm -f alog.rl alog.ls
+ralf alog,alog_alog
+
+# Regressions tests for focl69
+echo focl69 tests:
+echo Answer the intoductory dialog questions in uppercase.
+echo Do W, then L commands.
+focl69
+
+# Regressions tests for focal8
+echo focal8 tests:
+echo Do W, then L commands.
+focal8
+
+# Regressions tests for focl71
+echo focl71 tests:
+echo Answer the intoductory dialog questions in uppercase.
+echo Do W, then L E commands.
+focl71
+
+# Regressions tests for focl8k
+echo focl8k tests:
+echo Do W, then L commands.
+focl8k
+
+# Regressions tests for runoff
+# BUGS:
+#	Reports OE errors unless .wu file pre-exists!
+echo runoff tests:
+rm -f head.wu
+runoff head_head
+runoff head_head
+
+#TODO:
+# Regressions tests for e8
+# Regressions tests for edit
+# Regressions tests for fotp
+# Regressions tests for pip
+# Regressions tests for srccom
+# Regressions tests for teco

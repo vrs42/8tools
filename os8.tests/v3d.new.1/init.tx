@@ -1,0 +1,11 @@
+
+PiDP-8/I pi5:id[c4b8c499df] - OS/8 V3D - KBM V3Q - CCL V1F
+Configured by vrs@vrs-w10 on 2024.11.22 at 22:18:41 PST
+
+Restart address = 07600
+
+Type:
+    .DIR                -  to get a list of files on DSK:
+    .DIR SYS:           -  to get a list of files on SYS:
+    .R PROGNAME         -  to run a system program
+    .HELP FILENAME      -  to type a help file
