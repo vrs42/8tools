@@ -56,6 +56,6 @@ verify: short.bn short.ls e8all.bn e8all.ls e8all.mp accept.rl alog.rl head.wu
 	cmp accept.rl $(OS8).new.0/accept.rl
 	diff accept.ls $(OS8).new.0/accept.ls
 	cmp alog.rl $(OS8).new.0/alog.rl
-	diff alog.ls $(OS8).new.0/alog.ls
+	diff -q alog.ls $(OS8).new.0/alog.ls
 	diff head.wu $(OS8).new.0/head.wu
 
