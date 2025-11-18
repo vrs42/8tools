@@ -1,0 +1,213 @@
+
+RALF V62A                PAGE 1
+
+            /
+            /
+            /       A  L  O  G
+            /       -  -  -  -
+            /
+            /SUBROUTINE     ALOG(X)
+            /
+            / VERSION 5A 4-26-77 (MH)
+            /
+                    SECT    ALOG
+00000 1030          JA      #ALOG
+00001 0115  
+00002 0000          0                       /WORKING SPACE FOR EXPONENT DIDDLE.
+00003 0000          0
+00004 0000          0
+00005 0000  ALOGTM, 0
+00006 0000          0
+00007 0000          0
+00010 0000          0
+00011 0002  F2ALOG, F 2.
+00012 2000  
+00013 0000  
+00014 0001  FPI2,   1
+00015 3110          3110
+00016 3755          3755
+            /
+                    EXTERN  #ARGER
+00017 4000  ALOG0,  TRAP4   #ARGER
+00020 0000  
+00021 1030          JA      ALGRTN          /RETURN NOW.
+00022 0066  
+            /
+                    EXTERN  #ARGER
+00023 4000  ALOGM1, TRAP4   #ARGER
+00024 0000  
+00025 1030          JA      ALGRTN
+00026 0066  
+00027 0114          TEXT    +ALOG  +
+00030 1707  
+00031 4040  
+            ALOGXR,
+00032 0000  BPALOG, F 0.0
+00033 0000  
+00034 0000  
+00035 0000  XRALOG, F 0.0
+00036 0000  
+00037 0000  
+00040 0000  ALOG1,  F 0.0
+00041 0000  
+00042 0000  
+00043 0000  ALOG2,  F 0.0
+00044 0000  
+00045 0000  
+00046 0001  F1ALOG, F 1.
+00047 2000  
+00050 0000  
+RALF V62A                PAGE 1-1
+
+            /
+00051 0000  ALOGMG, 0
+00052 0000          0
+00053 0013          13                      /CORRECT EXPONENT DIDDLER.
+            /
+            /
+            /
+            /
+00054 0000  ALOGL1, 0
+00055 3777          3777
+00056 7742          7742
+            /
+00057 0000  ALOGE2, 0
+00060 2613          2613
+00061 4414          4414
+            /
+                    ORG     10*3+BPALOG
+00062 0040          FNOP
+00063 1030          JA      ALOGXR
+00064 0032  
+00065 0000          0
+00066 1030  ALGRTN, JA      .
+00067 0066  
+00070 7777  ALOGL2, 7777
+00071 4000          4000
+00072 4100          4100
+            /
+00073 7777  ALOGL3, 7777
+00074 2517          2517
+00075 0310          0310
+            /
+00076 7776  ALOGL4, 7776
+00077 4113          4113
+00100 7211          7211
+            /
+00101 7776  ALOGL5, 7776
+00102 2535          2535
+00103 3301          3301
+            /
+00104 7775  ALOGL6, 7775
+00105 4746          4746
+00106 0771          0771
+            /
+00107 7774  ALOGL7, 7774
+00110 2236          2236
+00111 4304          4304
+            /
+00112 7771  ALOGL8, 7771
+00113 4544          4544
+00114 1735          1735
+                    BASE    0
+00115 0006  #ALOG,  STARTD
+00116 0210          FLDA    10*3
+00117 6400          FSTA    ALGRTN
+00120 0066  
+00121 0200          FLDA    0
+RALF V62A                PAGE 1-2
+
+00122 1100          SETX    XRALOG
+00123 0035  
+00124 1110          SETB    BPALOG
+00125 0032  
+                    BASE    BPALOG
+00126 0101          LDX     1,1     
+00127 0001  
+00130 6200          FSTA    BPALOG
+00131 0610          FLDA%   BPALOG,1  /ADDR OF X
+00132 6200          FSTA    BPALOG
+00133 0005          STARTF
+00134 0600          FLDA%   BPALOG  /GET X
+00135 1000          JEQ     ALOG0   /IF  =0 THEN ERROR
+00136 0017  
+00137 1050          JLT     ALOGM1  /IF<0 THEN ERROR
+00140 0023  
+00141 0100          LDX     -1,0    /IF >0 THEN START DOING
+00142 7777  
+00143 6202          FSTA    ALOG1           /SAVE IN A TEMP.
+00144 2204          FSUB    F1ALOG          /KNOCK OFF ONE.
+00145 1000          JEQ     ALGRTN          /IF ZERO EXIT. LOG(1)=0
+00146 0066  
+00147 1010          JGE     ALOGST          /IF POSITIVE LOG>0
+00150 0160  
+00151 0204          FLDA    F1ALOG          /NEGITE. INVERT IT.
+00152 3202          FDIV    ALOG1           /BY DIVIDING INTO ONE.
+00153 6202          FSTA    ALOG1
+00154 0100          LDX     0,0             /RESET SIGN TO NEGATIVE.
+00155 0000  
+00156 1030          JA      .+3             /AVOID USELESS LOAD INSTRUCTION.
+00157 0161  
+            /
+00160 0202  ALOGST, FLDA    ALOG1           /RECALL NUMBER.
+00161 3400          FDIV    F2ALOG          /CUT IN HALF.
+00162 0011  
+00163 6400          FSTA    ALOGTM          /PREPARE FOR EXPONENT DIDDLE.
+00164 0005  
+00165 0205          FLDA    ALOGMG          /SET THE EXPONENT OF THE EXPONENT TO 13.
+00166 6400          FSTA    ALOGTM-3        /SO THAT NORMALIZE WILL DO JOB.
+00167 0002  
+00170 6400          FSTA    ALOGTM+1        /AND ALSO ZERO OUT LOW ORDER POART OF EX. MANT.
+00171 0006  
+00172 0400          FLDA    ALOGTM-1        /RECALL THE NUMBER
+00173 0004  
+00174 0004          FNORM                   /NORMALIZE IT.
+00175 4207          FMUL    ALOGE2          /NOW MULITPLY EXPONENT BY LOG E 2
+00176 6203          FSTA    ALOG2           /AND SAVE IT FOR A SECOND.
+00177 0202          FLDA    ALOG1           /RECALL THE NUMBER AGAIN.
+00200 6400          FSTA    ALOGTM          /STORE IN THE TEMPORARY WORKER.
+00201 0005  
+00202 0400          FLDA    FPI2-2          /RECALL WORD WITH LOW ORDER ONE.
+00203 0012  
+00204 6400          FSTA    ALOGTM-2        /STORE AWAY.
+00205 0003  
+00206 0400          FLDA    ALOGTM          /RECALL NUMBER WITH AN EXPONENT OF 1
+00207 0005  
+RALF V62A                PAGE 1-3
+
+00210 2204          FSUB    F1ALOG          /SUBTRACT AWAY.
+00211 6202          FSTA    ALOG1           /AND STORE
+00212 4220          FMUL    ALOGL8          /MULTIPLY BY THE CONSTANT.
+00213 1217          FADD    ALOGL7          /ADD IN
+00214 4202          FMUL    ALOG1           /MULT.
+00215 1216          FADD    ALOGL6          /AND SO ON DOWN THE LINE.
+00216 4202          FMUL    ALOG1
+00217 1215          FADD    ALOGL5
+00220 4202          FMUL    ALOG1
+00221 1214          FADD    ALOGL4
+00222 4202          FMUL    ALOG1
+00223 1213          FADD    ALOGL3
+00224 4202          FMUL    ALOG1
+00225 1212          FADD    ALOGL2
+00226 4202          FMUL    ALOG1
+00227 1206          FADD    ALOGL1
+00230 4202          FMUL    ALOG1
+00231 1203          FADD    ALOG2           /CORRECT NOW.ADD IN EXPONENT.
+00232 2000          JXN     ALGRTN,0                /EXIT IF SIGN IS OK.
+00233 0066  
+00234 0003          FNEG                    /ELSE NEGATE IT.
+00235 1030          JA      ALGRTN
+00236 0066  
+RALF V62A                PAGE 2
+
+NO ERRORS 
+26 SYMBOLS, NO ABS REFS 
+
+ #      C 00000   #ALOG    00115   #ARGER X 00000   #MAIN  S 00000  
+ ALGRTN   00066   ALOG   S 00237   ALOGE2   00057   ALOGL1   00054  
+ ALOGL2   00070   ALOGL3   00073   ALOGL4   00076   ALOGL5   00101  
+ ALOGL6   00104   ALOGL7   00107   ALOGL8   00112   ALOGMG   00051  
+ ALOGM1   00023   ALOGST   00160   ALOGTM   00005   ALOGXR   00032  
+ ALOG0    00017   ALOG1    00040   ALOG2    00043   BPALOG   00032  
+ FPI2     00014   F1ALOG   00046   F2ALOG   00011   XRALOG   00035  
+
