@@ -410,6 +410,32 @@ struct symbol {
 	{ "SEL", 006750 },
 	{ "PDP", 050002 }, /* Kludge for PQS8 */
 	{ "COM", 050017 }, /* Kludge for PQS8 */
+#ifdef HD6120
+/* TODO: Consider adding these HD6120 specific IOTs */
+	{ "PPC1", 006205 }, /* PUSH PC, stack 1 */
+	{ "PAC1", 006215 }, /* PUSH AC, stack 1 */
+	{ "RTN1", 006225 }, /* RETURN,  stack 1 */
+	{ "POP1", 006235 }, /* POP AC,  stack 1 */
+	{ "PPC2", 006245 }, /* PUSH PC, stack 2 */
+	{ "PAC2", 006255 }, /* PUSH AC, stack 2 */
+	{ "RTN2", 006265 }, /* RETURN,  stack 2 */
+	{ "POP2", 006275 }, /* POP AC,  stack 2 */
+	{ "RSP1", 006207 }, /* SP1 to AC */
+	{ "LSP1", 006217 }, /* Load SP1, clear AC */
+	{ "RSP2", 006227 }, /* SP2 to AC */
+	{ "LSP2", 006237 }, /* Load SP2, clear AC */
+	{ "PR0",  006206 }, /* Panel Request 0 */
+	{ "PR1",  006216 }, /* Panel Request 1 */
+	{ "PR2",  006226 }, /* Panel Request 2 */
+	{ "PR3",  006236 }, /* Panel Request 3 */
+	{ "WSR",  006246 }, /* Write SR (switch register) */
+	{ "GCF",  006256 }, /* Get current fields */
+	{ "CPD",  006266 }, /* Clear PDF */
+	{ "SPD",  006276 }, /* Set PDF */
+	{ "PRS",  006000 }, /* Read Panel Status */
+	{ "PGO",  006003 }, /* Reset HLTFLG */
+	{ "PEX",  006004 }, /* Exit Panel Model */
+#endif
 #define TSS
 #ifdef TSS
 	{ "RRS", 006010 },
