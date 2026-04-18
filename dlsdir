@@ -27,7 +27,7 @@
 # from those authors.
 
 @sixbit = (
-  "@", "A", "B", "C", "D", "E", "F", "G",  # 00x
+  " ", "A", "B", "C", "D", "E", "F", "G",  # 00x
   "H", "I", "J", "K", "L", "M", "N", "O",  # 01x
   "P", "Q", "R", "S", "T", "U", "V", "W",  # 02x
   "X", "Y", "Z", "[", "\\","]", "^", "\r", # 03x
@@ -104,7 +104,7 @@ foreach $f (@ARGV) {
   #
   # Call the above routines to aquire the information we need.
 # BUGBUG: This doesn't read second or third directory blocks!
-  @dir = &rdblk($firstdir);
+  @dir = (&rdblk($firstdir), &rdblk($firstdir+1), &rdblk($firstdir+2));
 
   #
   # Print the directory.
