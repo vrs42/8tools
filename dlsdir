@@ -1,0 +1,134 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2025 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+@sixbit = (
+  "@", "A", "B", "C", "D", "E", "F", "G",  # 00x
+  "H", "I", "J", "K", "L", "M", "N", "O",  # 01x
+  "P", "Q", "R", "S", "T", "U", "V", "W",  # 02x
+  "X", "Y", "Z", "[", "\\","]", "^", "\r", # 03x
+  " ", "!", '"', "\n","\$","%", "&", "\t", # 04x
+  "(", ")", "*", "+", ",", "-", ".", "/",  # 05x
+  "0", "1", "2", "3", "4", "5", "6", "7",  # 06x
+  "8", "9", ":", ";", "<", "=", ">", "?",  # 07x
+);
+
+@types = ("ASCII  ", "BINARY ", "FTC BIN", "USER(%d)");
+
+#
+# DLS blocks are 128 words. (Word 129 is ignored.)
+#
+# Beware the skew, which aligns the blocks with the protection boundary.
+$bsize = 128;
+$bskew = 0;
+
+#
+# Read a block.
+#
+sub rdblk {
+  local($blk) = @_;
+  local($buf);
+  # Each word is 2 bytes.
+  seek(INPUT, 2*$blk*$bsize+2*$bskew, 0);
+  read(INPUT, $buf, 2*$bsize);
+  return unpack("S*", $buf);
+}
+
+#
+# Structure of a DECTape Library System:
+# Block	Usage
+# 000   	Bootstrap
+# 001-007	Saved memory, 6000-7577
+# 010   	System Loader and Bin Loader
+# 011-013	Directory
+# BUGUG		INDEX
+# 014-016	ESCAPE
+# 017-025	UPDATE
+# 026-031	DELETE
+# 032-040	GETSYS
+# Additional files follow, if any.
+# Files are contiguous, and the volume is kept packed.
+#
+
+#
+# A directory is 348 (0600) words.
+# The first few words are special:
+# 0	TBD
+# 1	Entry Count (negated)
+# 2	Entries length in words
+# 3	TBD
+#
+# Each entry is at least 7 words:
+# Word	Usage
+# 0-2	Sixbit Filename (6 chars)
+# 3	First block #
+# 4	Starting Address
+# 5+	Extent information (0000 terminates)
+#	0-1	Type of extent (0 for blocks, 3 for range)
+#	2-6	First block number
+#	7-11	Second block number
+#
+
+#
+# Enumerate the directory.
+#
+$firstdir = 011;
+foreach $f (@ARGV) {
+  open(INPUT, $f) || die "$ARGV[0]: $!";
+  binmode(INPUT);
+
+  #
+  # Call the above routines to aquire the information we need.
+# BUGBUG: This doesn't read second or third directory blocks!
+  @dir = &rdblk($firstdir);
+
+  #
+  # Print the directory.
+  print "\n$f:\n";
+  print "NAME   FBLK START LOAD\n";
+  for ($i = 4; $dir[$i]; ) {
+    # Print the file name (4 characters).
+    print $sixbit[$dir[$i+0]>>6], $sixbit[$dir[$i+0]&077];
+    print $sixbit[$dir[$i+1]>>6], $sixbit[$dir[$i+1]&077];
+    print $sixbit[$dir[$i+2]>>6], $sixbit[$dir[$i+2]&077];
+    # Print first block, then starting address
+    printf " %04o  %04o", $dir[$i+3], $dir[$i+4];
+    # Unpack extent information.
+    for ($i += 5; $dir[$i]; $i++) {
+      $type = $dir[$i] >> 10;
+      $first = 037 & ($dir[$i] >> 5);
+      printf " %04o", --$first << 7;
+      print $type==3 ? "-": $type==0? " ": "?";
+      $second = 037 & $dir[$i];
+      printf "%04o", --$second << 7 if $second;
+    }
+    printf "\n";
+    $i++; # skip over terminator
+  }
+}
+
+exit 0;

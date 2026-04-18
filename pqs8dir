@@ -183,6 +183,7 @@ $link = 063;
         $saddr = shift @dir; # Word 6
 	$size = $dir[3] - $start unless $start == $dir[3];
         $size = $length if $dir[3] == 0;
+        $size &= 07777;
         $ifiles = !!($saddr & 0100);
 	# See "Figure 1" for meaning of $typ.
 	$typ = $typ[$saddr & 037];
