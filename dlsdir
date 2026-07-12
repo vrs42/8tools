@@ -111,7 +111,7 @@ foreach $f (@ARGV) {
   print "\n$f:\n";
   print "NAME   FBLK START LOAD\n";
   for ($i = 4; $dir[$i]; ) {
-    # Print the file name (4 characters).
+    # Print the file name (6 characters).
     print $sixbit[$dir[$i+0]>>6], $sixbit[$dir[$i+0]&077];
     print $sixbit[$dir[$i+1]>>6], $sixbit[$dir[$i+1]&077];
     print $sixbit[$dir[$i+2]>>6], $sixbit[$dir[$i+2]&077];

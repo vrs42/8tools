@@ -1,4 +1,57 @@
 #!/usr/bin/perl
+# 
+# Copyright © 2015-2026 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# This tool simulates OS/8 in your current working directory in order
+# to provide command line execution (simulation) of native OS/8 tools.
+# In general, execution will proceed as if you had typed an "r" command,
+# and then the arguments were typed in at the "*" prompt, followed by
+# an escape.
+#
+# Pro tip: Use "_" instead of "'<'" to avoid issues with quoting for
+# the host shell.
+#
+# Files in the working directory must follow the "6.2" naming convention
+# to appear in the simulated disk image.  At the conclusion of execution,
+# new and modified files in the disk image will be written to the host
+# working directory.
+#
+
+#
+# TODO:
+# 1) Debug why some binaries don't quite run right.
+# 2) Separate SYS: and DSK:, removing clutter from working directories
+#    when using binaries that look for support files.  This is also
+#    helpful toward getting overlays to work (which generally requre
+#    the ability to OPEN a copy of the executable).
+# 3) Implement CHAIN, so that some of the more complicated OS/8 tools
+#    can do their thing.
+#
 
 #
 # First objective: Open the PDP-8 code file and load it.
@@ -124,10 +177,10 @@ sub emul8 {
     $ea += $pc & 07600 if $inst & 0200; # Page bit set
     $pc = ($pc&070000) + (($pc+1) & 07777);
     if ($inst & 0400) { # Indirect reference
+      printf STDERR " %05o)%04o", $ea, $core[$ea] if $trace;
       if (($ea&07770) == 0010) { # Autoindex
         $core[$ea] = 0000 if ++$core[$ea] == 010000;
       }
-      printf STDERR " %05o)%04o", $ea, $core[$ea] if $trace;
       if ($op < 4) {
         # Use DF for indirect non-branch
         $ea = ($df<<12)+$core[$ea];
@@ -149,6 +202,7 @@ sub emul8 {
     } elsif ($op == 3) { # DCA
       $core[$ea] = $lac & 07777; $lac &= 010000;
     } elsif ($op == 4) { # JMS
+    printf STDERR " %05o)%04o", $ea, $core[$ea] if $trace && $op < 4;
       if (($ea&077600) == 07600) {
         &os8driver;
         $ib = $pc >> 12; # Fix up "return"
@@ -166,7 +220,7 @@ sub emul8 {
       $pc = $ea;
       $inh = 0;
     }
-    printf STDERR " %05o)%04o", $ea, $core[$ea] if $trace && $op != 5;
+    printf STDERR " %05o)%04o", $ea, $core[$ea] if $trace && $op < 4;
   } elsif ($op == 6) {
     $pc = ($pc&070000) + (($pc+1) & 07777);
     #
@@ -355,7 +409,9 @@ sub fetch {
 
 #
 # Start things up!
+#&dumpcore("before.txt");
 &fetch(); 
+#&dumpcore("after.txt");
 
 #
 # Export "dirty" files here
@@ -676,13 +732,15 @@ sub os8sys {
   $dptr = $blknum * 0400;
 #warn "SYS: blk $blknum dptr $dptr\n";
   if ($write) {
-printf STDERR "\rSYS: write %o words\r\n", $size if $trace;
     for ($i = 0; $i < $size; $i++) {
       $sys[$dptr++] = $core[$fld+$bufadr];
       $bufadr = ($bufadr+1) & 07777;
     }
+printf STDERR "\r\nSYS: write %o words\r\n", $size if $trace;
+printf STDERR "args %05o, return %05o\r\n", $args, $pc if $trace;
+printf STDERR "bufadr %05o\r\n", $fld+$bufadr if $trace;
   } else {
-printf STDERR "\rSYS: read %o words\r\n", $size if $trace;
+printf STDERR "\r\nSYS: read %o words\r\n", $size if $trace;
 printf STDERR "args %05o, return %05o\r\n", $args, $pc if $trace;
 printf STDERR "bufadr %05o\r\n", $fld+$bufadr if $trace;
     for ($i = 0; $i < $size; $i++) {
@@ -692,6 +750,8 @@ printf STDERR "%04o\n", $sys[$dptr] if $trace > 1;
     }
   }
   $lac &= 010000; # Clear AC for return.
+#printf STDERR "12000/%04o\n", $core[012000] if $core[012000] != 01571;
+#$alt = 1 if $core[012000] != 01571;
 }
 
 #
@@ -1275,7 +1335,7 @@ sub loaddir {
     # Have size, make directory entry.
     $fblk[$f] = $fblk;
     $fblk += $size;
-    die "SYS: full" unless $fblk < $fsize;
+    die "SYS: no room for $fname" unless $fblk < $fsize;
     $size[$f] = $size;
     # Read the file into the "image".
     open(INPUT, $fname) || die "$fname: $!";
@@ -1345,7 +1405,7 @@ sub usrin {
   $pdnt[014] = $core[$pdnt+014] = 0;
   $pdnt[015] = $core[$pdnt+015] = 0;
   $pdnt[016] = $core[$pdnt+016] = 0;
-  $core[010036] = $pdnt;
+  $core[010036] = $pdnt & 07777;
 
   $hit = 010600; # Need to match this address? (010772)
   $core[$hit+00] = 00007; # SYS
@@ -1363,7 +1423,7 @@ sub usrin {
   $core[$hit+014] = 0;
   $core[$hit+015] = 0;
   $core[$hit+016] = 0;
-  $core[010037] = $hit;
+  $core[010037] = $hit & 07777;
 
   $usrin = 1;
 }
@@ -1505,4 +1565,22 @@ if ($holest[$hi] != $fblk) {
   die "Too Many Files" unless $dirblk < 7;
 #warn "got here: $f files in $dirblk dir blocks";
 #warn "got here: $fsize next block is $fblk ", $fblk - $fsize;
+}
+
+# Write a core dump do the specified file.
+sub dumpcore {
+  local($f) = @_;
+
+  $loc = -1;
+  open(DUMP, ">$f") || die "$f: $!";
+  for ($i = 0; $i < 0100000; $i++) {
+    if ($core[$i] != 07402) {
+      if ($loc%8 == 0 || $loc != $i) {
+        printf DUMP "\n%05o)", $i;
+        $loc = $i;
+      }
+      printf DUMP "%04o ", $core[$i];
+      $loc = $i + 1;
+    }
+  }
 }

@@ -59,3 +59,12 @@ verify: short.bn short.ls e8all.bn e8all.ls e8all.mp accept.rl alog.rl head.wu
 	diff -q alog.ls $(OS8).new.0/alog.ls
 	diff head.wu $(OS8).new.0/head.wu
 
+ralf.log: $(HOME)/pdp8/8tools/os8 ralf
+	ralf -t alog,alog_alog 2>ralf.log
+
+ralf.ipc: mksimh ralf.log
+	./mksimh ralf.log >$@
+
+borksim.txt: ralf.ipc
+	pdp8 ralf.ipc
+

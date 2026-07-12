@@ -1,0 +1,64 @@
+#!/usr/bin/perl
+
+#
+# 'os8 -t' output looks like:
+# 00000 0000 00 00200:2202 00202)6001
+# 00000 0000 00 00201:5602 00202)6001
+# 00000 0000 00 06001:6212
+# 00000 0000 00 06002:4516 00116)0200 DECODE 10200)7402
+# 00000 0000 00 06005:3777 06177)3425 03425)0000
+# 00000 0000 00 06006:4776 06176)7607 07607)7402
+# 00000 0000 00 06013:6211
+# 00000 0000 00 06014:1573 00173)7600 17600)0002
+# 00002 0000 00 06015:0120 00120)0017
+#
+# lac   mq   sc pc
+# We turn this into an 'expect' script which will spawn a SIMH,
+# then simulate each instruction. The output script will compare
+# the SIMH result to the 'os8' result, and flag differences.
+
+open(INPUT, "$ARGV[0]") || die "$ARGV[0]: $!";
+# Start should have registers clear.
+print "reset\n";
+print "!rm borksim.txt\n";
+print "set log borksim.txt\n";
+($sac, $smq, $sl, $ssc) = (0, 0, 0, 0);
+while (<INPUT>) {
+  s/\r$//;
+  next if /^$/;
+  # Remove cruft specific to current os8 simulator.
+  print "echo DECODE\n" if s/ DECODE//;
+  print "echo FETCH\n"  if s/ FETCH//;
+  print "echo USRIN\n"  if s/ USRIN//;
+  print "echo USROUT\n" if s/ USROUT//;
+  print "echo ENTER\n"  if s/ ENTER//;
+  print "echo CLOSE\n"  if s/ CLOSE//;
+  print "echo $_" if /^SYS: /;
+  next if /^SYS: /;
+  print "echo $_" if /^args /;
+  next if /^args /;
+  print "echo $_" if /^bufadr /;
+  next if /^bufadr /;
+  # Abort here if not correctly formed.
+  die "$_" unless s/^(\d)(\d+) (\d+) (\d\d) (\d+):(\d+)//;
+  ($l, $ac, $mq, $sc, $pc, $ir) = ($1, $2, $3, $4, $5, $6);
+  # Check the register values.
+  print "if not l=$l ;echo l <> $l; e l; d l $l\n";
+  print "if not ac=$ac ;echo ac <> $ac; e ac; d ac $ac\n";
+  print "if not mq=$mq ;echo mq <> $mq; e mq; d mq $mq\n";
+  print "if not sc=$sc ;echo sc <> $sc; e sc; d sc $sc\n";
+  # Set up the next instruction.
+  # SIMH seems to need $pc split into $if, $pc&07777.
+  print "d $pc $ir\n";
+  $if = oct($pc) >> 12;
+  $pc = oct($pc) & 07777;
+  printf "d if $if\nd pc 0%04o\n", $pc;
+  # Additional input describes memory values pertinent to the
+  # instruction (if any).
+  while (s/ (\d+)\)(\d+)//) {
+    print "d $1 $2\n";
+  }
+  # Simulate the instruction.
+  print "s\n";
+}
+print "q\n";
