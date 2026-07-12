@@ -1,0 +1,12 @@
+#!/usr/bin/perl
+
+#
+# Extract the next IP lists.
+#
+
+open(INPUT,   "ok.txt") || die "ok.txt";
+open(OUTPUT, ">ok.lst") || die "ok.lst";
+while (<INPUT>) {
+  next unless /Breakpoint, PC: (\d+)/;
+  print OUTPUT "$1\n";
+}

@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+
+spawn pdp8
+set timeout -1
+expect {
+	{..$} { exp_continue }
+        {.$} { send "SET SYS NO INIT\r" }
+}
+expect -re {\n\.$}
+send "ASS SYS DSK\r"
+expect -re {\n\.$}
+send "R RALF\r"
+expect -re {\n*}
+send "\005"
+expect -re {\nsim>}
+send "br 6005\r"
+expect -re {\nsim>}
+send "c\r"
+sleep 1
+send "alog,alog_alog\r"
+expect -re {\nsim>}
+send "!rm ok.txt\r"
+expect -re {\nsim>}
+send "set log ok.txt\r"
+expect -re {\nsim>}
+send "br 0200-1000 ;c\r"
+expect -re {\nsim>}
+send "br 1200-6577 ;c\r"
+expect -re {\nsim>}
+send "c\r"
+expect -re {\n\*$}
+send "^E"
+expect -re {\nsim>}
+send "q\r"
+close
+exit 0
