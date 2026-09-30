@@ -200,6 +200,8 @@ sub os8fs {
     $cos = 0 if $sblk < 0140; # Not a COS image
     $nent = 010000 - $nent;
     $link = shift @blk;
+    die "Implausible directory link found: $link\n"
+      unless $link < 7;
     $tent = shift @blk;
     $aiw = shift @blk;
     $aiw = 010000 - $aiw unless $aiw == 0;

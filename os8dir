@@ -98,8 +98,8 @@ for ($vstart = 0; $vstart <= $size-$vsiz; $vstart += $vsiz) {
         unless $link < 7;
       $flag = shift @dir;
       $aiw = shift @dir;
-      $aiw = $aiw - 010000 unless $aiw == 0;
-$aiw = 1 unless $aiw == 0;
+      $aiw = 010000 - $aiw unless $aiw == 0;
+#$aiw = 1 unless $aiw == 0;
       $date = "";
       for ($count -= 010000; $count < 0; $count++) {
   	$n1 = shift @dir;

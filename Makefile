@@ -4,7 +4,10 @@
 # This is a list of architecture dependant binaries.
 ARCH	= pal
 
-all:	pal
+all:	pal ../8tools.tgz
+
+../8tools.tgz: .
+	(cd ..; tar czf 8tools.tgz 8tools)
 
 #
 # 'make arch' if the existing executable is wrong for
