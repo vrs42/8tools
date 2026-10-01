@@ -1,4 +1,5 @@
-```markdown
+``` markdown
+
 # 8tools
 
 These are a set of tools being developed to deal with PDP-8
@@ -14,9 +15,11 @@ for details.
 - C compiler (pal.c)
 
 ## Installation
-- git clone git@github.com:vrs42/8tools.git
-- cd 8tools
-- make
+``` bash
+git clone git@github.com:vrs42/8tools.git
+cd 8tools
+make
+```
 - (Add 8tools directory to your PATH, if desired.)
 
 ## Tools
