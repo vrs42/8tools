@@ -1,0 +1,65 @@
+#!/usr/bin/perl
+# 
+# Copyright © 2015-2020 by Vincent Slyngstad
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE
+# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# 
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale, use
+# or other dealings in this Software without prior written authorization
+# from those authors.
+
+#
+# Look up PDP-8 files in the online database.
+# BUGBUG: This implementation requires the 'curl' package to be installed.
+#
+$urlhome = "https://svn.so-much-stuff.com/svn/trunk/pdp8/shadb";
+$urlhome = "https://www.so-much-stuff.com/pdp8/trunk/pdp8/shadb";
+sub urlcat {
+  local($name) = @_;
+#warn "fetch $urlhome/$name\n";
+  if (! -x "/usr/bin/curl") {
+    die "try 'sudo apt install curl' first\n";
+  }
+  return `curl -s '$urlhome/$name'`;
+}
+
+$mode = 0; # Do hash lookup.
+foreach $f (@ARGV) {
+  if ($mode == 0) {
+    # Hash the file contents.
+    ($hash) = split(/\s+/, `sha256sum $f`);
+    $name = &urlcat($hash); chop $name;
+    if ($name =~ /404 Not Found/) {
+      print "$f:\nNo hash found\n" if $name =~ /404 Not Found/;
+      next;
+    }
+#   $name = "..." if $name =~ /[\n.]*$/;
+  } else {
+    $name = $f; 
+  }
+  # At this point we have a name to try.
+#warn "$name\n";
+  $data = &urlcat($name);
+warn "$name" if $data eq "";
+  $data .= "\n" unless substr($data, -1) eq "\n";
+  $data = "No data found\n" if $data =~ /404 Not Found/;
+  print "$f:\n$data";
+}

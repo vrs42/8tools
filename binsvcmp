@@ -172,6 +172,7 @@ for ($i = 0; $i <= $cs; $i++) {
   # Load each page
   for ($j = 0; $j < $pc[$i]; $j++) {
 #printf STDERR "page %d loads at 0%05o\n", $j, $base;
+    $max = $base+0177 unless $max > $base+0177;
     for ($k = 0; $k < 0200; $k++) {
       $core2[$base++] = &getword;
     }
